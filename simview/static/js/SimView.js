@@ -81,8 +81,36 @@ export class SimView {
     initFromModel(model) {
         // Your existing initFromModel logic here
         this.disposeOfAll();
+
+        // Compatibility fix for different terrain dimension keys
+        if (model.terrain && model.terrain.dimensions) {
+            const dims = model.terrain.dimensions;
+            if (dims.sizeX !== undefined && dims.extentX === undefined)
+                dims.extentX = dims.sizeX;
+            if (dims.sizeY !== undefined && dims.extentY === undefined)
+                dims.extentY = dims.sizeY;
+            if (dims.resolutionX !== undefined && dims.shapeX === undefined)
+                dims.shapeX = dims.resolutionX;
+            if (dims.resolutionY !== undefined && dims.shapeY === undefined)
+                dims.shapeY = dims.resolutionY;
+        }
+
         this.batchManager = new BatchManager(this, model);
         this.bodies = new Map();
+        
+        // Auto-detect visualization mode based on first body
+        if (Array.isArray(model.bodies) && model.bodies.length > 0) {
+            const firstShape = model.bodies[0].shape;
+            // Check for numeric type 1 (Box) or string "box"/"mesh"/"sphere"/"cylinder"
+            const isMeshType = (typeof firstShape.type === 'number' && firstShape.type !== 5) || 
+                               (typeof firstShape.type === 'string' && firstShape.type !== 'pointcloud');
+            
+            if (isMeshType) {
+                console.log("Auto-switching visualization mode to 'mesh' based on body type");
+                this.uiState.bodyVisualizationMode = "mesh";
+            }
+        }
+
         if (Array.isArray(model.bodies)) {
             model.bodies.forEach((bodyData) => {
                 const body = new Body(bodyData, this);

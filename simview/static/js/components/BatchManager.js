@@ -25,6 +25,12 @@ export class BatchManager {
             this.batchSize = Math.max(1, parseInt(modelData.batchSize));
             console.log(`Initializing with ${this.batchSize} simulation batches`);
             this.app.batchSize = this.batchSize;
+        } else if (modelData.simBatches !== undefined) {
+            this.batchSize = Math.max(1, parseInt(modelData.simBatches));
+            console.log(
+                `Initializing with ${this.batchSize} simulation batches (from simBatches)`
+            );
+            this.app.batchSize = this.batchSize;
         }
         const sideLength = Math.ceil(Math.sqrt(this.batchSize));
         const { extentX, extentY } = modelData.terrain.dimensions;

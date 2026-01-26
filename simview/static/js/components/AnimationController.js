@@ -21,6 +21,22 @@ export class AnimationController {
     loadAnimation(states) {
         this.states = states;
         this.totalTime = this.states[this.states.length - 1].time;
+
+        // Infer simulation timestep if not provided or invalid
+        if ((!this.simulationTimestep || isNaN(this.simulationTimestep)) && this.states.length > 1) {
+            const dt = this.states[1].time - this.states[0].time;
+            if (dt > 0) {
+                console.log(`Inferred simulation timestep from states: ${dt}`);
+                this.simulationTimestep = dt;
+            } else {
+                console.warn("Could not infer valid timestep from states, defaulting to 1/60");
+                this.simulationTimestep = 1 / 60;
+            }
+        } else if (!this.simulationTimestep) {
+             console.warn("No timestep provided and not enough states to infer. Defaulting to 1/60");
+             this.simulationTimestep = 1 / 60;
+        }
+
         this.playbackControls = new PlaybackControls(this);
         this.goToTime(0);
     }

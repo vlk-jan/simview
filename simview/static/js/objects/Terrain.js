@@ -8,6 +8,42 @@ export class Terrain {
         this.bounds = terrainData.bounds;
         this.dimensions = terrainData.dimensions;
         this.group = null;
+
+        // Data normalization: Ensure heightData is array of arrays (batches)
+        if (
+            Array.isArray(terrainData.heightData) &&
+            terrainData.heightData.length > 0 &&
+            typeof terrainData.heightData[0] === "number"
+        ) {
+            console.debug("Normalizing flat heightData to single batch");
+            terrainData.heightData = [terrainData.heightData];
+        }
+
+        // Data normalization: Ensure normals is array of arrays of vectors
+        if (
+            Array.isArray(terrainData.normals) &&
+            terrainData.normals.length > 0
+        ) {
+            if (typeof terrainData.normals[0] === "number") {
+                // Case: Flat array [x, y, z, x, y, z...]
+                console.debug("Normalizing flat normals array to single batch of vectors");
+                const flat = terrainData.normals;
+                const vectors = [];
+                for (let i = 0; i < flat.length; i += 3) {
+                    vectors.push([flat[i], flat[i + 1], flat[i + 2]]);
+                }
+                terrainData.normals = [vectors];
+            } else if (
+                Array.isArray(terrainData.normals[0]) &&
+                terrainData.normals[0].length > 0 &&
+                typeof terrainData.normals[0][0] === "number"
+            ) {
+                // Case: Array of vectors [[x,y,z], ...] -> Wrap in batch
+                console.debug("Normalizing list of normal vectors to single batch");
+                terrainData.normals = [terrainData.normals];
+            }
+        }
+
         this.#createVisualRepresentations(
             terrainData.heightData,
             terrainData.normals

@@ -15,6 +15,24 @@ export class Body {
         this.name = bodyData.name;
         this.batchSize = app.batchManager.batchSize;
 
+        // Data Normalization: Handle numeric shape types
+        if (bodyData.shape && typeof bodyData.shape.type === "number") {
+            const typeMap = { 0: "custom", 1: "box", 2: "sphere", 3: "cylinder" };
+            if (typeMap[bodyData.shape.type]) {
+                console.debug(`Normalizing shape type ${bodyData.shape.type} to ${typeMap[bodyData.shape.type]}`);
+                bodyData.shape.type = typeMap[bodyData.shape.type];
+            } else {
+                console.warn(`Unknown numeric shape type: ${bodyData.shape.type}`);
+            }
+        } else {
+            console.debug(`Shape type is: ${bodyData.shape ? bodyData.shape.type : 'undefined'}`);
+        }
+
+        // Data Normalization: Handle root-level bodyPoints
+        if (bodyData.bodyPoints && !bodyData.shape.points) {
+            bodyData.shape.points = bodyData.bodyPoints;
+        }
+
         // Mandatory attributes
         this.positions = Array(this.batchSize)
             .fill()
@@ -25,6 +43,21 @@ export class Body {
         this.rotations = Array(this.batchSize)
             .fill()
             .map(() => new THREE.Euler()); // For debugging/display
+
+        // Initialize pose from bodyTransform if available
+        if (bodyData.bodyTransform) {
+            const transforms = Array.isArray(bodyData.bodyTransform[0]) ? bodyData.bodyTransform : [bodyData.bodyTransform];
+            for (let i = 0; i < Math.min(this.batchSize, transforms.length); i++) {
+                const t = transforms[i];
+                if (t.length >= 7) {
+                    this.positions[i].set(t[0], t[1], t[2]);
+                    // JSON quaternion order in bodyTransform is [w, x, y, z] based on observation
+                    // Three.js set() takes (x, y, z, w)
+                    this.quaternions[i].set(t[4], t[5], t[6], t[3]);
+                    this.rotations[i].setFromQuaternion(this.quaternions[i]);
+                }
+            }
+        }
 
         // Optional attributes management
         this.availableAttributes = new Set(bodyData.availableAttributes || []);
@@ -138,6 +171,29 @@ export class Body {
                 }
             } else {
                 this.setOrientation(bodyState.orientation, 0);
+            }
+        }
+
+        // Update from bodyTransform (combined position + orientation [w,x,y,z])
+        if (bodyState.bodyTransform) {
+            const transformData = bodyState.bodyTransform;
+            // Helper to extract and set
+            const applyTransform = (t, i) => {
+                if (t.length >= 7) {
+                    this.setPosition([t[0], t[1], t[2]], i);
+                    // bodyTransform quaternion is [w, x, y, z]
+                    this.setOrientation([t[3], t[4], t[5], t[6]], i);
+                }
+            };
+
+            if (Array.isArray(transformData[0])) {
+                // Batched or array of arrays
+                for (let i = 0; i < Math.min(this.batchSize, transformData.length); i++) {
+                    applyTransform(transformData[i], i);
+                }
+            } else {
+                // Single flat array
+                applyTransform(transformData, 0);
             }
         }
 
