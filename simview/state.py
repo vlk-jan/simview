@@ -3,21 +3,27 @@ from simview.model import OptionalBodyStateAttribute
 
 
 class SimViewBodyState:
-    def __init__(self, body_name: str, position: torch.Tensor, orientation: torch.Tensor, optional_attributes: dict | None = None):
+    def __init__(
+        self,
+        body_name: str,
+        position: torch.Tensor,
+        orientation: torch.Tensor,
+        optional_attributes: dict | None = None,
+    ):
         self.body_name = body_name
         self.position = position.tolist()
         self.orientation = orientation.tolist()
         self._set_optional_attributes(optional_attributes or {})
 
     def __repr__(self) -> str:
-        return (
-            f"SimViewBodyState(name={self.body_name}, position={self.position}, orientation={self.orientation}, optional_attrs={self.optional_attrs})"
-        )
+        return f"SimViewBodyState(name={self.body_name}, position={self.position}, orientation={self.orientation}, optional_attrs={self.optional_attrs})"
 
     def _set_optional_attributes(self, attrs):
         self.optional_attrs = {}
         for key, value in attrs.items():
-            assert key in OptionalBodyStateAttribute, f"Unknown optional attribute: {key}"
+            assert key in OptionalBodyStateAttribute, (
+                f"Unknown optional attribute: {key}"
+            )
             if key == OptionalBodyStateAttribute.CONTACTS:
                 value = self._process_contacts(value)
             elif isinstance(value, torch.Tensor):

@@ -6,12 +6,13 @@ from .scene import SimulationScene
 from pathlib import Path
 
 # If CACHE_DIR is used by SimViewVisualizer for its temporary files:
-CACHE_DIR = ".simview_cache" # Already defined above or manage scope
+CACHE_DIR = ".simview_cache"  # Already defined above or manage scope
+
 
 class SimViewLauncher:
     def __init__(
-            self,
-            source: SimulationScene | str | Path,
+        self,
+        source: SimulationScene | str | Path,
     ) -> None:
         """
         Initializes the visualizer.
@@ -25,7 +26,11 @@ class SimViewLauncher:
         self._source_data_object_to_clear: SimulationScene | None = None
 
         if isinstance(source, SimulationScene):
-            if source.model is None or not source.model.is_complete or source.states is None:
+            if (
+                source.model is None
+                or not source.model.is_complete
+                or source.states is None
+            ):
                 raise ValueError(
                     "Cannot initialize visualizer: The provided SimulationScene "
                     "is incomplete, has no states, or has already been cleared."
@@ -39,7 +44,9 @@ class SimViewLauncher:
             self._sim_file_path = Path(temp_path_str)
             self._is_temp_file = True
 
-            print(f"SimViewLauncher: Saving in-memory SimulationScene to temporary file {self._sim_file_path}")
+            print(
+                f"SimViewLauncher: Saving in-memory SimulationScene to temporary file {self._sim_file_path}"
+            )
             try:
                 source.save(self._sim_file_path)
                 # If save is successful, mark the source object for clearing later
@@ -48,22 +55,32 @@ class SimViewLauncher:
                 # If saving fails, clean up the temp file immediately
                 if self._sim_file_path.exists():
                     self._sim_file_path.unlink()
-                raise ValueError(f"Failed to save SimulationScene to temporary file: {e}")
+                raise ValueError(
+                    f"Failed to save SimulationScene to temporary file: {e}"
+                )
 
         elif isinstance(source, (str, Path)):
             self._sim_file_path = Path(source)
             if not self._sim_file_path.exists():
-                raise FileNotFoundError(f"Simulation JSON file not found at: {self._sim_file_path}")
-            print(f"SimViewLauncher: Using existing simulation file: {self._sim_file_path}")
+                raise FileNotFoundError(
+                    f"Simulation JSON file not found at: {self._sim_file_path}"
+                )
+            print(
+                f"SimViewLauncher: Using existing simulation file: {self._sim_file_path}"
+            )
         else:
-            raise TypeError("Source for SimViewLauncher must be a SimulationData object or a file path (str/Path).")
+            raise TypeError(
+                "Source for SimViewLauncher must be a SimulationData object or a file path (str/Path)."
+            )
 
     def launch(self) -> None:
         """
         Launches the SimViewServer and clears RAM if data was from a SimulationScene object.
         """
         if not self._sim_file_path or not self._sim_file_path.exists():
-            print(f"Error: Simulation file {self._sim_file_path} not found or not specified for visualization.")
+            print(
+                f"Error: Simulation file {self._sim_file_path} not found or not specified for visualization."
+            )
             return
 
         print(f"Starting SimLauncher with data from: {self._sim_file_path}")
@@ -76,13 +93,17 @@ class SimViewLauncher:
         finally:  # Ensure data clearing and temp file cleanup happens even if server fails to start (if start() raises)
             # or after server stops (if start() is blocking).
             if self._source_data_object_to_clear is not None:
-                print("SimViewLauncher: Clearing data from the source SimulationData object post-visualization.")
+                print(
+                    "SimViewLauncher: Clearing data from the source SimulationData object post-visualization."
+                )
                 self._source_data_object_to_clear._clear_internal_data()
                 # Remove the visualizer's reference. If the user also drops their reference,
                 # the SimulationData object (now empty) will be garbage collected.
                 self._source_data_object_to_clear = None
                 gc.collect()  # Encourage garbage collection
-                print("SimViewLauncher: Source data object cleared and garbage collection triggered.")
+                print(
+                    "SimViewLauncher: Source data object cleared and garbage collection triggered."
+                )
 
             # Temporary file cleanup is handled in __del__ if visualize() is the end of life,
             # but if visualize can be called multiple times (not logical here), cleanup should be more careful.
@@ -100,5 +121,8 @@ class SimViewLauncher:
                 print(f"Cleaning up temporary visualizer file: {self._sim_file_path}")
                 self._sim_file_path.unlink()
             except OSError as e:
-                print(f"Warning: Could not delete temporary file {self._sim_file_path}. "
-                      f"It might be in use or already deleted. Error: {e}")
+                print(
+                    f"Warning: Could not delete temporary file {self._sim_file_path}. "
+                    f"It might be in use or already deleted. Error: {e}"
+                )
+

@@ -101,10 +101,17 @@ class SimViewBody:
     shape: dict
     available_attributes: list[OptionalBodyStateAttribute] | None = None
 
-    def set_available_attributes(self, available_attributes: list[str | OptionalBodyStateAttribute]) -> None:
+    def set_available_attributes(
+        self, available_attributes: list[str | OptionalBodyStateAttribute]
+    ) -> None:
         if self.available_attributes is not None:
             raise UserWarning("Available attributes already set")
-        self.available_attributes = [v if isinstance(v, OptionalBodyStateAttribute) else OptionalBodyStateAttribute(v) for v in available_attributes]
+        self.available_attributes = [
+            v
+            if isinstance(v, OptionalBodyStateAttribute)
+            else OptionalBodyStateAttribute(v)
+            for v in available_attributes
+        ]
 
     @staticmethod
     def _create_shape_dict(body_type: BodyShapeType, **kwargs) -> dict:
@@ -113,20 +120,27 @@ class SimViewBody:
         for key, value in kwargs.items():
             if isinstance(value, torch.Tensor):
                 # Specific handling for mesh/pointcloud data if needed later
-                if (body_type == BodyShapeType.MESH and key in ["vertices", "faces"]) or (body_type == BodyShapeType.POINTCLOUD and key == "points"):
+                if (
+                    body_type == BodyShapeType.MESH and key in ["vertices", "faces"]
+                ) or (body_type == BodyShapeType.POINTCLOUD and key == "points"):
                     assert value.ndim == 2, f"{key} must be a 2D tensor"
                     assert value.shape[1] == 3, f"{key} must have shape (N, 3)"
                     shape_dict[key] = value.tolist()
                 else:
                     # General tensor conversion (might need adjustment)
-                    shape_dict[key] = value.tolist() if value.numel() > 1 else value.item()
+                    shape_dict[key] = (
+                        value.tolist() if value.numel() > 1 else value.item()
+                    )
             else:
                 shape_dict[key] = value
         return shape_dict
 
     @staticmethod
     def create(
-        name: str, body_type: BodyShapeType, available_attributes: list[OptionalBodyStateAttribute | str] | None = None, **kwargs
+        name: str,
+        body_type: BodyShapeType,
+        available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
+        **kwargs,
     ) -> "SimViewBody":
         shape_dict = SimViewBody._create_shape_dict(body_type, **kwargs)
         body = SimViewBody(name=name, shape=shape_dict)
@@ -135,24 +149,38 @@ class SimViewBody:
         return body
 
     @staticmethod
-    def create_box(name: str, hx: float, hy: float, hz: float, **kwargs) -> "SimViewBody":
-        return SimViewBody.create(name, BodyShapeType.BOX, hx=hx, hy=hy, hz=hz, **kwargs)
+    def create_box(
+        name: str, hx: float, hy: float, hz: float, **kwargs
+    ) -> "SimViewBody":
+        return SimViewBody.create(
+            name, BodyShapeType.BOX, hx=hx, hy=hy, hz=hz, **kwargs
+        )
 
     @staticmethod
     def create_sphere(name: str, radius: float, **kwargs) -> "SimViewBody":
         return SimViewBody.create(name, BodyShapeType.SPHERE, radius=radius, **kwargs)
 
     @staticmethod
-    def create_cylinder(name: str, radius: float, height: float, **kwargs) -> "SimViewBody":
-        return SimViewBody.create(name, BodyShapeType.CYLINDER, radius=radius, height=height, **kwargs)
+    def create_cylinder(
+        name: str, radius: float, height: float, **kwargs
+    ) -> "SimViewBody":
+        return SimViewBody.create(
+            name, BodyShapeType.CYLINDER, radius=radius, height=height, **kwargs
+        )
 
     @staticmethod
     def create_pointcloud(name: str, points: torch.Tensor, **kwargs) -> "SimViewBody":
-        return SimViewBody.create(name, BodyShapeType.POINTCLOUD, points=points, **kwargs)
+        return SimViewBody.create(
+            name, BodyShapeType.POINTCLOUD, points=points, **kwargs
+        )
 
     @staticmethod
-    def create_mesh(name: str, vertices: torch.Tensor, faces: torch.Tensor, **kwargs) -> "SimViewBody":
-        return SimViewBody.create(name, BodyShapeType.MESH, vertices=vertices, faces=faces, **kwargs)
+    def create_mesh(
+        name: str, vertices: torch.Tensor, faces: torch.Tensor, **kwargs
+    ) -> "SimViewBody":
+        return SimViewBody.create(
+            name, BodyShapeType.MESH, vertices=vertices, faces=faces, **kwargs
+        )
 
     def to_json(self) -> dict:
         r = {"name": self.name, "shape": self.shape}
@@ -180,12 +208,18 @@ class SimViewStaticObject:
         # Basic validation for batched shapes length could be added if batch_size is known here
 
     @staticmethod
-    def create_singleton(name: str, shape_type: BodyShapeType, **kwargs) -> "SimViewStaticObject":
-        shape_dict = SimViewBody._create_shape_dict(shape_type, **kwargs)  # Reuse helper
+    def create_singleton(
+        name: str, shape_type: BodyShapeType, **kwargs
+    ) -> "SimViewStaticObject":
+        shape_dict = SimViewBody._create_shape_dict(
+            shape_type, **kwargs
+        )  # Reuse helper
         return SimViewStaticObject(name=name, is_singleton=True, shape=shape_dict)
 
     @staticmethod
-    def create_batched(name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]) -> "SimViewStaticObject":
+    def create_batched(
+        name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]
+    ) -> "SimViewStaticObject":
         """
         Creates a batched static object where all instances share the same shape type.
 
@@ -204,8 +238,12 @@ class SimViewStaticObject:
         for kwargs in shapes_kwargs:
             # Ensure 'type' isn't passed within kwargs, as it's defined by shape_type
             if "type" in kwargs:
-                raise ValueError("Do not include 'type' in shapes_kwargs; use the shape_type argument.")
-            shapes_list.append(SimViewBody._create_shape_dict(shape_type, **kwargs))  # Reuse helper
+                raise ValueError(
+                    "Do not include 'type' in shapes_kwargs; use the shape_type argument."
+                )
+            shapes_list.append(
+                SimViewBody._create_shape_dict(shape_type, **kwargs)
+            )  # Reuse helper
         return SimViewStaticObject(name=name, is_singleton=False, shapes=shapes_list)
 
     def to_json(self) -> dict:
@@ -224,7 +262,9 @@ class SimViewModel:
     dt: float
     collapse: bool
     terrain: SimViewTerrain | None = None
-    bodies: dict[str, SimViewBody] = field(default_factory=dict)  # Renamed from 'bodies' for clarity
+    bodies: dict[str, SimViewBody] = field(
+        default_factory=dict
+    )  # Renamed from 'bodies' for clarity
     static_objects: dict[str, SimViewStaticObject] = field(default_factory=dict)
 
     def add_terrain(self, terrain: SimViewTerrain) -> None:
@@ -240,7 +280,10 @@ class SimViewModel:
     def add_static_object(self, static_object: SimViewStaticObject) -> None:
         if static_object.name in self.static_objects:
             raise ValueError(f"Static object {static_object.name} already exists")
-        if not static_object.is_singleton and len(static_object.shapes) != self.batch_size:
+        if (
+            not static_object.is_singleton
+            and len(static_object.shapes) != self.batch_size
+        ):
             raise ValueError(
                 f"Batched static object '{static_object.name}' shapes count ({len(static_object.shapes)}) must match batch size ({self.batch_size})."
             )
@@ -260,7 +303,9 @@ class SimViewModel:
         B_h = heightmap.shape[0]
         B_n = normals.shape[0]
 
-        is_singleton = (B_h == 1 and self.batch_size > 1) or (B_n == 1 and self.batch_size > 1)
+        is_singleton = (B_h == 1 and self.batch_size > 1) or (
+            B_n == 1 and self.batch_size > 1
+        )
 
         if is_singleton:
             if B_h == 1:
@@ -268,7 +313,9 @@ class SimViewModel:
             if B_n == 1:
                 normals = normals.repeat(self.batch_size, 1, 1, 1)
         elif B_h != self.batch_size or B_n != self.batch_size:
-            raise ValueError(f"Non-singleton terrain dimensions ({B_h}, {B_n}) must match batch size ({self.batch_size})")
+            raise ValueError(
+                f"Non-singleton terrain dimensions ({B_h}, {B_n}) must match batch size ({self.batch_size})"
+            )
 
         self.terrain = SimViewTerrain.create(
             heightmap=heightmap,
@@ -279,23 +326,37 @@ class SimViewModel:
         )
 
     def create_body(
-        self, body_name: str, shape_type: BodyShapeType, available_attributes: list[OptionalBodyStateAttribute | str] | None = None, **kwargs
+        self,
+        body_name: str,
+        shape_type: BodyShapeType,
+        available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
+        **kwargs,
     ) -> None:
         if body_name in self.bodies:  # Use renamed attribute
             raise ValueError(f"Dynamic body {body_name} already exists")
-        body = SimViewBody.create(body_name, shape_type, available_attributes=available_attributes, **kwargs)
+        body = SimViewBody.create(
+            body_name, shape_type, available_attributes=available_attributes, **kwargs
+        )
         self.add_body(body)
 
-    def create_static_object_singleton(self, name: str, shape_type: BodyShapeType, **kwargs) -> None:
+    def create_static_object_singleton(
+        self, name: str, shape_type: BodyShapeType, **kwargs
+    ) -> None:
         static_obj = SimViewStaticObject.create_singleton(name, shape_type, **kwargs)
         self.add_static_object(static_obj)
 
-    def create_static_object_batched(self, name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]) -> None:
+    def create_static_object_batched(
+        self, name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]
+    ) -> None:
         """Helper method to create and add a batched static object."""
         if len(shapes_kwargs) != self.batch_size:
-            raise ValueError(f"Length of shapes_kwargs ({len(shapes_kwargs)}) must match batch size ({self.batch_size}) for '{name}'.")
+            raise ValueError(
+                f"Length of shapes_kwargs ({len(shapes_kwargs)}) must match batch size ({self.batch_size}) for '{name}'."
+            )
         static_obj = SimViewStaticObject.create_batched(name, shape_type, shapes_kwargs)
-        self.add_static_object(static_obj)  # add_static_object already performs the length check
+        self.add_static_object(
+            static_obj
+        )  # add_static_object already performs the length check
 
     def to_json(self) -> dict:
         if not self.bodies:  # Use renamed attribute
@@ -308,7 +369,9 @@ class SimViewModel:
             "dt": self.dt,
             "collapse": self.collapse,
             "terrain": self.terrain.to_json(),
-            "bodies": [b.to_json() for b in self.bodies.values()],  # Use renamed attribute
+            "bodies": [
+                b.to_json() for b in self.bodies.values()
+            ],  # Use renamed attribute
             "staticObjects": [s.to_json() for s in self.static_objects.values()],
         }
         return r

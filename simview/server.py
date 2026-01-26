@@ -15,8 +15,12 @@ STATIC = files("simview").joinpath("static")
 class SimViewServer:
     def __init__(self, sim_path: str | Path):
         self.sim_path = sim_path
-        self.app = Flask(__name__, template_folder=str(TEMPLATES), static_folder=str(STATIC))
-        self.socketio = SocketIO(self.app, json=json, cors_allowed_origins="*", async_mode="eventlet")
+        self.app = Flask(
+            __name__, template_folder=str(TEMPLATES), static_folder=str(STATIC)
+        )
+        self.socketio = SocketIO(
+            self.app, json=json, cors_allowed_origins="*", async_mode="eventlet"
+        )
         self.setup_routes()
         self.setup_socket_handlers()
 
@@ -66,7 +70,9 @@ class SimViewServer:
         server = SimViewServer(sim_path=sim_path)
         port = find_free_port(host, preferred_port)
         if port != preferred_port:
-            print(f"Preferred port {preferred_port} is not available. Using port {port} instead.")
+            print(
+                f"Preferred port {preferred_port} is not available. Using port {port} instead."
+            )
         server.run(host=host, port=port)
 
 
@@ -74,6 +80,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run the SimView server.")
-    parser.add_argument("--sim_path", type=str, required=True, help="Path to the simulation JSON file.")
+    parser.add_argument(
+        "--sim_path", type=str, required=True, help="Path to the simulation JSON file."
+    )
     args = parser.parse_args()
     SimViewServer.start(args.sim_path)
