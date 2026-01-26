@@ -13,7 +13,7 @@ export class Body {
     constructor(bodyData, app) {
         this.app = app;
         this.name = bodyData.name;
-        this.batchSize = app.batchManager.batchSize;
+        this.simBatches = app.batchManager.simBatches;
 
         // Data Normalization: Handle numeric shape types
         if (bodyData.shape && typeof bodyData.shape.type === "number") {
@@ -34,20 +34,20 @@ export class Body {
         }
 
         // Mandatory attributes
-        this.positions = Array(this.batchSize)
+        this.positions = Array(this.simBatches)
             .fill()
             .map(() => new THREE.Vector3());
-        this.quaternions = Array(this.batchSize)
+        this.quaternions = Array(this.simBatches)
             .fill()
             .map(() => new THREE.Quaternion());
-        this.rotations = Array(this.batchSize)
+        this.rotations = Array(this.simBatches)
             .fill()
             .map(() => new THREE.Euler()); // For debugging/display
 
         // Initialize pose from bodyTransform if available
         if (bodyData.bodyTransform) {
             const transforms = Array.isArray(bodyData.bodyTransform[0]) ? bodyData.bodyTransform : [bodyData.bodyTransform];
-            for (let i = 0; i < Math.min(this.batchSize, transforms.length); i++) {
+            for (let i = 0; i < Math.min(this.simBatches, transforms.length); i++) {
                 const t = transforms[i];
                 if (t.length >= 7) {
                     this.positions[i].set(t[0], t[1], t[2]);
@@ -60,38 +60,32 @@ export class Body {
         }
 
         // Optional attributes management
-        this.availableAttributes = new Set(bodyData.availableAttributes || []);
+        // Map README names (bodyVelocity, bodyForce) to internal visualization names
+        this.availableAttributes = new Set();
+        if (bodyData.availableAttributes) {
+             // If model provides availableAttributes, use them (legacy/custom)
+             bodyData.availableAttributes.forEach(attr => this.availableAttributes.add(attr));
+        }
+        // Also assume standard dynamic attributes are available if not explicitly forbidden?
+        // For visualization config, we map standard names:
         this.attributeStorage = new Map();
         this.attributeUpdaters = new Map();
-        this.hasContacts = this.availableAttributes.has("contacts");
+        
+        // Setup updaters for standard attributes based on potential state data
+        // We will init storage for: linearVelocity, angularVelocity, linearForce, torque, contacts
+        const vectorAttrs = ["linearVelocity", "angularVelocity", "linearForce", "torque"];
+        vectorAttrs.forEach(attr => {
+             this.availableAttributes.add(attr); // Expose for UI toggles
+             this.attributeStorage.set(attr, Array(this.simBatches).fill().map(() => new THREE.Vector3()));
+             this.attributeUpdaters.set(attr, (data, batchIndex) => this.updateBodyVector(attr, data, batchIndex));
+        });
 
-        // Initialize storage and updaters for optional attributes
-        if (bodyData.availableAttributes) {
-            bodyData.availableAttributes.forEach((attr) => {
-                if (attr === "contacts") {
-                    this.attributeStorage.set(
-                        attr,
-                        Array(this.batchSize)
-                            .fill()
-                            .map(() => [])
-                    );
-                    this.attributeUpdaters.set(attr, (data, batchIndex) =>
-                        this.updateContactPointsVisibility(data, batchIndex)
-                    );
-                } else {
-                    // Vector attributes: velocity, angularVelocity, force, torque
-                    this.attributeStorage.set(
-                        attr,
-                        Array(this.batchSize)
-                            .fill()
-                            .map(() => new THREE.Vector3())
-                    );
-                    this.attributeUpdaters.set(attr, (data, batchIndex) =>
-                        this.updateBodyVector(attr, data, batchIndex)
-                    );
-                }
-            });
-        }
+        this.availableAttributes.add("contacts");
+        this.attributeStorage.set("contacts", Array(this.simBatches).fill().map(() => []));
+        this.attributeUpdaters.set("contacts", (data, batchIndex) => this.updateContactPointsVisibility(data, batchIndex));
+        
+        this.hasContacts = true; // Always allow contacts visualization if data arrives
+
         // Scene setup
         this.group = new THREE.Group();
         this.group.name = this.name;
@@ -104,7 +98,7 @@ export class Body {
     }
 
     createBatchGroups(bodyData) {
-        for (let i = 0; i < this.batchSize; i++) {
+        for (let i = 0; i < this.simBatches; i++) {
             const batchGroup = new THREE.Group();
             batchGroup.name = `${this.name}_batch_${i}`;
             this.group.add(batchGroup);
@@ -115,12 +109,9 @@ export class Body {
 
             if (
                 this.hasContacts &&
-                (bodyData.shape.type === "pointcloud" || bodyData.shape.type === "mesh")
+                (bodyData.shape.type === "pointcloud" || bodyData.shape.type === "mesh" || bodyData.shape.points)
             ) {
-                const points =
-                    bodyData.shape.type === "pointcloud"
-                        ? bodyData.shape.points
-                        : bodyData.shape.vertices;
+                const points = bodyData.shape.points || bodyData.shape.vertices;
                 this.initializeContactPoints(batchGroup, points, i);
             }
 
@@ -131,7 +122,7 @@ export class Body {
     }
 
     updateAttribute(attr, data, batchIndex) {
-        if (!this.attributeStorage.has(attr) || batchIndex >= this.batchSize)
+        if (!this.attributeStorage.has(attr) || batchIndex >= this.simBatches)
             return;
         const storage = this.attributeStorage.get(attr);
         if (attr === "contacts") {
@@ -144,71 +135,62 @@ export class Body {
     }
 
     updateState(bodyState) {
-        // Update position (mandatory)
-        if (bodyState.position) {
-            if (Array.isArray(bodyState.position[0])) {
-                for (
-                    let i = 0;
-                    i < Math.min(this.batchSize, bodyState.position.length);
-                    i++
-                ) {
-                    this.setPosition(bodyState.position[i], i);
-                }
-            } else {
-                this.setPosition(bodyState.position, 0);
-            }
-        }
-
-        // Update orientation (mandatory)
-        if (bodyState.orientation) {
-            if (Array.isArray(bodyState.orientation[0])) {
-                for (
-                    let i = 0;
-                    i < Math.min(this.batchSize, bodyState.orientation.length);
-                    i++
-                ) {
-                    this.setOrientation(bodyState.orientation[i], i);
-                }
-            } else {
-                this.setOrientation(bodyState.orientation, 0);
-            }
-        }
-
         // Update from bodyTransform (combined position + orientation [w,x,y,z])
         if (bodyState.bodyTransform) {
             const transformData = bodyState.bodyTransform;
-            // Helper to extract and set
             const applyTransform = (t, i) => {
                 if (t.length >= 7) {
                     this.setPosition([t[0], t[1], t[2]], i);
-                    // bodyTransform quaternion is [w, x, y, z]
                     this.setOrientation([t[3], t[4], t[5], t[6]], i);
                 }
             };
-
             if (Array.isArray(transformData[0])) {
-                // Batched or array of arrays
-                for (let i = 0; i < Math.min(this.batchSize, transformData.length); i++) {
+                for (let i = 0; i < Math.min(this.simBatches, transformData.length); i++) {
                     applyTransform(transformData[i], i);
                 }
             } else {
-                // Single flat array
                 applyTransform(transformData, 0);
             }
         }
+        // Fallback: Legacy position/orientation checks removed as per README compliance request
+        // (If absolutely needed for other projects, they can be re-added, but strictly following README now)
 
-        // Update optional attributes
-        for (const attr of this.attributeStorage.keys()) {
-            if (bodyState[attr]) {
-                const data = bodyState[attr];
-                if (Array.isArray(data[0])) {
-                    for (let i = 0; i < Math.min(this.batchSize, data.length); i++) {
-                        this.updateAttribute(attr, data[i], i);
-                    }
-                } else {
-                    this.updateAttribute(attr, data, 0);
-                }
-            }
+        // Update bodyVelocity -> linearVelocity + angularVelocity
+        if (bodyState.bodyVelocity) {
+             const velData = bodyState.bodyVelocity; // Array of [vx, vy, vz, wx, wy, wz]
+             if (Array.isArray(velData[0])) {
+                 for(let i=0; i < Math.min(this.simBatches, velData.length); i++) {
+                     const v = velData[i];
+                     if (v.length >= 6) {
+                         this.updateAttribute("linearVelocity", [v[0], v[1], v[2]], i);
+                         this.updateAttribute("angularVelocity", [v[3], v[4], v[5]], i);
+                     }
+                 }
+             }
+        }
+
+        // Update bodyForce -> linearForce + torque
+        if (bodyState.bodyForce) {
+             const forceData = bodyState.bodyForce; // Array of [fx, fy, fz, tx, ty, tz]
+             if (Array.isArray(forceData[0])) {
+                 for(let i=0; i < Math.min(this.simBatches, forceData.length); i++) {
+                     const f = forceData[i];
+                     if (f.length >= 6) {
+                         this.updateAttribute("linearForce", [f[0], f[1], f[2]], i);
+                         this.updateAttribute("torque", [f[3], f[4], f[5]], i);
+                     }
+                 }
+             }
+        }
+
+        // Update contacts
+        if (bodyState.contacts) {
+            const contactsData = bodyState.contacts;
+             if (Array.isArray(contactsData)) {
+                 for(let i=0; i < Math.min(this.simBatches, contactsData.length); i++) {
+                     this.updateAttribute("contacts", contactsData[i], i);
+                 }
+             }
         }
     }
 
@@ -216,7 +198,7 @@ export class Body {
         if (
             !positionData ||
             positionData.length < 3 ||
-            batchIndex >= this.batchSize
+            batchIndex >= this.simBatches
         )
             return;
         const [x, y, z] = positionData;
@@ -235,7 +217,7 @@ export class Body {
         if (
             !orientationData ||
             orientationData.length < 4 ||
-            batchIndex >= this.batchSize
+            batchIndex >= this.simBatches
         )
             return;
         const [qw, qx, qy, qz] = orientationData;

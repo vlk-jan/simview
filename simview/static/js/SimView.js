@@ -82,19 +82,6 @@ export class SimView {
         // Your existing initFromModel logic here
         this.disposeOfAll();
 
-        // Compatibility fix for different terrain dimension keys
-        if (model.terrain && model.terrain.dimensions) {
-            const dims = model.terrain.dimensions;
-            if (dims.sizeX !== undefined && dims.extentX === undefined)
-                dims.extentX = dims.sizeX;
-            if (dims.sizeY !== undefined && dims.extentY === undefined)
-                dims.extentY = dims.sizeY;
-            if (dims.resolutionX !== undefined && dims.shapeX === undefined)
-                dims.shapeX = dims.resolutionX;
-            if (dims.resolutionY !== undefined && dims.shapeY === undefined)
-                dims.shapeY = dims.resolutionY;
-        }
-
         this.batchManager = new BatchManager(this, model);
         this.bodies = new Map();
         

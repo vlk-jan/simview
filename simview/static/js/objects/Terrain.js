@@ -71,12 +71,12 @@ export class Terrain {
 
     #createVisualRepresentations(heightData, normals) {
         console.debug(
-            `Creating terrain geometry: ${this.dimensions.extentX}x${this.dimensions.extentY} m, resolution: ${this.dimensions.shapeX}x${this.dimensions.shapeY}`
+            `Creating terrain geometry: ${this.dimensions.sizeX}x${this.dimensions.sizeY} m, resolution: ${this.dimensions.resolutionX}x${this.dimensions.resolutionY}`
         );
         const { surfaceMaterial, wireframeMaterial } = this.#createMaterials();
         // Create geometry for each batch
         this.group = new THREE.Group();
-        for (let i = 0; i < this.app.batchManager.batchSize; i++) {
+        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
             const batchGroup = new THREE.Group();
             batchGroup.name = `batch${i}`;
             const surfaceGeometry = this.#createSurfaceGeometryFromHeightData(
@@ -122,14 +122,14 @@ export class Terrain {
      * @returns
      */
     #createSurfaceGeometryFromHeightData(heightData) {
-        const { extentX, extentY, shapeX, shapeY } = this.dimensions;
+        const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY, maxX, maxY } = this.bounds;
         // Create a plane geometry with the right number of segments
         const geometry = new THREE.PlaneGeometry(
-            extentX,
-            extentY,
-            shapeX - 1,
-            shapeY - 1
+            sizeX,
+            sizeY,
+            resolutionX - 1,
+            resolutionY - 1
         );
         // Center the geometry based on bounds
         const centerX = (minX + maxX) / 2;
@@ -149,11 +149,11 @@ export class Terrain {
         );
         for (let i = 0; i < position.count; i++) {
             // Convert vertex index to grid coordinates
-            const col = i % shapeX;
-            const invertedRow = Math.floor(i / shapeY);
-            const row = shapeY - invertedRow - 1; // Invert row index
+            const col = i % resolutionX;
+            const invertedRow = Math.floor(i / resolutionY);
+            const row = resolutionY - invertedRow - 1; // Invert row index
             // Calculate index in the flattened height data array
-            const dataIndex = row * shapeX + col;
+            const dataIndex = row * resolutionX + col;
             // Set Z coordinate (height)
             position.setZ(i, heightData[dataIndex]);
             // Calculate color based on height
@@ -231,7 +231,7 @@ export class Terrain {
      * @returns {THREE.Group} - Group containing normal vectors
      */
     #createNormalVectors(heightData, normals) {
-        const { extentX, extentY, shapeX, shapeY } = this.dimensions;
+        const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY } = this.bounds;
 
         const normalVectors = new THREE.Group();
@@ -242,18 +242,18 @@ export class Terrain {
         const normalLength = TERRAIN_CONFIG.normalLength || 0.5;
         const skipFactor = Math.max(
             1,
-            Math.floor(shapeX / TERRAIN_CONFIG.skipNormalCells)
+            Math.floor(resolutionX / TERRAIN_CONFIG.skipNormalCells)
         ); // Adaptive skip factor based on resolution
 
         // Sample normals at regular intervals
-        for (let row = 0; row < shapeY; row += skipFactor) {
-            for (let col = 0; col < shapeX; col += skipFactor) {
-                const dataIndex = row * shapeX + col;
+        for (let row = 0; row < resolutionY; row += skipFactor) {
+            for (let col = 0; col < resolutionX; col += skipFactor) {
+                const dataIndex = row * resolutionX + col;
 
                 if (dataIndex < heightData.length) {
                     // Calculate real-world coordinates
-                    const x = minX + col * (extentX / (shapeX - 1));
-                    const y = minY + row * (extentY / (shapeY - 1));
+                    const x = minX + col * (sizeX / (resolutionX - 1));
+                    const y = minY + row * (sizeY / (resolutionY - 1));
                     const z = heightData[dataIndex];
 
                     // Get normal data
