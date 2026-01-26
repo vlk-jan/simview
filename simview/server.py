@@ -18,9 +18,7 @@ class SimViewServer:
         self.app = Flask(
             __name__, template_folder=str(TEMPLATES), static_folder=str(STATIC)
         )
-        self.socketio = SocketIO(
-            self.app, json=json, cors_allowed_origins="*", async_mode="eventlet"
-        )
+        self.socketio = SocketIO(self.app, json=json, cors_allowed_origins="*")
         self.setup_routes()
         self.setup_socket_handlers()
 

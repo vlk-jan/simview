@@ -10,8 +10,8 @@ export const UI_DEFAULT_CONFIG = {
     },
     terrainVisualizationModes: {
         surface: true,
-        wireframe: false,
-        normals: true,
+        wireframe: true,
+        normals: false,
     },
     terrainColorMap: "magma", // Default colormap
 };
