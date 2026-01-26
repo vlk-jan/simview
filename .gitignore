@@ -178,3 +178,5 @@ pyrightconfig.json
 .idea/
 .vscode/
 git-filter-repo
+
+*.DS_Store

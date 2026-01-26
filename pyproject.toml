@@ -6,16 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "simview"
 version = "2.4"
 authors = [
-    {name = "Ales Kucera", email="kuceral@fel.cvut.cz"},
-    { name="David Korcak", email="david.korcak@gmail.com" }]
-description = "THREE.js-based simulation visualization tool"
-dependencies = [
-    "flask",
-    "flask_socketio",
-    "eventlet",
-    "einops",
+    { name = "Ales Kucera", email = "kuceral@fel.cvut.cz" },
+    { name = "David Korcak", email = "david.korcak@gmail.com" },
 ]
+description = "THREE.js-based simulation visualization tool"
+dependencies = ["flask", "flask_socketio", "eventlet", "einops"]
 
 [tool.setuptools.package-dir]
 simview = "simview"
-
