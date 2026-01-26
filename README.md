@@ -1,6 +1,4 @@
-# TBD
-
-<!-- # SimView Visualizer
+# SimView Visualizer
 
 **SimView** is a powerful and interactive tool for visualizing 3D models and terrain data in simulations. It enables you to explore and analyze multiple simulation scenarios (batches) within a shared environment, all defined through an intuitive JSON format. Whether you're simulating physical objects or comparing different runs, SimView provides a flexible and efficient way to bring your data to life.
 
@@ -9,6 +7,7 @@
 ## What Does SimView Do?
 
 SimView takes a JSON file that describes:
+
 - **Static Models**: The 3D bodies and terrain that form the foundation of your simulation.
 - **Dynamic States**: Time-varying properties like position, velocity, and forces for each simulation batch.
 
@@ -192,4 +191,4 @@ This shows the dynamic state of the above model at time 1.5 seconds:
   All arrays (e.g., `bodyTransform`, `bodyVelocity`) must have the same length as `simBatches`.
 
 - **Contact Points**
-  The `contacts` field lists indices from `bodyPoints` for each batch. An empty array means no contacts. -->
+  The `contacts` field lists indices from `bodyPoints` for each batch. An empty array means no contacts.
