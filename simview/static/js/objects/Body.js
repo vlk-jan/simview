@@ -247,14 +247,18 @@ export class Body {
     createVisualRepresentations(batchGroup, bodyData) {
         const shape = bodyData.shape;
 
-        if (shape.type === "pointcloud") {
+        // Create points if available (regardless of shape type)
+        if (shape.points && shape.points.length > 0) {
             const points = createPoints(shape.points, BODY_CONFIG.points);
             if (points) {
                 points.visible = this.app.uiState.bodyVisualizationMode === "points";
                 batchGroup.add(points);
                 this.representations["points"].push(points);
             }
-        } else {
+        }
+
+        // Create geometry (mesh/wireframe) if not strictly a pointcloud (or if it is a shape that can be meshed)
+        if (shape.type !== "pointcloud") {
             const geometry = createGeometry(shape, BODY_CONFIG.geometry);
             if (geometry) {
                 const mesh = createMesh(geometry, BODY_CONFIG.mesh);
