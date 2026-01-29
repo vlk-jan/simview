@@ -174,6 +174,9 @@ export class SimView {
         if (this.scalarPlotter) {
             this.scalarPlotter.animate(now);
         }
+        if (this.bodyStateWindow) {
+            this.bodyStateWindow.animate(now);
+        }
         this.scene.animate(now);
     }
 }

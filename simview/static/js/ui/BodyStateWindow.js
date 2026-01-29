@@ -225,8 +225,8 @@ export class BodyStateWindow {
         this.header.appendChild(title);
 
         // --- Batch Selector (if needed) ---
-        if (this.app.batchManager && this.app.batchManager.getbatchSize) {
-            const batchSize = this.app.batchManager.getbatchSize();
+        if (this.app.batchManager && this.app.batchManager.getSimBatches) {
+            const batchSize = this.app.batchManager.getSimBatches();
             if (batchSize > 1) {
                 const selectorContainer = document.createElement("div");
                 selectorContainer.classList.add("batch-selector-container"); // Use CSS class
@@ -394,10 +394,10 @@ export class BodyStateWindow {
         const properties = [
             { key: "positions", label: "Position" },
             { key: "rotations", label: "Rotation" },
-            { key: "velocity", label: "Velocity" }, // Abbreviate slightly if needed
-            { key: "angularVelocity", label: "Ang. Vel." },
-            { key: "force", label: "Force" },
-            { key: "torque", label: "Torque" },
+            // { key: "linearVelocity", label: "Velocity" }, // Abbreviate slightly if needed
+            // { key: "angularVelocity", label: "Ang. Vel." },
+            // { key: "linearForce", label: "Force" },
+            // { key: "torque", label: "Torque" },
         ];
 
         const valueCells = {}; // Keep reference for updates
@@ -440,7 +440,7 @@ export class BodyStateWindow {
         const batchManager = this.app.batchManager;
         let batchText = "";
         const batchIndex = batchManager.currentlyActiveBatch;
-        const batchSize = batchManager.getbatchSize();
+        const batchSize = batchManager.getSimBatches();
         if (batchSize > 1) {
             batchText = ` (Batch ${batchIndex})`;
         }
