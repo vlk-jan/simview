@@ -65,6 +65,9 @@ class SimViewServer:
 
     @staticmethod
     def start(sim_path: str | Path, host: str = "0.0.0.0", preferred_port: int = 5420):
+        if not Path(sim_path).is_file():
+            print(f"Error: Simulation file '{sim_path}' does not exist.")
+            exit(1)
         server = SimViewServer(sim_path=sim_path)
         port = find_free_port(host, preferred_port)
         if port != preferred_port:

@@ -4,10 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simview"
-version = "2.4"
+version = "2.5"
+readme = "README.md"
+requires-python = ">=3.10"
 authors = [
     { name = "Ales Kucera", email = "kuceral@fel.cvut.cz" },
     { name = "David Korcak", email = "david.korcak@gmail.com" },
+    { name = "Jan Vlk", email = "vlkjan6@fel.cvut.cz" },
 ]
 description = "THREE.js-based simulation visualization tool"
 dependencies = ["flask", "flask_socketio", "eventlet", "einops"]
