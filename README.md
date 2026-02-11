@@ -1,23 +1,54 @@
 # SimView Visualizer
 
-**SimView** is a powerful and interactive tool for visualizing 3D models and terrain data in simulations. It enables you to explore and analyze multiple simulation scenarios (batches) within a shared environment, all defined through an intuitive JSON format. Whether you're simulating physical objects or comparing different runs, SimView provides a flexible and efficient way to bring your data to life.
+**SimView** is a powerful and interactive tool for visualizing 3D models and terrain data in simulations. It enables you to explore and analyze multiple simulation scenarios (batches) within a shared environment, all defined through an intuitive JSON format or a Python API.
+
+Whether you're simulating physical objects or comparing different runs, SimView provides a flexible and efficient way to bring your data to life using a web-based interface powered by Three.js.
 
 ---
 
-## What Does SimView Do?
+## Features
 
-SimView takes a JSON file that describes:
+- **Batched Simulations**: Visualize multiple simulation instances side-by-side.
+- **Shared Terrain**: Efficient rendering with shared terrain across all batches.
+- **Interactive UI**: Web-based controls for playback, camera, and data inspection.
+- **Python API**: Easy-to-use API for generating scenes and launching the visualizer directly from your code.
+- **JSON Support**: Load and save simulation data using a portable JSON format.
 
-- **Static Models**: The 3D bodies and terrain that form the foundation of your simulation.
-- **Dynamic States**: Time-varying properties like position, velocity, and forces for each simulation batch.
+---
 
-With support for batched simulations, you can visualize multiple instances of the same bodies—each with unique transforms—side by side in the same terrain, making it ideal for comparative analysis.
+## Installation
+
+You can install SimView directly from the source:
+
+```bash
+pip install -e .
+```
+
+---
+
+## CLI Utilities
+
+SimView caches some temporary files for visualization. You can clear this cache using the following command:
+
+```bash
+python -m simview clear
+```
+
+---
+
+## Visualization of JSON Data
+
+To visualize generated .json file, run from the 'simview' repository:
+
+```bash
+python simview/server.py --sim_path [path_to_json_file]
+```
 
 ---
 
 ## JSON Format Specification
 
-The JSON input is split into two main sections: **model** (static data) and **state** (dynamic data). Below, we break down each section and its fields.
+If you prefer to generate data files manually or from another language, SimView uses a JSON format split into two main sections: `model` (static data) and `state` (dynamic data).
 
 ### Model (Static Data)
 
@@ -52,26 +83,17 @@ The `model` section defines the static components of your simulation, including 
     An array of transforms, one per batch. Each transform is `[x, y, z, w, qx, qy, qz]`, where:
     - `[x, y, z]`: Position
     - `[w, qx, qy, qz]`: Quaternion rotation (scalar-first).
-    *Example for 2 batches*: `[[0, 0, 0, 1, 0, 0, 0], [2, 0, 0, 1, 0, 0, 0]]`
-  - **`bodyPoints` *(array[array[3]])*
+  - **`bodyPoints`** *(array[array[3]])*
     Points in the body’s local frame used for collision detection, each as `[x, y, z]`.
-    *Example*: `[[0, 0, 0]]` for a single point at the center.
 
 - **`terrain`** *(object)*
   Defines the terrain shared across all batches:
   - **`dimensions`** *(object)*
-    - **`sizeX`, `sizeY`** *(float)*
-      Physical size of the terrain in the x and y directions.
-    - **`resolutionX`, `resolutionY`** *(integer)*
-      Number of grid points along x and y axes.
-  - **`bounds`** *(object)*
-    - **`minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`** *(float)*
-      The terrain’s spatial boundaries.
-  - **`heightData`** *(array[float])*
-    A flattened 2D array of height values in row-major order. Must have `resolutionX * resolutionY` elements.
-    *Example*: `[0.0, 0.1, ...]`
-  - **`normals`** *(array[array[3]])*
-    Surface normals for each grid point, each as `[nx, ny, nz]`. Must match `heightData` length.
+    - **`sizeX`, `sizeY`** *(float)*: Physical size of the terrain.
+    - **`resolutionX`, `resolutionY`** *(integer)*: Number of grid points.
+  - **`bounds`** *(object)*: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`.
+  - **`heightData`** *(array[float])*: A flattened 2D array of height values.
+  - **`normals`** *(array[array[3]])*: Surface normals for each grid point.
 
 ### State (Dynamic Data)
 
@@ -79,37 +101,21 @@ The `state` section captures the simulation’s current state at a specific time
 
 - **`time`** *(float)*
   The current simulation time in seconds.
-  *Example*: `1.5`
 
 - **`bodies`** *(array)*
   Dynamic properties for each body across all batches:
   - **`name`** *(string)*
     Matches the body name from the `model`.
   - **`bodyTransform`** *(array[array[7]])*
-    Current transforms for each batch, same format as in `model`.
+    Current transforms for each batch (`[x, y, z, w, qx, qy, qz]`).
   - **`bodyVelocity`** *(array[array[6]])*
-    Velocities for each batch, as `[vx, vy, vz, ωx, ωy, ωz]` (linear and angular velocity).
+    Velocities for each batch, as `[vx, vy, vz, ωx, ωy, ωz]`.
   - **`bodyForce`** *(array[array[6]])*
     Forces and torques for each batch, as `[fx, fy, fz, τx, τy, τz]`.
   - **`contacts`** *(array[array[integer]])*
-    An array of contact point indices (from `bodyPoints`) for each batch. Empty if no contacts.
-    *Example*: `[[0, 3], []]` (batch 1 has contacts at points 0 and 3; batch 2 has none).
+    An array of contact point indices (from `bodyPoints`) for each batch.
   - **[Scalar Values]** *(array[float])*
     For each name in `model.scalarNames`, an array of values, one per batch.
-    *Example*: `"energy": [1.2, 0.1]` for two batches.
-
----
-
-## Key Features
-
-- **Batched Simulations**
-  Run and visualize multiple simulation instances side by side, each with independent body transforms.
-
-- **Shared Terrain**
-  Optimize memory and performance by reusing the same terrain across all batches.
-
-- **Flexible Shapes**
-  Define bodies as boxes, spheres, cylinders, or custom shapes to suit your needs.
 
 ---
 
@@ -136,10 +142,10 @@ This defines a simple model with one box in two simulation batches:
       }
     ],
     "terrain": {
-      "dimensions": { "sizeX": 10.0, "sizeY": 10.0, "resolutionX": 10, "resolutionY": 10 },
-      "bounds": { "minX": -5.0, "maxX": 5.0, "minY": -5.0, "maxY": 5.0, "minZ": 0.0, "maxZ": 2.0 },
-      "heightData": [0.0, 0.1 /* ... 98 more values for 10x10 grid */],
-      "normals": [[0, 0, 1] /* ... 99 more normals for 10x10 grid */]
+      "dimensions": { "sizeX": 10.0, "sizeY": 10.0, "resolutionX": 2, "resolutionY": 2 },
+      "bounds": { "minX": -5.0, "maxX": 5.0, "minY": -5.0, "maxY": 5.0, "minZ": 0.0, "maxZ": 0.0 },
+      "heightData": [0.0, 0.0, 0.0, 0.0],
+      "normals": [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]]
     }
   }
 }
@@ -160,18 +166,14 @@ This shows the dynamic state of the above model at time 1.5 seconds:
         [2, 0, 0, 1, 0, 0, 0]   // Batch 2: Still at initial position
       ],
       "bodyVelocity": [
-        [0, 0, -0.1, 0, 0, 0],  // Batch 1: Falling slowly
-        [0, 0, 0, 0, 0, 0]      // Batch 2: Stationary
-      ],
-      "bodyForce": [
-        [0, 0, -1.0, 0, 0, 0],  // Batch 1: Gravity acting in z-direction
-        [0, 0, 0.0, 0, 0, 0]   // Batch 2: No forces
+        [0, 0, -0.1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
       ],
       "contacts": [
         [0],  // Batch 1: Center point in contact
         []    // Batch 2: No contacts
       ],
-      "energy": [1.2, 0.1]  // Energy values for each batch
+      "energy": [1.2, 0.1]
     }
   ]
 }
