@@ -57,9 +57,18 @@ class SimViewBodyState:
                 raise ValueError("Unknown contact format")
 
     def to_json(self):
+        # Merge position and orientation into bodyTransform
+        # position: [x, y, z] or [[x, y, z], ...]
+        # orientation: [w, x, y, z] or [[w, x, y, z], ...]
+        if len(self.position) > 0 and isinstance(self.position[0], list):
+            # Batched
+            body_transform = [p + o for p, o in zip(self.position, self.orientation)]
+        else:
+            # Single
+            body_transform = self.position + self.orientation
+
         return {
             "name": self.body_name,
-            "position": self.position,
-            "orientation": self.orientation,
+            "bodyTransform": body_transform,
             **self.optional_attrs,
         }
