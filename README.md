@@ -16,6 +16,24 @@ Whether you're simulating physical objects or comparing different runs, SimView 
 
 ---
 
+## Quick Start
+
+The easiest way to get started is to run the provided example script:
+
+```bash
+python example.py
+```
+
+This script demonstrates how to use the Python API to create a simulation with wavy terrain, dynamic bodies, and time-series data.
+
+To run the script, ensure that `numpy` and `torch` are installed in your Python environment. You can install them using pip:
+
+```bash
+pip install numpy torch
+```
+
+---
+
 ## Installation
 
 You can install SimView directly from the source:
