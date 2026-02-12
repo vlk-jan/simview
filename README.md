@@ -41,21 +41,54 @@ source .venv/bin/activate
 
 ## CLI Utilities
 
+### Cache Management
+
 SimView caches some temporary files for visualization. You can clear this cache using the following command:
 
 ```bash
 simview clear
 ```
 
----
-
-## Visualization of JSON Data
+### Visualization of exported simulations
 
 To visualize a simulation defined in a JSON file, run the following command, replacing `[path_to_json_file]` with the actual path to your JSON data:
 
 ```bash
 simview [path_to_json_file]
 ```
+
+---
+
+## Visualization Controls
+
+Once the visualizer is running, you can interact with the simulation using the following controls:
+
+### Camera
+
+- **Rotate**: Left-click + drag OR `Ctrl` (`CMD` on Mac) + Arrow keys
+- **Pan**: Right-click + drag OR Arrow keys
+- **Zoom**: Scroll wheel
+
+### Timeline
+
+- **Step Forward/Backward**: `Alt` + Arrow Right / Arrow Left
+- **Seek (and Pause)**: Click on the timeline bar
+- **Play/Pause**: `Space` or Click the Play button
+- **Record**: `R` or Click the Record button
+
+### Batch Selection
+
+- **Move Selection**: `Shift` + Arrow keys
+
+### Visualization Options
+
+- **`B`**: Toggle Body Visualization Mode (Mesh / Wireframe / Points)
+- **`A`**: Toggle Axes Visibility
+- **`C`**: Toggle Contact Points
+- **`V`**: Toggle Linear Velocity
+- **`W`**: Toggle Angular Velocity
+- **`F`**: Toggle Linear Force
+- **`T`**: Toggle Torque
 
 ---
 
