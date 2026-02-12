@@ -245,6 +245,7 @@ export class UIControls {
                     case "arrowright":
                         if (event[SELECTION_CONFIG.BATCH.key]) {
                             this.changeTargetBatch(event.key.toLowerCase());
+                            event.stopPropagation();
                         }
                         break;
                 }

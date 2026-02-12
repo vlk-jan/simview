@@ -18,7 +18,7 @@ export const UI_DEFAULT_CONFIG = {
 
 export const FREQ_CONFIG = {
     scene: 60, // Scene update frequency in Hz
-    scalarPlotter: 20, //
+    scalarPlotter: 20,
     bodyStateWindow: 30,
     playbackControls: 20,
 };
@@ -26,14 +26,15 @@ export const FREQ_CONFIG = {
 export const CONTROLS_CONFIG = {
     minDistance: 1,
     maxDistance: 500,
-    enableDamping: true,
+    enableDamping: false,
     dampingFactor: 0.05,
-    screenSpacePanning: false,
+    screenSpacePanning: true,
     maxPolarAngle: Math.PI,
-    enablePan: false,
+    enablePan: true,
     panSpeed: 2.0,
     rotateSpeed: 1.5,
     zoomSpeed: 1.2,
+    listenToKeyEvents: true,
 };
 
 export const SCENE_CONFIG = {

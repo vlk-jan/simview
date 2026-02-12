@@ -33,8 +33,8 @@ export class AnimationController {
                 this.simulationTimestep = 1 / 60;
             }
         } else if (!this.simulationTimestep) {
-             console.warn("No timestep provided and not enough states to infer. Defaulting to 1/60");
-             this.simulationTimestep = 1 / 60;
+            console.warn("No timestep provided and not enough states to infer. Defaulting to 1/60");
+            this.simulationTimestep = 1 / 60;
         }
 
         this.playbackControls = new PlaybackControls(this);
@@ -62,7 +62,7 @@ export class AnimationController {
 
     getRecordingOptionsForFormat(format) {
         const options = {
-            framerate: 30,
+            framerate: 60,
             verbose: false,
             motionBlurFrames: 0,
         };

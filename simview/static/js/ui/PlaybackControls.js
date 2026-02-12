@@ -78,6 +78,7 @@ export class PlaybackControls {
             const x = event.clientX - rect.left;
             const progress = x / rect.width;
             const targetTime = progress * this.animationController.getTotalTime();
+
             if (event.altKey) {
                 this.animationController.pause();
                 this.playButton.textContent = "Play";
@@ -86,17 +87,31 @@ export class PlaybackControls {
         };
 
         this.keydownListener = (event) => {
-            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+            const key = event.key;
+
+            // Handle arrow keys with Alt modifier for timeline stepping
+            if (event.altKey) {
+                if (key === "ArrowRight") {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    this.animationController.stepForward();
+                    return;
+                }
+                if (key === "ArrowLeft") {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    this.animationController.stepBackward();
+                    return;
+                }
+            }
+
+            // Other keys (only if no modifiers are pressed)
+            if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
                 return;
-            switch (event.key) {
+
+            switch (key) {
                 case "r":
                     this.recordButton.click();
-                    break;
-                case "ArrowRight":
-                    this.animationController.stepForward();
-                    break;
-                case "ArrowLeft":
-                    this.animationController.stepBackward();
                     break;
                 case " ":
                     this.playButton.click();

@@ -3,6 +3,7 @@ import { CONTROLS_CONFIG, SELECTION_CONFIG } from "../config.js";
 
 export function setupControls(camera, renderer) {
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.listenToKeyEvents(window);
 
     // Apply basic configuration
     Object.assign(controls, CONTROLS_CONFIG);
