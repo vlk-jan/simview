@@ -15,5 +15,8 @@ authors = [
 description = "THREE.js-based simulation visualization tool"
 dependencies = ["flask", "flask_socketio", "eventlet", "einops"]
 
+[project.scripts]
+simview = "simview.__main__:main"
+
 [tool.setuptools.package-dir]
 simview = "simview"

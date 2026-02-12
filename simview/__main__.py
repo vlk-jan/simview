@@ -1,39 +1,63 @@
-def clear():
-    from simview import CACHE_DIR
-    from pathlib import Path
+import sys
+import argparse
+import shutil
+from pathlib import Path
+from simview import CACHE_DIR
+from simview.server import SimViewServer
 
+
+def clear_cache():
     tmp_dir = Path("/tmp") / CACHE_DIR
-    home_dir = Path.home() / f"{'.cache'}/{CACHE_DIR}"
+    home_dir = Path.home() / f".cache/{CACHE_DIR}"
 
     if tmp_dir.exists():
         print(f"Removing {tmp_dir}")
         for item in tmp_dir.iterdir():
             if item.is_dir():
-                item.rmdir()
+                try:
+                    item.rmdir()  # Might fail if not empty, but cache usually flat files or we need shutil
+                except OSError:
+                    shutil.rmtree(item)
             else:
                 item.unlink()
+        try:
+            tmp_dir.rmdir()
+        except OSError:
+            pass
 
     if home_dir.exists():
         print(f"Removing {home_dir}")
-        for item in home_dir.iterdir():
-            if item.is_dir():
-                item.rmdir()
-            else:
-                item.unlink()
+        shutil.rmtree(home_dir)  # Safer for recursive delete
 
     print("Cache cleared.")
 
 
-if __name__ == "__main__":
-    import sys
+def main():
+    parser = argparse.ArgumentParser(description="SimView CLI")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        help="Path to simulation JSON file to visualize, or 'clear' to clear cache.",
+    )
 
-    CMD_TO_FUN = {"clear": clear}
-    if len(sys.argv) < 2:
-        print("Please provide a command.")
+    # We parse known args to allow for potential future flags for the server passed through
+    args, unknown = parser.parse_known_args()
+
+    if not args.input:
+        parser.print_help()
         sys.exit(1)
-    cmd = sys.argv[1]
-    if cmd in CMD_TO_FUN:
-        CMD_TO_FUN[cmd]()
+
+    if args.input == "clear":
+        clear_cache()
     else:
-        print(f"Unknown command: {cmd}")
-        sys.exit(1)
+        path = Path(args.input)
+        if path.exists() and path.is_file():
+            SimViewServer.start(sim_path=path)
+        else:
+            print(f"Error: File '{path}' not found or is not a file.")
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+

@@ -24,6 +24,19 @@ You can install SimView directly from the source:
 pip install -e .
 ```
 
+For independent use of this repository, use `venv` or `uv`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+```bash
+uv sync
+source .venv/bin/activate
+```
+
 ---
 
 ## CLI Utilities
@@ -31,17 +44,17 @@ pip install -e .
 SimView caches some temporary files for visualization. You can clear this cache using the following command:
 
 ```bash
-python -m simview clear
+simview clear
 ```
 
 ---
 
 ## Visualization of JSON Data
 
-To visualize generated .json file, run from the 'simview' repository:
+To visualize a simulation defined in a JSON file, run the following command, replacing `[path_to_json_file]` with the actual path to your JSON data:
 
 ```bash
-python simview/server.py --sim_path [path_to_json_file]
+simview [path_to_json_file]
 ```
 
 ---
