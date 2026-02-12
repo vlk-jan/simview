@@ -180,3 +180,5 @@ pyrightconfig.json
 git-filter-repo
 
 *.DS_Store
+
+example_sim.json
