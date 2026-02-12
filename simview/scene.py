@@ -101,7 +101,7 @@ class SimulationScene:
                 "states": self.states,
             }
             with open(output_path, "w") as f:
-                json.dump(complete_json, f)
+                json.dump(complete_json, f, indent=2)
             print(f"Simulation data successfully saved to {output_path}")
         except Exception as e:
             print(f"Error saving simulation data to {output_path}: {e}")

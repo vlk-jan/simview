@@ -40,10 +40,10 @@ class SimViewTerrain:
     def to_json(self):
         return {
             "dimensions": {
-                "extentX": self.extent_x,
-                "extentY": self.extent_y,
-                "shapeX": self.shape_x,
-                "shapeY": self.shape_y,
+                "sizeX": self.extent_x,
+                "sizeY": self.extent_y,
+                "resolutionX": self.shape_x,
+                "resolutionY": self.shape_y,
             },
             "bounds": {
                 "minX": self.min_x,
@@ -364,7 +364,7 @@ class SimViewModel:
         if self.terrain is None:
             raise ValueError("No terrain defined")
         r = {
-            "batchSize": self.batch_size,
+            "simBatches": self.batch_size,
             "scalarNames": self.scalar_names,
             "dt": self.dt,
             "collapse": self.collapse,

@@ -125,4 +125,3 @@ class SimViewLauncher:
                     f"Warning: Could not delete temporary file {self._sim_file_path}. "
                     f"It might be in use or already deleted. Error: {e}"
                 )
-
