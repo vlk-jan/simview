@@ -150,7 +150,7 @@ export class Terrain {
         for (let i = 0; i < position.count; i++) {
             // Convert vertex index to grid coordinates
             const col = i % resolutionX;
-            const invertedRow = Math.floor(i / resolutionY);
+            const invertedRow = Math.floor(i / resolutionX);
             const row = resolutionY - invertedRow - 1; // Invert row index
             // Calculate index in the flattened height data array
             const dataIndex = row * resolutionX + col;
