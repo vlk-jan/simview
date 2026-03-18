@@ -153,3 +153,14 @@ class SimulationScene:
         """Adds a pre-configured SimViewStaticObject to the model."""
         self.model.add_static_object(static_object)  #
 
+    def _clear_internal_data(self) -> None:
+        """
+        Clears the stored simulation states and model data to free up memory.
+        """
+        self.states = []
+        # Clear large terrain data if present
+        if self.model and self.model.terrain:
+            self.model.terrain.height_data = []
+            self.model.terrain.normals = []
+        print("SimulationScene: Internal data cleared.")
+

@@ -1,4 +1,5 @@
 import os
+import gc
 from simview.server import SimViewServer  # Make sure this import is correct
 import tempfile  # For creating temporary files if needed
 
@@ -70,7 +71,7 @@ class SimViewLauncher:
             )
         else:
             raise TypeError(
-                "Source for SimViewLauncher must be a SimulationData object or a file path (str/Path)."
+                "Source for SimViewLauncher must be a SimulationScene object or a file path (str/Path)."
             )
 
     def launch(self) -> None:
@@ -94,7 +95,7 @@ class SimViewLauncher:
             # or after server stops (if start() is blocking).
             if self._source_data_object_to_clear is not None:
                 print(
-                    "SimViewLauncher: Clearing data from the source SimulationData object post-visualization."
+                    "SimViewLauncher: Clearing data from the source SimulationScene object post-visualization."
                 )
                 self._source_data_object_to_clear._clear_internal_data()
                 # Remove the visualizer's reference. If the user also drops their reference,
