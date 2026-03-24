@@ -60,11 +60,13 @@ class SimViewServer:
                 print(f"Error loading states: {e}")
                 self.socketio.emit("error", {"message": "Error loading states"})
 
-    def run(self, debug: bool = False, host: str = "0.0.0.0", port: int = 5420):
+    def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
         self.socketio.run(self.app, debug=debug, host=host, port=port, log_output=True)
 
     @staticmethod
-    def start(sim_path: str | Path, host: str = "0.0.0.0", preferred_port: int = 5420):
+    def start(
+        sim_path: str | Path, host: str = "127.0.0.1", preferred_port: int = 5420
+    ):
         if not Path(sim_path).is_file():
             print(f"Error: Simulation file '{sim_path}' does not exist.")
             exit(1)
