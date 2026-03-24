@@ -36,6 +36,8 @@ class SimViewTerrain:
     height_data: list[list[float]]
     normals: list[list[list[float]]]
     is_singleton: bool
+    friction_data: list[list[float]] | None = None
+    stiffness_data: list[list[float]] | None = None
 
     def to_json(self):
         return {
@@ -56,6 +58,8 @@ class SimViewTerrain:
             "heightData": self.height_data,
             "normals": self.normals,
             "isSingleton": self.is_singleton,
+            "frictionData": self.friction_data,
+            "stiffnessData": self.stiffness_data,
         }
 
     @staticmethod
@@ -65,6 +69,8 @@ class SimViewTerrain:
         x_lim: tuple[float, float],
         y_lim: tuple[float, float],
         is_singleton: bool,
+        friction_map: torch.Tensor | None = None,
+        stiffness_map: torch.Tensor | None = None,
     ) -> "SimViewTerrain":
         assert heightmap.ndim == 3, "Heightmap must include a batch dimension"
         assert normals.ndim == 4, "Normals must include a batch dimension"
@@ -78,6 +84,21 @@ class SimViewTerrain:
         extent_y = max_y - min_y
         height_data_list = rearrange(heightmap, "b d1 d2 -> b (d1 d2)").tolist()
         normals_list = rearrange(normals, "b c d1 d2 -> b (d1 d2) c").tolist()
+
+        friction_data_list = None
+        if friction_map is not None:
+            assert friction_map.ndim == 3
+            friction_data_list = rearrange(
+                friction_map, "b d1 d2 -> b (d1 d2)"
+            ).tolist()
+
+        stiffness_data_list = None
+        if stiffness_map is not None:
+            assert stiffness_map.ndim == 3
+            stiffness_data_list = rearrange(
+                stiffness_map, "b d1 d2 -> b (d1 d2)"
+            ).tolist()
+
         return SimViewTerrain(
             extent_x=extent_x,
             extent_y=extent_y,
@@ -92,6 +113,8 @@ class SimViewTerrain:
             height_data=height_data_list,
             normals=normals_list,
             is_singleton=is_singleton,
+            friction_data=friction_data_list,
+            stiffness_data=stiffness_data_list,
         )
 
 
@@ -295,11 +318,18 @@ class SimViewModel:
         normals: torch.Tensor,
         x_lim: tuple[float, float],
         y_lim: tuple[float, float],
+        friction_map: torch.Tensor | None = None,
+        stiffness_map: torch.Tensor | None = None,
     ) -> None:
         if heightmap.ndim == 2:
             heightmap = heightmap.unsqueeze(0)  # add batch dim
         if normals.ndim == 3:  # channels first
             normals = normals.unsqueeze(0)  # add batch dim
+        if friction_map is not None and friction_map.ndim == 2:
+            friction_map = friction_map.unsqueeze(0)
+        if stiffness_map is not None and stiffness_map.ndim == 2:
+            stiffness_map = stiffness_map.unsqueeze(0)
+
         B_h = heightmap.shape[0]
         B_n = normals.shape[0]
 
@@ -312,10 +342,23 @@ class SimViewModel:
                 heightmap = heightmap.repeat(self.batch_size, 1, 1)
             if B_n == 1:
                 normals = normals.repeat(self.batch_size, 1, 1, 1)
-        elif B_h != self.batch_size or B_n != self.batch_size:
-            raise ValueError(
-                f"Non-singleton terrain dimensions ({B_h}, {B_n}) must match batch size ({self.batch_size})"
-            )
+            if friction_map is not None and friction_map.shape[0] == 1:
+                friction_map = friction_map.repeat(self.batch_size, 1, 1)
+            if stiffness_map is not None and stiffness_map.shape[0] == 1:
+                stiffness_map = stiffness_map.repeat(self.batch_size, 1, 1)
+        else:
+            if B_h != self.batch_size or B_n != self.batch_size:
+                raise ValueError(
+                    f"Non-singleton terrain dimensions ({B_h}, {B_n}) must match batch size ({self.batch_size})"
+                )
+            if friction_map is not None and friction_map.shape[0] != self.batch_size:
+                raise ValueError(
+                    f"Friction map batch size ({friction_map.shape[0]}) must match batch size ({self.batch_size})"
+                )
+            if stiffness_map is not None and stiffness_map.shape[0] != self.batch_size:
+                raise ValueError(
+                    f"Stiffness map batch size ({stiffness_map.shape[0]}) must match batch size ({self.batch_size})"
+                )
 
         self.terrain = SimViewTerrain.create(
             heightmap=heightmap,
@@ -323,6 +366,8 @@ class SimViewModel:
             x_lim=x_lim,
             y_lim=y_lim,
             is_singleton=is_singleton,
+            friction_map=friction_map,
+            stiffness_map=stiffness_map,
         )
 
     def create_body(

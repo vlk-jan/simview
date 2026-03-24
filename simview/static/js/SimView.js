@@ -8,6 +8,7 @@ import { Terrain } from "./objects/Terrain.js";
 import { BatchManager } from "./components/BatchManager.js";
 import { ScalarPlotter } from "./ui/ScalarPlotter.js";
 import { StaticObject } from "./objects/StaticObject.js";
+import { Legend } from "./ui/Legend.js";
 
 export class SimView {
     constructor() {
@@ -17,6 +18,7 @@ export class SimView {
         this.bodyStateWindow = null;
         this.animationController = null;
         this.scalarPlotter = null;
+        this.legend = null;
         this.batchManager = null;
         this.terrain = null;
         this.bodies = null;
@@ -84,14 +86,14 @@ export class SimView {
 
         this.batchManager = new BatchManager(this, model);
         this.bodies = new Map();
-        
+
         // Auto-detect visualization mode based on first body
         if (Array.isArray(model.bodies) && model.bodies.length > 0) {
             const firstShape = model.bodies[0].shape;
             // Check for numeric type 1 (Box) or string "box"/"mesh"/"sphere"/"cylinder"
-            const isMeshType = (typeof firstShape.type === 'number' && firstShape.type !== 5) || 
-                               (typeof firstShape.type === 'string' && firstShape.type !== 'pointcloud');
-            
+            const isMeshType = (typeof firstShape.type === 'number' && firstShape.type !== 5) ||
+                (typeof firstShape.type === 'string' && firstShape.type !== 'pointcloud');
+
             if (isMeshType) {
                 console.log("Auto-switching visualization mode to 'mesh' based on body type");
                 this.uiState.bodyVisualizationMode = "mesh";
@@ -128,6 +130,7 @@ export class SimView {
         }
         this.uiControls = new UIControls(this);
         this.bodyStateWindow = new BodyStateWindow(this);
+        this.legend = new Legend(this);
         this.animationController = new AnimationController(this, model.dt);
     }
 
@@ -164,6 +167,9 @@ export class SimView {
         }
         if (this.bodyStateWindow) {
             this.bodyStateWindow.dispose();
+        }
+        if (this.legend) {
+            this.legend.dispose();
         }
     }
 

@@ -113,9 +113,18 @@ class SimulationScene:
         normals: torch.Tensor,
         x_lim: tuple[float, float],
         y_lim: tuple[float, float],
+        friction_map: torch.Tensor | None = None,
+        stiffness_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the simulation model."""
-        self.model.create_terrain(heightmap, normals, x_lim, y_lim)  #
+        self.model.create_terrain(
+            heightmap,
+            normals,
+            x_lim,
+            y_lim,
+            friction_map=friction_map,
+            stiffness_map=stiffness_map,
+        )  #
 
     def add_terrain_object(self, terrain: SimViewTerrain) -> None:
         """Adds a pre-configured SimViewTerrain object to the model."""
@@ -163,4 +172,3 @@ class SimulationScene:
             self.model.terrain.height_data = []
             self.model.terrain.normals = []
         print("SimulationScene: Internal data cleared.")
-

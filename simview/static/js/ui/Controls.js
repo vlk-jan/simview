@@ -154,6 +154,7 @@ export class UIControls {
                 this.app.uiState.terrainVisualizationModes?.wireframe ?? false,
             showNormals: this.app.uiState.terrainVisualizationModes?.normals ?? false,
             colorMap: this.app.uiState?.terrainColorMap || "viridis",
+            colorMode: this.app.uiState?.terrainColorMode || "height",
         };
 
         this.terrainFolder
@@ -182,6 +183,13 @@ export class UIControls {
             .name("Color Map")
             .onChange((value) => {
                 this.updateTerrainColorMap(value);
+            });
+
+        this.terrainFolder
+            .add(terrainControls, "colorMode", ["height", "friction", "stiffness"])
+            .name("Color Mode")
+            .onChange((value) => {
+                this.updateTerrainColorMode(value);
             });
 
         this.terrainFolder.open();
@@ -306,7 +314,17 @@ export class UIControls {
 
     updateTerrainColorMap(colorMap) {
         if (this.app.terrain) {
+            this.app.uiState.terrainColorMap = colorMap;
             this.app.terrain.setColorMap(colorMap);
+            if (this.app.legend) this.app.legend.update();
+        }
+    }
+
+    updateTerrainColorMode(mode) {
+        if (this.app.terrain) {
+            this.app.uiState.terrainColorMode = mode;
+            this.app.terrain.setColorMode(mode);
+            if (this.app.legend) this.app.legend.update();
         }
     }
 

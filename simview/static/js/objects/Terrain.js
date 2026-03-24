@@ -18,6 +18,27 @@ export class Terrain {
             console.debug("Normalizing flat heightData to single batch");
             terrainData.heightData = [terrainData.heightData];
         }
+        this.heightData = terrainData.heightData;
+
+        // Normalize frictionData
+        if (
+            Array.isArray(terrainData.frictionData) &&
+            terrainData.frictionData.length > 0 &&
+            typeof terrainData.frictionData[0] === "number"
+        ) {
+            terrainData.frictionData = [terrainData.frictionData];
+        }
+        this.frictionData = terrainData.frictionData;
+
+        // Normalize stiffnessData
+        if (
+            Array.isArray(terrainData.stiffnessData) &&
+            terrainData.stiffnessData.length > 0 &&
+            typeof terrainData.stiffnessData[0] === "number"
+        ) {
+            terrainData.stiffnessData = [terrainData.stiffnessData];
+        }
+        this.stiffnessData = terrainData.stiffnessData;
 
         // Data normalization: Ensure normals is array of arrays of vectors
         if (
@@ -45,7 +66,7 @@ export class Terrain {
         }
 
         this.#createVisualRepresentations(
-            terrainData.heightData,
+            this.heightData,
             terrainData.normals
         );
     }
@@ -80,7 +101,8 @@ export class Terrain {
             const batchGroup = new THREE.Group();
             batchGroup.name = `batch${i}`;
             const surfaceGeometry = this.#createSurfaceGeometryFromHeightData(
-                heightData[i]
+                heightData[i],
+                i
             );
             const surfaceMesh = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
             surfaceMesh.name = "surface";
@@ -121,7 +143,7 @@ export class Terrain {
      * @param {array} heightData - Height data for the terrain, a flattened array
      * @returns
      */
-    #createSurfaceGeometryFromHeightData(heightData) {
+    #createSurfaceGeometryFromHeightData(heightData, batchIndex) {
         const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY, maxX, maxY } = this.bounds;
         // Create a plane geometry with the right number of segments
@@ -142,11 +164,14 @@ export class Terrain {
             new Float32Array(position.count * 3),
             3
         );
+        geometry.setAttribute("color", colorAttribute);
+
         // Apply height data to geometry
         // NOTE: THREE.js PlaneGeometry vertices are arranged in rows from bottom to top (Y increases)
         const callableColormap = this.getCallableFromColorMapName(
             this.app.uiState.terrainColorMap
         );
+
         for (let i = 0; i < position.count; i++) {
             // Convert vertex index to grid coordinates
             const col = i % resolutionX;
@@ -156,15 +181,11 @@ export class Terrain {
             const dataIndex = row * resolutionX + col;
             // Set Z coordinate (height)
             position.setZ(i, heightData[dataIndex]);
-            // Calculate color based on height
-            const normalizedHeight = this.calculateNormalizedHeight(
-                heightData[dataIndex]
-            );
-            const color = callableColormap(normalizedHeight);
-            colorAttribute.setXYZ(i, color.r, color.g, color.b);
         }
-        // Add colors to the geometry
-        geometry.setAttribute("color", colorAttribute);
+
+        // Apply colors
+        this.#updateSurfaceColor(batchIndex, geometry, callableColormap);
+
         // Make sure changes are applied
         position.needsUpdate = true;
         return geometry;
@@ -287,16 +308,42 @@ export class Terrain {
         }
     }
 
-    #updateSurfaceColor(geometry, callableColormap) {
+    #updateSurfaceColor(batchIndex, geometry, callableColormap) {
         if (!geometry) return;
         const position = geometry.attributes.position;
         const colorAttribute = geometry.attributes.color;
         if (!position || !colorAttribute) return;
+
+        const { resolutionX, resolutionY } = this.dimensions;
+        const mode = this.app.uiState.terrainColorMode || "height";
+
         // Update all colors based on the new colormap
         for (let i = 0; i < position.count; i++) {
-            // Update color based on height
-            const normalizedHeight = this.calculateNormalizedHeight(position.getZ(i));
-            const color = callableColormap(normalizedHeight);
+            let value;
+            if (mode === "height") {
+                value = this.calculateNormalizedHeight(position.getZ(i));
+            } else {
+                const col = i % resolutionX;
+                const invertedRow = Math.floor(i / resolutionX);
+                const row = resolutionY - invertedRow - 1;
+                const dataIndex = row * resolutionX + col;
+
+                if (mode === "friction" && this.frictionData && this.frictionData[batchIndex]) {
+                    // Friction is already [0, 1] from Sigmoid in the model
+                    value = this.frictionData[batchIndex][dataIndex];
+                    value = Math.max(0, Math.min(1, value));
+                } else if (mode === "stiffness" && this.stiffnessData && this.stiffnessData[batchIndex]) {
+                    // Normalize stiffness using a fixed range for comparison
+                    // Model outputs range [10000, 500000], visualization uses [0, 500000]
+                    const s = this.stiffnessData[batchIndex][dataIndex];
+                    const stiffnessMax = 500000.0;
+                    value = s / stiffnessMax;
+                    value = Math.max(0, Math.min(1, value));
+                } else {
+                    value = this.calculateNormalizedHeight(position.getZ(i));
+                }
+            }
+            const color = callableColormap(value);
             colorAttribute.setXYZ(i, color.r, color.g, color.b);
         }
         // Update the buffer
@@ -307,10 +354,22 @@ export class Terrain {
     setColorMap(colormapName) {
         // Update the main terrain surface
         const callableColormap = this.getCallableFromColorMapName(colormapName);
-        for (const batchGroup of this.group.children) {
+        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
+            const batchGroup = this.group.getObjectByName(`batch${i}`);
             const surfaceMesh = batchGroup.getObjectByName("surface");
             const geometry = surfaceMesh.geometry;
-            this.#updateSurfaceColor(geometry, callableColormap);
+            this.#updateSurfaceColor(i, geometry, callableColormap);
+        }
+    }
+
+    // Update terrain colors with current mode
+    setColorMode(mode) {
+        const callableColormap = this.getCallableFromColorMapName(this.app.uiState.terrainColorMap);
+        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
+            const batchGroup = this.group.getObjectByName(`batch${i}`);
+            const surfaceMesh = batchGroup.getObjectByName("surface");
+            const geometry = surfaceMesh.geometry;
+            this.#updateSurfaceColor(i, geometry, callableColormap);
         }
     }
 
