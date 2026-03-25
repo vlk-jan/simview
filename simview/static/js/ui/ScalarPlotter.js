@@ -311,17 +311,6 @@ export class ScalarPlotter {
             );
         }
 
-        this.fullDataPoints = new Map();
-        for (const scalarName of this.scalarNames) {
-            const series = this.scalarSeries.get(scalarName);
-            const dataPointsPerBatch = series.map((batchSeries) =>
-                batchSeries.map((value, timeIndex) => ({
-                    x: this.times[timeIndex],
-                    y: value,
-                }))
-            );
-            this.fullDataPoints.set(scalarName, dataPointsPerBatch);
-        }
         this._initializePlots();
         if (this.isExpanded) {
             this.setEndIndex(this.currentEndIndex, true);
@@ -419,18 +408,25 @@ export class ScalarPlotter {
             console.warn(`No chart found for scalar "${this.activeScalar}".`);
             return;
         }
-        const fullDataPoints = this.fullDataPoints.get(this.activeScalar);
-        if (!fullDataPoints) {
+        
+        const scalarData = this.scalarSeries.get(this.activeScalar);
+        if (!scalarData) {
             console.warn(`No data points found for scalar "${this.activeScalar}".`);
             return;
         }
 
         this.seriesRenderCallback = () => {
             for (let i = 0; i < this.app.batchManager.batchSize; i++) {
-                activeChart.options.data[i].dataPoints = fullDataPoints[i].slice(
-                    0,
-                    newEndIndex + 1
-                );
+                const batchData = scalarData[i];
+                const points = [];
+                // Re-create points up to newEndIndex
+                // Note: For extreme performance with millions of points, 
+                // we could use a custom data adapter or only update changed points,
+                // but CanvasJS expects the whole dataPoints array to be replaced or modified.
+                for (let j = 0; j <= newEndIndex; j++) {
+                    points.push({ x: this.times[j], y: batchData[j] });
+                }
+                activeChart.options.data[i].dataPoints = points;
             }
         };
     }
@@ -505,6 +501,5 @@ export class ScalarPlotter {
         this.charts.clear();
         this.scalarSeries.clear();
         this.scalarBounds.clear();
-        this.fullDataPoints.clear();
     }
 }

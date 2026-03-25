@@ -39,6 +39,7 @@ export class Terrain {
             terrainData.stiffnessData = [terrainData.stiffnessData];
         }
         this.stiffnessData = terrainData.stiffnessData;
+        this.isSingleton = terrainData.isSingleton;
 
         // Data normalization: Ensure normals is array of arrays of vectors
         if (
@@ -95,33 +96,53 @@ export class Terrain {
             `Creating terrain geometry: ${this.dimensions.sizeX}x${this.dimensions.sizeY} m, resolution: ${this.dimensions.resolutionX}x${this.dimensions.resolutionY}`
         );
         const { surfaceMaterial, wireframeMaterial } = this.#createMaterials();
+        
+        let singletonSurfaceGeometry = null;
+        let singletonNormals = null;
+
+        if (this.isSingleton) {
+            singletonSurfaceGeometry = this.#createSurfaceGeometryFromHeightData(
+                heightData[0],
+                0
+            );
+            singletonNormals = this.#createNormalVectors(
+                heightData[0],
+                normals[0]
+            );
+        }
+
         // Create geometry for each batch
         this.group = new THREE.Group();
         for (let i = 0; i < this.app.batchManager.simBatches; i++) {
             const batchGroup = new THREE.Group();
             batchGroup.name = `batch${i}`;
-            const surfaceGeometry = this.#createSurfaceGeometryFromHeightData(
-                heightData[i],
-                i
-            );
+            
+            const surfaceGeometry = this.isSingleton 
+                ? singletonSurfaceGeometry 
+                : this.#createSurfaceGeometryFromHeightData(heightData[i], i);
+            
             const surfaceMesh = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
             surfaceMesh.name = "surface";
             surfaceMesh.receiveShadow = true;
             surfaceMesh.castShadow = true;
             batchGroup.add(surfaceMesh);
+
             const wireframeMesh = new THREE.Mesh(surfaceGeometry, wireframeMaterial);
             wireframeMesh.name = "wireframe";
             batchGroup.add(wireframeMesh);
-            const surfaceNormals = this.#createNormalVectors(
-                heightData[i],
-                normals[i]
-            );
+
+            const surfaceNormals = this.isSingleton
+                ? singletonNormals.clone()
+                : this.#createNormalVectors(heightData[i], normals[i]);
+            
             surfaceNormals.name = "normals";
             batchGroup.add(surfaceNormals);
+
             for (const [key, value] of Object.entries(
                 this.app.uiState.terrainVisualizationModes
             )) {
-                batchGroup.getObjectByName(key).visible = value;
+                const obj = batchGroup.getObjectByName(key);
+                if (obj) obj.visible = value;
             }
             // translate by the batch offset
             const batch_offset = this.app.batchManager.getBatchOffset(i);
@@ -354,7 +375,9 @@ export class Terrain {
     setColorMap(colormapName) {
         // Update the main terrain surface
         const callableColormap = this.getCallableFromColorMapName(colormapName);
-        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
+        const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
+        
+        for (let i = 0; i < batchesToUpdate; i++) {
             const batchGroup = this.group.getObjectByName(`batch${i}`);
             const surfaceMesh = batchGroup.getObjectByName("surface");
             const geometry = surfaceMesh.geometry;
@@ -365,7 +388,9 @@ export class Terrain {
     // Update terrain colors with current mode
     setColorMode(mode) {
         const callableColormap = this.getCallableFromColorMapName(this.app.uiState.terrainColorMap);
-        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
+        const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
+        
+        for (let i = 0; i < batchesToUpdate; i++) {
             const batchGroup = this.group.getObjectByName(`batch${i}`);
             const surfaceMesh = batchGroup.getObjectByName("surface");
             const geometry = surfaceMesh.geometry;
@@ -394,15 +419,27 @@ export class Terrain {
 
     // Clean up resources when terrain is no longer needed
     dispose() {
+        const geometries = new Set();
+        const materials = new Set();
+
         for (const batchGroup of this.group.children) {
             batchGroup.traverse((child) => {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) child.material.dispose();
+                if (child.geometry) geometries.add(child.geometry);
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach((m) => materials.add(m));
+                    } else {
+                        materials.add(child.material);
+                    }
+                }
             });
             if (this.app && this.app.scene) {
                 this.app.scene.removeObject3D(batchGroup);
             }
         }
+
+        geometries.forEach((g) => g.dispose());
+        materials.forEach((m) => m.dispose());
         this.group = null;
     }
 }
