@@ -12,7 +12,7 @@ export class StaticObject {
         this.app = app;
         this.name = objectData.name;
         this.isSingleton = objectData.isSingleton || false; // Default to false if not specified
-        this.batchSize = app.batchManager.batchSize;
+        this.batchSize = app.batchManager.simBatches;
         this.representations = { mesh: [], wireframe: [], points: [] }; // For visualization modes
         this.batchGroups = []; // Store batch groups
 

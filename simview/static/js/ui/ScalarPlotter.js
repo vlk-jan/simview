@@ -270,7 +270,8 @@ export class ScalarPlotter {
     }
 
     initFromStates(states) {
-        const batchSize = this.app.batchManager.batchSize;
+        this.times = [];
+        const batchSize = this.app.batchManager.simBatches;
         this.indices = [...Array(batchSize).keys()];
         for (const scalarName of this.scalarNames) {
             this.scalarBounds.set(scalarName, [Number.MAX_VALUE, Number.MIN_VALUE]);
@@ -373,7 +374,7 @@ export class ScalarPlotter {
                 },
                 data: [],
             });
-            for (let i = 0; i < this.app.batchManager.batchSize; i++) {
+            for (let i = 0; i < this.app.batchManager.simBatches; i++) {
                 chart.options.data.push({
                     type: "line",
                     markerSize: 0,
@@ -416,15 +417,12 @@ export class ScalarPlotter {
         }
 
         this.seriesRenderCallback = () => {
-            for (let i = 0; i < this.app.batchManager.batchSize; i++) {
+            const numPoints = this.currentEndIndex + 1;
+            for (let i = 0; i < this.app.batchManager.simBatches; i++) {
                 const batchData = scalarData[i];
-                const points = [];
-                // Re-create points up to newEndIndex
-                // Note: For extreme performance with millions of points, 
-                // we could use a custom data adapter or only update changed points,
-                // but CanvasJS expects the whole dataPoints array to be replaced or modified.
-                for (let j = 0; j <= newEndIndex; j++) {
-                    points.push({ x: this.times[j], y: batchData[j] });
+                const points = new Array(numPoints);
+                for (let j = 0; j < numPoints; j++) {
+                    points[j] = { x: this.times[j], y: batchData[j] };
                 }
                 activeChart.options.data[i].dataPoints = points;
             }
@@ -432,7 +430,7 @@ export class ScalarPlotter {
     }
 
     setFocusedBatch(batchIndex, force = false) {
-        if (batchIndex < 0 || batchIndex >= this.app.batchManager.batchSize) {
+        if (batchIndex < 0 || batchIndex >= this.app.batchManager.simBatches) {
             console.warn("Invalid batch index.");
             return;
         }
@@ -447,7 +445,7 @@ export class ScalarPlotter {
             return;
         }
         this.opacityRenderCallback = () => {
-            for (let i = 0; i < this.app.batchManager.batchSize; i++) {
+            for (let i = 0; i < this.app.batchManager.simBatches; i++) {
                 const opacity =
                     i === batchIndex ? 1 : SCALAR_PLOTTER_CONFIG.inactiveBatchOpacity;
                 const baseColor = this.app.batchManager.getColorForBatch(i);
