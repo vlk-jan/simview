@@ -148,13 +148,23 @@ export class UIControls {
         // Terrain controls (unchanged)
         this.terrainFolder = this.gui.addFolder("Terrain Options");
 
+        const availableColorModes = this.app.terrain
+            ? this.app.terrain.getAvailableColorModes()
+            : ["height"];
+
+        let currentColorMode = this.app.uiState?.terrainColorMode || "height";
+        if (!availableColorModes.includes(currentColorMode)) {
+            currentColorMode = availableColorModes[0] || "height";
+            this.app.uiState.terrainColorMode = currentColorMode;
+        }
+
         const terrainControls = {
             showSurface: this.app.uiState.terrainVisualizationModes?.surface ?? true,
             showWireframe:
                 this.app.uiState.terrainVisualizationModes?.wireframe ?? false,
             showNormals: this.app.uiState.terrainVisualizationModes?.normals ?? false,
             colorMap: this.app.uiState?.terrainColorMap || "viridis",
-            colorMode: this.app.uiState?.terrainColorMode || "height",
+            colorMode: currentColorMode,
         };
 
         this.terrainFolder
@@ -186,7 +196,7 @@ export class UIControls {
             });
 
         this.terrainFolder
-            .add(terrainControls, "colorMode", ["height", "friction", "stiffness"])
+            .add(terrainControls, "colorMode", availableColorModes)
             .name("Color Mode")
             .onChange((value) => {
                 this.updateTerrainColorMode(value);

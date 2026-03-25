@@ -373,6 +373,20 @@ export class Terrain {
         }
     }
 
+    getAvailableColorModes() {
+        const modes = [];
+        if (this.heightData && this.heightData.length > 0) {
+            modes.push("height");
+        }
+        if (this.frictionData && this.frictionData.length > 0) {
+            modes.push("friction");
+        }
+        if (this.stiffnessData && this.stiffnessData.length > 0) {
+            modes.push("stiffness");
+        }
+        return modes;
+    }
+
     // Get THREE.js group containing all visualizations
     getObject3D() {
         return this.group;
