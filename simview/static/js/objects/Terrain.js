@@ -355,10 +355,11 @@ export class Terrain {
                     value = Math.max(0, Math.min(1, value));
                 } else if (mode === "stiffness" && this.stiffnessData && this.stiffnessData[batchIndex]) {
                     // Normalize stiffness using a fixed range for comparison
-                    // Model outputs range [10000, 500000], visualization uses [0, 500000]
+                    // Model outputs range [10000, 500000]
                     const s = this.stiffnessData[batchIndex][dataIndex];
+                    const stiffnessMin = 10000.0;
                     const stiffnessMax = 500000.0;
-                    value = s / stiffnessMax;
+                    value = (s - stiffnessMin) / (stiffnessMax - stiffnessMin);
                     value = Math.max(0, Math.min(1, value));
                 } else {
                     value = this.calculateNormalizedHeight(position.getZ(i));
