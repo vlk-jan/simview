@@ -128,14 +128,14 @@ export class PlaybackControls {
         );
 
         this.formatSelect = document.createElement("select");
-        ["jpg", "png"].forEach((format) => {
+        ["webm", "png"].forEach((format) => {
             const option = document.createElement("option");
             option.value = format;
-            option.text = format.toUpperCase();
+            option.text = format === "webm" ? "MP4 (WEBM)" : format.toUpperCase();
             this.formatSelect.appendChild(option);
         });
         Object.assign(this.formatSelect.style, {
-            width: "80px",
+            width: "100px",
             textAlign: "center",
             height: buttonHeight + "px",
         });

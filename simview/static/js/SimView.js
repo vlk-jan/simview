@@ -217,13 +217,28 @@ export class SimView {
     animate() {
         requestAnimationFrame(this.animate);
         const now = performance.now();
-        this.animationController.animate(now);
+        
+        // 1. Update states and time
+        if (this.animationController) {
+            this.animationController.animate(now);
+        }
+        
+        // 2. Update UI components
         if (this.scalarPlotter) {
             this.scalarPlotter.animate(now);
         }
         if (this.bodyStateWindow) {
             this.bodyStateWindow.animate(now);
         }
-        this.scene.animate(now);
+        
+        // 3. Render the scene
+        if (this.scene) {
+            this.scene.animate(now);
+        }
+        
+        // 4. Capture the frame if recording
+        if (this.animationController && this.animationController.isRecording) {
+            this.animationController.captureFrame(now);
+        }
     }
 }

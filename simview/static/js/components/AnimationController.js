@@ -10,7 +10,7 @@ export class AnimationController {
         this.isRecording = false;
         this.capturer = null;
         this.startTime = null;
-        this.recordingFormat = "jpg"; // Default recording format
+        this.recordingFormat = "webm"; // Default recording format
         this.currentStateIndex = 0;
         this.totalTime = 0; // Total animation time
         this.currentTime = 0; // Current time in the animation
@@ -68,13 +68,13 @@ export class AnimationController {
         const options = {
             framerate: 60,
             verbose: false,
-            motionBlurFrames: 0,
+            display: true,
+            autoSaveTime: 0,
         };
 
         switch (format) {
-            case "jpg":
-                options.format = "jpg";
-                options.quality = 600;
+            case "webm":
+                options.format = "webm";
                 break;
             case "png":
                 options.format = "png";
@@ -182,19 +182,23 @@ export class AnimationController {
         // Update state if changed
         if (newStateIndex !== this.currentStateIndex) {
             this.seekToIndex(newStateIndex);
-            this.playbackControls.animate(now);
+            if (this.playbackControls) {
+                this.playbackControls.animate(now);
+            }
             if (this.app.bodyStateWindow) {
                 this.app.bodyStateWindow.animate(now);
             }
         }
+    }
 
+    captureFrame(now) {
         if (this.isRecording && this.capturer) {
             const elapsed = now - this.startTime;
             const duration = this.totalTime * 1000; // Convert to milliseconds
             this.capturer.capture(this.app.scene.renderer.domElement);
             // Stop recording if we've completed one loop
             if (elapsed >= duration) {
-                this.playbackControls.recordButton.click();
+                this.playbackControls.recordButtonClick();
             }
         }
     }

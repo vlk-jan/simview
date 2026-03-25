@@ -47,7 +47,7 @@ export const RENDERER_CONFIG = {
     preserveDrawingBuffer: true,
     pixelRatio: window.devicePixelRatio,
     clearColor: 0x000000,
-    clearAlpha: 0.0,
+    clearAlpha: 1.0,
 };
 
 export const CAMERA_CONFIG = {
