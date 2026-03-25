@@ -86,43 +86,35 @@ class SimViewLauncher:
 
         print(f"Starting SimLauncher with data from: {self._sim_file_path}")
         try:
-            # This call is assumed to be potentially blocking or to launch a separate process/thread.
-            # Memory clearing should happen after this call conceptually, or if it's non-blocking,
-            # immediately after ensuring the server has picked up the file.
             SimViewServer.start(sim_path=self._sim_file_path)
+        except KeyboardInterrupt:
+            print("\nSimView server stopped by user.")
+        except Exception as e:
+            print(f"Error starting SimView server: {e}")
+        finally:
+            self.cleanup()
 
-        finally:  # Ensure data clearing and temp file cleanup happens even if server fails to start (if start() raises)
-            # or after server stops (if start() is blocking).
-            if self._source_data_object_to_clear is not None:
-                print(
-                    "SimViewLauncher: Clearing data from the source SimulationScene object post-visualization."
-                )
-                self._source_data_object_to_clear._clear_internal_data()
-                # Remove the visualizer's reference. If the user also drops their reference,
-                # the SimulationData object (now empty) will be garbage collected.
-                self._source_data_object_to_clear = None
-                gc.collect()  # Encourage garbage collection
-                print(
-                    "SimViewLauncher: Source data object cleared and garbage collection triggered."
-                )
+    def cleanup(self) -> None:
+        """
+        Performs cleanup of temporary files and internal data.
+        """
+        if self._source_data_object_to_clear is not None:
+            print("SimViewLauncher: Clearing source SimulationScene internal data...")
+            self._source_data_object_to_clear._clear_internal_data()
+            self._source_data_object_to_clear = None
+            gc.collect()
 
-            # Temporary file cleanup is handled in __del__ if visualize() is the end of life,
-            # but if visualize can be called multiple times (not logical here), cleanup should be more careful.
-            # For a one-shot visualize, __del__ is fine. If the server is non-blocking and python script continues,
-            # then __del__ might be too late if the script ends quickly.
-            # Let's stick to __del__ for temp file cleanup as per common patterns with temp files
-            # passed to other processes.
+        if self._is_temp_file and self._sim_file_path and self._sim_file_path.exists():
+            try:
+                print(f"Cleaning up temporary file: {self._sim_file_path}")
+                self._sim_file_path.unlink()
+            except Exception as e:
+                print(
+                    f"Warning: Could not delete temporary file {self._sim_file_path}: {e}"
+                )
 
     def __del__(self):
         """
-        Cleanup temporary file if one was created by this visualizer instance.
+        Fallback cleanup in case launch() wasn't called or was interrupted before finally.
         """
-        if self._is_temp_file and self._sim_file_path and self._sim_file_path.exists():
-            try:
-                print(f"Cleaning up temporary visualizer file: {self._sim_file_path}")
-                self._sim_file_path.unlink()
-            except OSError as e:
-                print(
-                    f"Warning: Could not delete temporary file {self._sim_file_path}. "
-                    f"It might be in use or already deleted. Error: {e}"
-                )
+        self.cleanup()

@@ -294,7 +294,8 @@ export class ScalarPlotter {
                             `Scalar "${scalarName}" not found in state at index ${i}.`
                         );
                     }
-                    this.scalarSeries.get(scalarName)[i].push(scalarValue);
+                    // Store as CanvasJS data points directly
+                    this.scalarSeries.get(scalarName)[i].push({ x: state.time, y: scalarValue });
                     min = Math.min(min, scalarValue);
                     max = Math.max(max, scalarValue);
                 }
@@ -409,7 +410,7 @@ export class ScalarPlotter {
             console.warn(`No chart found for scalar "${this.activeScalar}".`);
             return;
         }
-        
+
         const scalarData = this.scalarSeries.get(this.activeScalar);
         if (!scalarData) {
             console.warn(`No data points found for scalar "${this.activeScalar}".`);
@@ -419,12 +420,7 @@ export class ScalarPlotter {
         this.seriesRenderCallback = () => {
             const numPoints = this.currentEndIndex + 1;
             for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-                const batchData = scalarData[i];
-                const points = new Array(numPoints);
-                for (let j = 0; j < numPoints; j++) {
-                    points[j] = { x: this.times[j], y: batchData[j] };
-                }
-                activeChart.options.data[i].dataPoints = points;
+                activeChart.options.data[i].dataPoints = scalarData[i].slice(0, numPoints);
             }
         };
     }

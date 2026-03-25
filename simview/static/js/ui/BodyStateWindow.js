@@ -192,6 +192,27 @@ export class BodyStateWindow {
           font-family: monospace;
           color: #f0f0f0; /* Brighter value text */
       }
+
+      /* Collapsed state */
+      .body-state-window.collapsed {
+          height: auto !important;
+          max-height: none !important;
+          padding-bottom: 0.5rem;
+      }
+      .body-state-window.collapsed .body-state-window-content {
+          display: none;
+      }
+      .body-state-window-toggle-icon {
+          font-size: 0.7rem;
+          transition: transform 0.1s ease-out;
+          user-select: none;
+          display: inline-block;
+          margin-right: 0.5rem;
+          color: #ccc;
+      }
+      .body-state-window-toggle-icon.expanded {
+          transform: rotate(90deg);
+      }
     `;
 
         // Create the <style> element
@@ -217,12 +238,24 @@ export class BodyStateWindow {
         // --- Header setup ---
         this.header = document.createElement("div");
         this.header.classList.add("body-state-window-header"); // Use CSS class
+        this.header.style.cursor = "pointer";
+        this.header.addEventListener("click", () => this.toggleCollapse());
         this.window.appendChild(this.header);
+
+        const titleGroup = document.createElement("div"); // Group title and toggle
+        titleGroup.style.display = "flex";
+        titleGroup.style.alignItems = "center";
+        this.header.appendChild(titleGroup);
+
+        this.toggleIcon = document.createElement("span");
+        this.toggleIcon.classList.add("body-state-window-toggle-icon");
+        this.toggleIcon.innerHTML = "▶";
+        this.toggleIcon.classList.add("expanded"); // Default state is expanded (rotated down)
+        titleGroup.appendChild(this.toggleIcon);
 
         const title = document.createElement("span");
         title.textContent = "Body states";
-        // No specific class needed for title span unless more styling is required
-        this.header.appendChild(title);
+        titleGroup.appendChild(title);
 
         // --- Batch Selector (if needed) ---
         if (this.app.batchManager && this.app.batchManager.getSimBatches) {
@@ -287,6 +320,12 @@ export class BodyStateWindow {
 
         // Initialize body list once
         this.updateBodyList();
+    }
+
+    toggleCollapse() {
+        if (!this.window) return;
+        const isCollapsed = this.window.classList.toggle("collapsed");
+        this.toggleIcon.classList.toggle("expanded", !isCollapsed);
     }
 
     updateBodyList() {

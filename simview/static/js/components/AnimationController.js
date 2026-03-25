@@ -19,6 +19,10 @@ export class AnimationController {
     }
 
     loadAnimation(states) {
+        if (!states || states.length === 0) {
+            console.warn("No states received for animation.");
+            return;
+        }
         this.states = states;
         this.totalTime = this.states[this.states.length - 1].time;
 

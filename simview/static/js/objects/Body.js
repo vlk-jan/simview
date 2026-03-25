@@ -4,7 +4,6 @@ import {
     createGeometry,
     createMesh,
     createPoints,
-    createWireframe,
     createContactPoints,
     createArrow,
 } from "./utils.js";
@@ -60,31 +59,28 @@ export class Body {
         }
 
         // Optional attributes management
-        // Map README names (bodyVelocity, bodyForce) to internal visualization names
         this.availableAttributes = new Set();
         if (bodyData.availableAttributes) {
-             // If model provides availableAttributes, use them (legacy/custom)
-             bodyData.availableAttributes.forEach(attr => this.availableAttributes.add(attr));
+            bodyData.availableAttributes.forEach(attr => this.availableAttributes.add(attr));
         }
-        // Also assume standard dynamic attributes are available if not explicitly forbidden?
-        // For visualization config, we map standard names:
+
+        // Ensure standard attributes are marked as available if they arrive in state
+        // We map README names (velocity, force) to internal storage
         this.attributeStorage = new Map();
         this.attributeUpdaters = new Map();
-        
-        // Setup updaters for standard attributes based on potential state data
-        // We will init storage for: linearVelocity, angularVelocity, linearForce, torque, contacts
-        const vectorAttrs = ["linearVelocity", "angularVelocity", "linearForce", "torque"];
+
+        const vectorAttrs = ["velocity", "angularVelocity", "force", "torque"];
         vectorAttrs.forEach(attr => {
-             this.availableAttributes.add(attr); // Expose for UI toggles
-             this.attributeStorage.set(attr, Array(this.simBatches).fill().map(() => new THREE.Vector3()));
-             this.attributeUpdaters.set(attr, (data, batchIndex) => this.updateBodyVector(attr, data, batchIndex));
+            this.availableAttributes.add(attr);
+            this.attributeStorage.set(attr, Array(this.simBatches).fill().map(() => new THREE.Vector3()));
+            this.attributeUpdaters.set(attr, (data, batchIndex) => this.updateBodyVector(attr, data, batchIndex));
         });
 
         this.availableAttributes.add("contacts");
         this.attributeStorage.set("contacts", Array(this.simBatches).fill().map(() => []));
         this.attributeUpdaters.set("contacts", (data, batchIndex) => this.updateContactPointsVisibility(data, batchIndex));
-        
-        this.hasContacts = true; // Always allow contacts visualization if data arrives
+
+        this.hasContacts = true;
 
         // Scene setup
         this.group = new THREE.Group();
@@ -98,26 +94,178 @@ export class Body {
     }
 
     createBatchGroups(bodyData) {
+        const shape = bodyData.shape;
+
+        // Initialize instanced representations
+        if (shape.points && shape.points.length > 0) {
+            this.representations["points"] = this.createInstancedRepresentation(
+                "points",
+                shape.points,
+                BODY_CONFIG.points,
+                bodyData
+            );
+        }
+
+        if (shape.type !== "pointcloud") {
+            const geometry = createGeometry(shape, BODY_CONFIG.geometry);
+            if (geometry) {
+                this.representations["mesh"] = this.createInstancedRepresentation(
+                    "mesh",
+                    geometry,
+                    BODY_CONFIG.mesh,
+                    bodyData
+                );
+                this.representations["wireframe"] = this.createInstancedRepresentation(
+                    "wireframe",
+                    geometry,
+                    BODY_CONFIG.wireframe,
+                    bodyData
+                );
+            }
+        }
+
+        // Initialize contact points
+        if (
+            this.hasContacts &&
+            (shape.type === "pointcloud" || shape.type === "mesh" || shape.points || shape.vertices)
+        ) {
+            const points = shape.points || shape.vertices;
+            this.initializeInstancedContactPoints(points);
+        }
+
+        // We still need batch groups for individual axes or other non-instanced elements
         for (let i = 0; i < this.simBatches; i++) {
             const batchGroup = new THREE.Group();
             batchGroup.name = `${this.name}_batch_${i}`;
             this.group.add(batchGroup);
             this.batchGroups.push(batchGroup);
 
-            this.createVisualRepresentations(batchGroup, bodyData);
-            this.initializeBodyVectors(batchGroup, BODY_VECTOR_CONFIG, i);
-
-            if (
-                this.hasContacts &&
-                (bodyData.shape.type === "pointcloud" || bodyData.shape.type === "mesh" || bodyData.shape.points)
-            ) {
-                const points = bodyData.shape.points || bodyData.shape.vertices;
-                this.initializeContactPoints(batchGroup, points, i);
-            }
-
+            // Axes helper is not instanced for now as it's for debugging
             const axes = new THREE.AxesHelper(1);
             axes.visible = this.app.uiState.axesVisible;
             batchGroup.add(axes);
+
+            // Body vectors (arrows) are also not instanced yet
+            this.initializeBodyVectors(batchGroup, BODY_VECTOR_CONFIG, i);
+        }
+
+        // Initial update of instances
+        this.updateAllInstances();
+    }
+
+    createInstancedRepresentation(type, source, config, bodyData) {
+        if (type === "points") {
+            const pointsList = [];
+            for (let i = 0; i < this.simBatches; i++) {
+                const points = createPoints(source, config);
+                if (points) {
+                    points.visible = this.app.uiState.bodyVisualizationMode === "points";
+                    this.group.add(points);
+                    pointsList.push(points);
+                }
+            }
+            return pointsList;
+        } else {
+            let material;
+            if (type === "mesh") {
+                material = createMesh(source, config).material;
+            } else if (type === "wireframe") {
+                // InstancedMesh only works with Mesh primitives, so we use a Mesh material with wireframe: true
+                material = new THREE.MeshBasicMaterial({
+                    color: config.color || 0x4080ff,
+                    wireframe: true,
+                    transparent: config.transparent || false,
+                    opacity: config.opacity || 1.0
+                });
+            }
+
+            const instancedMesh = new THREE.InstancedMesh(source, material, this.simBatches);
+            instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            instancedMesh.visible = this.app.uiState.bodyVisualizationMode === type;
+            instancedMesh.castShadow = (type === "mesh");
+            instancedMesh.receiveShadow = (type === "mesh");
+            this.group.add(instancedMesh);
+            return instancedMesh;
+        }
+    }
+
+    initializeInstancedContactPoints(points) {
+        if (!points?.length) return;
+        for (let i = 0; i < this.simBatches; i++) {
+            const contactPoints = createContactPoints(points, BODY_CONFIG.contactPoints);
+            if (contactPoints) {
+                const pointCount = points.length;
+                this.contactPointSizes[i] = new Float32Array(pointCount).fill(0);
+                contactPoints.geometry.setAttribute(
+                    "size",
+                    new THREE.Float32BufferAttribute(this.contactPointSizes[i], 1)
+                );
+                contactPoints.visible = this.app.uiState.attributeVisible.contacts || false;
+                this.group.add(contactPoints);
+                this.contactPoints[i] = contactPoints;
+            }
+        }
+    }
+
+    updateAllInstances() {
+        for (let i = 0; i < this.simBatches; i++) {
+            this.updateInstanceMatrix(i);
+        }
+        // Set needsUpdate only once after all matrices are updated
+        if (this.representations["mesh"] instanceof THREE.InstancedMesh) {
+            this.representations["mesh"].instanceMatrix.needsUpdate = true;
+        }
+        if (this.representations["wireframe"] instanceof THREE.InstancedMesh) {
+            this.representations["wireframe"].instanceMatrix.needsUpdate = true;
+        }
+    }
+
+    updateInstanceMatrix(batchIndex) {
+        if (batchIndex >= this.simBatches) return;
+
+        const position = this.positions[batchIndex];
+        const quaternion = this.quaternions[batchIndex];
+
+        if (!position || !quaternion) {
+            console.warn(`Position or quaternion missing for batch ${batchIndex}`);
+            return;
+        }
+
+        const offset = this.app.batchManager
+            ? this.app.batchManager.getBatchOffset(batchIndex)
+            : { x: 0, y: 0, z: 0 };
+
+        const worldPos = new THREE.Vector3(
+            position.x + offset.x,
+            position.y + offset.y,
+            position.z + offset.z
+        );
+
+        const matrix = new THREE.Matrix4().compose(worldPos, quaternion, new THREE.Vector3(1, 1, 1));
+
+        // Update InstancedMesh instances without setting needsUpdate yet
+        if (this.representations["mesh"] instanceof THREE.InstancedMesh) {
+            this.representations["mesh"].setMatrixAt(batchIndex, matrix);
+        }
+        if (this.representations["wireframe"] instanceof THREE.InstancedMesh) {
+            this.representations["wireframe"].setMatrixAt(batchIndex, matrix);
+        }
+
+        // Update non-instanced representations with strict index checks
+        const pointsRep = this.representations["points"];
+        if (Array.isArray(pointsRep) && pointsRep[batchIndex]) {
+            pointsRep[batchIndex].position.copy(worldPos);
+            pointsRep[batchIndex].quaternion.copy(quaternion);
+        }
+
+        if (Array.isArray(this.contactPoints) && this.contactPoints[batchIndex]) {
+            this.contactPoints[batchIndex].position.copy(worldPos);
+            this.contactPoints[batchIndex].quaternion.copy(quaternion);
+        }
+
+        if (Array.isArray(this.batchGroups) && this.batchGroups[batchIndex]) {
+            this.batchGroups[batchIndex].position.copy(worldPos);
+            this.batchGroups[batchIndex].quaternion.copy(quaternion);
         }
     }
 
@@ -140,8 +288,10 @@ export class Body {
             const transformData = bodyState.bodyTransform;
             const applyTransform = (t, i) => {
                 if (t.length >= 7) {
-                    this.setPosition([t[0], t[1], t[2]], i);
-                    this.setOrientation([t[3], t[4], t[5], t[6]], i);
+                    this.positions[i].set(t[0], t[1], t[2]);
+                    // Three.js set() takes (x, y, z, w)
+                    this.quaternions[i].set(t[4], t[5], t[6], t[3]);
+                    this.rotations[i].setFromQuaternion(this.quaternions[i]);
                 }
             };
             if (Array.isArray(transformData[0])) {
@@ -152,46 +302,46 @@ export class Body {
                 applyTransform(transformData, 0);
             }
         }
-        // Fallback: Legacy position/orientation checks removed as per README compliance request
-        // (If absolutely needed for other projects, they can be re-added, but strictly following README now)
 
-        // Update bodyVelocity -> linearVelocity + angularVelocity
+        // Update bodyVelocity -> velocity + angularVelocity
         if (bodyState.bodyVelocity) {
-             const velData = bodyState.bodyVelocity; // Array of [vx, vy, vz, wx, wy, wz]
-             if (Array.isArray(velData[0])) {
-                 for(let i=0; i < Math.min(this.simBatches, velData.length); i++) {
-                     const v = velData[i];
-                     if (v.length >= 6) {
-                         this.updateAttribute("linearVelocity", [v[0], v[1], v[2]], i);
-                         this.updateAttribute("angularVelocity", [v[3], v[4], v[5]], i);
-                     }
-                 }
-             }
+            const velData = bodyState.bodyVelocity;
+            if (Array.isArray(velData[0])) {
+                for (let i = 0; i < Math.min(this.simBatches, velData.length); i++) {
+                    const v = velData[i];
+                    if (v.length >= 6) {
+                        this.updateAttribute("velocity", [v[0], v[1], v[2]], i);
+                        this.updateAttribute("angularVelocity", [v[3], v[4], v[5]], i);
+                    }
+                }
+            }
         }
 
-        // Update bodyForce -> linearForce + torque
+        // Update bodyForce -> force + torque
         if (bodyState.bodyForce) {
-             const forceData = bodyState.bodyForce; // Array of [fx, fy, fz, tx, ty, tz]
-             if (Array.isArray(forceData[0])) {
-                 for(let i=0; i < Math.min(this.simBatches, forceData.length); i++) {
-                     const f = forceData[i];
-                     if (f.length >= 6) {
-                         this.updateAttribute("linearForce", [f[0], f[1], f[2]], i);
-                         this.updateAttribute("torque", [f[3], f[4], f[5]], i);
-                     }
-                 }
-             }
+            const forceData = bodyState.bodyForce;
+            if (Array.isArray(forceData[0])) {
+                for (let i = 0; i < Math.min(this.simBatches, forceData.length); i++) {
+                    const f = forceData[i];
+                    if (f.length >= 6) {
+                        this.updateAttribute("force", [f[0], f[1], f[2]], i);
+                        this.updateAttribute("torque", [f[3], f[4], f[5]], i);
+                    }
+                }
+            }
         }
 
-        // Update contacts
         if (bodyState.contacts) {
             const contactsData = bodyState.contacts;
-             if (Array.isArray(contactsData)) {
-                 for(let i=0; i < Math.min(this.simBatches, contactsData.length); i++) {
-                     this.updateAttribute("contacts", contactsData[i], i);
-                 }
-             }
+            if (Array.isArray(contactsData)) {
+                for (let i = 0; i < Math.min(this.simBatches, contactsData.length); i++) {
+                    this.updateAttribute("contacts", contactsData[i], i);
+                }
+            }
         }
+
+        // Finally update all instance matrices in one go
+        this.updateAllInstances();
     }
 
     setPosition(positionData, batchIndex = 0) {
@@ -203,14 +353,7 @@ export class Body {
             return;
         const [x, y, z] = positionData;
         this.positions[batchIndex].set(x, y, z);
-        const offset = this.app.batchManager
-            ? this.app.batchManager.getBatchOffset(batchIndex)
-            : { x: 0, y: 0, z: 0 };
-        this.batchGroups[batchIndex].position.set(
-            x + offset.x,
-            y + offset.y,
-            z + offset.z
-        );
+        this.updateInstanceMatrix(batchIndex);
     }
 
     setOrientation(orientationData, batchIndex = 0) {
@@ -223,38 +366,7 @@ export class Body {
         const [qw, qx, qy, qz] = orientationData;
         this.quaternions[batchIndex].set(qx, qy, qz, qw);
         this.rotations[batchIndex].setFromQuaternion(this.quaternions[batchIndex]);
-        this.batchGroups[batchIndex].quaternion.copy(this.quaternions[batchIndex]);
-    }
-
-    createVisualRepresentations(batchGroup, bodyData) {
-        const shape = bodyData.shape;
-
-        // Create points if available (regardless of shape type)
-        if (shape.points && shape.points.length > 0) {
-            const points = createPoints(shape.points, BODY_CONFIG.points);
-            if (points) {
-                points.visible = this.app.uiState.bodyVisualizationMode === "points";
-                batchGroup.add(points);
-                this.representations["points"].push(points);
-            }
-        }
-
-        // Create geometry (mesh/wireframe) if not strictly a pointcloud (or if it is a shape that can be meshed)
-        if (shape.type !== "pointcloud") {
-            const geometry = createGeometry(shape, BODY_CONFIG.geometry);
-            if (geometry) {
-                const mesh = createMesh(geometry, BODY_CONFIG.mesh);
-                mesh.visible = this.app.uiState.bodyVisualizationMode === "mesh";
-                batchGroup.add(mesh);
-                this.representations["mesh"].push(mesh);
-
-                const wireframe = createWireframe(geometry, BODY_CONFIG.wireframe);
-                wireframe.visible =
-                    this.app.uiState.bodyVisualizationMode === "wireframe";
-                batchGroup.add(wireframe);
-                this.representations["wireframe"].push(wireframe);
-            }
-        }
+        this.updateInstanceMatrix(batchIndex);
     }
 
     initializeBodyVectors(batchGroup, vectorConfigs, batchIndex) {
@@ -275,25 +387,6 @@ export class Body {
                 this.bodyVectors[batchIndex].set(attr, vector);
             }
         }
-    }
-
-    initializeContactPoints(batchGroup, points, batchIndex) {
-        if (!points?.length) return;
-        const contactPoints = createContactPoints(
-            points,
-            BODY_CONFIG.contactPoints
-        );
-        if (!contactPoints) return;
-
-        const pointCount = points.length;
-        this.contactPointSizes[batchIndex] = new Float32Array(pointCount).fill(0);
-        contactPoints.geometry.setAttribute(
-            "size",
-            new THREE.Float32BufferAttribute(this.contactPointSizes[batchIndex], 1)
-        );
-        contactPoints.visible = this.app.uiState.attributeVisible.contacts || false;
-        batchGroup.add(contactPoints);
-        this.contactPoints[batchIndex] = contactPoints;
     }
 
     updateBodyVector(type, vector, batchIndex) {
@@ -331,8 +424,12 @@ export class Body {
     }
 
     updateVisualizationMode(mode) {
-        for (const [type, objects] of Object.entries(this.representations)) {
-            objects.forEach((obj) => (obj.visible = type === mode));
+        for (const [type, obj] of Object.entries(this.representations)) {
+            if (obj instanceof THREE.InstancedMesh) {
+                obj.visible = type === mode;
+            } else if (Array.isArray(obj)) {
+                obj.forEach((o) => (o.visible = type === mode));
+            }
         }
     }
 

@@ -59,5 +59,15 @@
       type="module"
       src="{{ url_for('static', filename='js/main.js') }}"
     ></script>
+    <script>
+      console.log("SimView index.html loaded");
+      window.onerror = function(msg, url, line, col, error) {
+        console.error("Global Error:", msg, "at", url, ":", line);
+        const splash = document.getElementById("loading-splash");
+        if (splash) {
+          splash.innerHTML = `<h1 style="color: red;">JS Error</h1><p>${msg}</p><p>${url}:${line}</p>`;
+        }
+      };
+    </script>
   </body>
 </html>

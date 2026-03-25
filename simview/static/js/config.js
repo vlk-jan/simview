@@ -3,9 +3,9 @@ export const UI_DEFAULT_CONFIG = {
     axesVisible: false,
     attributeVisible: {
         contacts: false,
-        linearVelocity: false,
+        velocity: false,
         angularVelocity: false,
-        linearForce: false,
+        force: false,
         torque: false,
     },
     terrainVisualizationModes: {
@@ -126,7 +126,7 @@ export const SCALAR_PLOTTER_CONFIG = {
 
 export const BODY_VECTOR_CONFIG = {
     // Linear velocity
-    linearVelocity: {
+    velocity: {
         color: 0x2ca02c,
         scale: 1.0,
     },
@@ -136,7 +136,7 @@ export const BODY_VECTOR_CONFIG = {
         scale: 1.0,
     },
     // Force
-    linearForce: {
+    force: {
         color: 0xff7f0e,
         scale: 1.0,
     },

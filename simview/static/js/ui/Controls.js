@@ -86,9 +86,9 @@ export class UIControls {
             bodyVisualizationMode: this.app.uiState.bodyVisualizationMode,
             showAxes: this.app.uiState.axesVisible,
             showContacts: this.app.uiState.attributeVisible.contacts,
-            showLinearVelocity: this.app.uiState.attributeVisible.linearVelocity,
+            showVelocity: this.app.uiState.attributeVisible.velocity,
             showAngularVelocity: this.app.uiState.attributeVisible.angularVelocity,
-            showLinearForce: this.app.uiState.attributeVisible.linearForce,
+            showForce: this.app.uiState.attributeVisible.force,
             showTorque: this.app.uiState.attributeVisible.torque,
         };
 
@@ -112,7 +112,7 @@ export class UIControls {
         const attributeControls = [
             { property: "showContacts", name: "Show Contacts (C)", type: "contacts" },
             {
-                property: "showLinearVelocity",
+                property: "showVelocity",
                 name: "Show Linear Velocity (V)",
                 type: "velocity",
             },
@@ -122,7 +122,7 @@ export class UIControls {
                 type: "angularVelocity",
             },
             {
-                property: "showLinearForce",
+                property: "showForce",
                 name: "Show Linear Force (F)",
                 type: "force",
             },
@@ -243,7 +243,7 @@ export class UIControls {
                         break;
                     case "v":
                         if (this.attributeAvailability.velocity)
-                            this.toggleControl("showLinearVelocity");
+                            this.toggleControl("showVelocity");
                         break;
                     case "w":
                         if (this.attributeAvailability.angularVelocity)
@@ -251,7 +251,7 @@ export class UIControls {
                         break;
                     case "f":
                         if (this.attributeAvailability.force)
-                            this.toggleControl("showLinearForce");
+                            this.toggleControl("showForce");
                         break;
                     case "t":
                         if (this.attributeAvailability.torque)

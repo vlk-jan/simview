@@ -86,8 +86,9 @@ class SimulationScene:
     def save(self, filepath: str | Path) -> None:
         """
         Exports the complete simulation data (model and states) to a JSON file.
+        Uses a streaming approach to reduce memory spikes for large simulations.
         """
-        if not self.model.is_complete:  #
+        if not self.model.is_complete:
             raise ValueError(
                 "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
             )
@@ -96,12 +97,16 @@ class SimulationScene:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            complete_json = {
-                "model": self.model.to_json(),
-                "states": self.states,
-            }
+            print(f"Saving simulation data to {output_path}...")
             with open(output_path, "w") as f:
-                json.dump(complete_json, f, indent=2)
+                f.write('{"model": ')
+                json.dump(self.model.to_json(), f)
+                f.write(', "states": [')
+                for i, state in enumerate(self.states):
+                    if i > 0:
+                        f.write(",")
+                    json.dump(state, f)
+                f.write("]}")
             print(f"Simulation data successfully saved to {output_path}")
         except Exception as e:
             print(f"Error saving simulation data to {output_path}: {e}")

@@ -63,10 +63,13 @@ function setupControlEvents(controls) {
     });
 
     // Clean up function to remove event listeners
+    const originalDispose = controls.dispose.bind(controls);
     controls.dispose = () => {
         window.removeEventListener("keydown", keyDownHandler);
         window.removeEventListener("keyup", keyUpHandler);
-        controls.dispose();
+        if (typeof originalDispose === "function") {
+            originalDispose();
+        }
     };
 
     // Optional: Add more custom event handlers if needed
