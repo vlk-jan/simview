@@ -21,7 +21,7 @@ class SimViewServer:
             self.app,
             json=json,
             cors_allowed_origins="*",
-            max_http_buffer_size=100 * 1024 * 1024,  # 100MB
+            max_http_buffer_size=1000 * 1024 * 1024,  # 1000MB (1GB)
         )
 
         # Load simulation data once to avoid redundant I/O and memory spikes

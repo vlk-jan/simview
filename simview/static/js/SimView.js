@@ -67,7 +67,7 @@ export class SimView {
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 reject(new Error("Timeout waiting for model from server"));
-            }, 10000); // 10 second timeout
+            }, 120000); // 120 second timeout
 
             socket.on("connect", () => {
                 console.log("Connected to server");
