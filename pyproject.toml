@@ -13,7 +13,13 @@ authors = [
     { name = "Jan Vlk", email = "vlkjan6@fel.cvut.cz" },
 ]
 description = "THREE.js-based simulation visualization tool"
-dependencies = ["flask", "flask_socketio", "eventlet", "einops"]
+dependencies = [
+    "einops",
+    "fastapi>=0.135.3",
+    "jinja2>=3.1.6",
+    "python-socketio>=5.16.1",
+    "uvicorn>=0.44.0",
+]
 
 [project.scripts]
 simview = "simview.__main__:main"

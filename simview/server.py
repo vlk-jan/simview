@@ -1,28 +1,38 @@
 import json
 from pathlib import Path
 
-from flask import Flask
-from flask import render_template
-from flask_socketio import SocketIO, emit
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import socketio
+import uvicorn
 from importlib.resources import files
 from simview.utils import find_free_port
 
-TEMPLATES = files("simview").joinpath("templates")
-STATIC = files("simview").joinpath("static")
+TEMPLATES = str(files("simview").joinpath("templates"))
+STATIC = str(files("simview").joinpath("static"))
 
 
 class SimViewServer:
     def __init__(self, sim_path: str | Path):
         self.sim_path = Path(sim_path)
-        self.app = Flask(
-            __name__, template_folder=str(TEMPLATES), static_folder=str(STATIC)
-        )
-        self.socketio = SocketIO(
-            self.app,
-            json=json,
+
+        # Initialize Socket.IO AsyncServer
+        self.sio = socketio.AsyncServer(
+            async_mode="asgi",
             cors_allowed_origins="*",
             max_http_buffer_size=1000 * 1024 * 1024,  # 1000MB (1GB)
         )
+
+        # Initialize FastAPI app
+        self.app = FastAPI()
+
+        # Mount static files and setup templates
+        self.app.mount("/static", StaticFiles(directory=STATIC), name="static")
+        self.templates = Jinja2Templates(directory=TEMPLATES)
+
+        # Combine SIO and FastAPI into one ASGI application
+        self.socket_app = socketio.ASGIApp(self.sio, self.app)
 
         # Load simulation data once to avoid redundant I/O and memory spikes
         self.model_data = None
@@ -46,35 +56,46 @@ class SimViewServer:
             self.states_data = None
 
     def setup_routes(self):
-        @self.app.route("/")
-        def index():
-            return render_template("index.html")
+        @self.app.get("/")
+        async def index(request: Request):
+            return self.templates.TemplateResponse(
+                request=request, name="index.html", context={"request": request}
+            )
 
     def setup_socket_handlers(self):
-        @self.socketio.on("connect")
-        def handle_connect():
-            print("Client connected")
+        @self.sio.on("connect")
+        async def handle_connect(sid, environ):
+            print(f"Client connected: {sid}")
 
-        @self.socketio.on("disconnect")
-        def handle_disconnect():
-            print("Client disconnected")
+        @self.sio.on("disconnect")
+        async def handle_disconnect(sid):
+            print(f"Client disconnected: {sid}")
 
-        @self.socketio.on("get_model")
-        def handle_get_model():
+        @self.sio.on("get_model")
+        async def handle_get_model(sid):
             if self.model_data is not None:
-                emit("model", self.model_data)
+                await self.sio.emit("model", self.model_data, to=sid)
             else:
-                emit("error", {"message": "Model data not available"})
+                await self.sio.emit(
+                    "error", {"message": "Model data not available"}, to=sid
+                )
 
-        @self.socketio.on("get_states")
-        def handle_get_states():
+        @self.sio.on("get_states")
+        async def handle_get_states(sid):
             if self.states_data is not None:
-                emit("states", self.states_data)
+                await self.sio.emit("states", self.states_data, to=sid)
             else:
-                emit("error", {"message": "States data not available"})
+                await self.sio.emit(
+                    "error", {"message": "States data not available"}, to=sid
+                )
 
     def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
-        self.socketio.run(self.app, debug=debug, host=host, port=port, log_output=True)
+        uvicorn.run(
+            self.socket_app,
+            host=host,
+            port=port,
+            log_level="debug" if debug else "info",
+        )
 
     @staticmethod
     def start(

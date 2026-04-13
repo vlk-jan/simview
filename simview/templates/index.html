@@ -10,7 +10,7 @@
     <link rel="icon" type="image/x-icon" href="data:image/x-icon;," />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='css/controls.css') }}"
+      href="{{ url_for('static', path='css/controls.css') }}"
     />
     <style>
       body {
@@ -38,11 +38,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 
     <!-- Add CCapture.js -->
-    <script src="{{ url_for('static', filename='lib/CCapture.js') }}"></script>
-    <script src="{{ url_for('static', filename='lib/webm-writer-0.2.0.js') }}"></script>
-    <script src="{{ url_for('static', filename='lib/gif.js') }}"></script>
-    <script src="{{ url_for('static', filename='lib/tar.js') }}"></script>
-    <script src="{{ url_for('static', filename='lib/download.js') }}"></script>
+    <script src="{{ url_for('static', path='lib/CCapture.js') }}"></script>
+    <script src="{{ url_for('static', path='lib/webm-writer-0.2.0.js') }}"></script>
+    <script src="{{ url_for('static', path='lib/gif.js') }}"></script>
+    <script src="{{ url_for('static', path='lib/tar.js') }}"></script>
+    <script src="{{ url_for('static', path='lib/download.js') }}"></script>
     <script src="https://cdn.canvasjs.com/ga/canvasjs.min.js"></script>
 
     <script type="importmap">
@@ -57,7 +57,7 @@
 
     <script
       type="module"
-      src="{{ url_for('static', filename='js/main.js') }}"
+      src="{{ url_for('static', path='js/main.js') }}"
     ></script>
     <script>
       console.log("SimView index.html loaded");
