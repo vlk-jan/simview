@@ -66,33 +66,65 @@ export class SimView {
 
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
-                reject(new Error("Timeout waiting for model from server"));
-            }, 120000); // 120 second timeout
+                reject(new Error("Timeout waiting for model from server after 120s"));
+            }, 120000);
 
-            socket.on("connect", () => {
-                console.log("Connected to server");
-                socket.emit("get_model");
-            });
-
-            socket.on("model", (model) => {
-                clearTimeout(timeout);
-                console.log("Model received, initializing...");
+            const doFetch = async () => {
+                console.log("Connected to server, starting data fetch...");
+                const splash = document.getElementById("loading-splash");
+                
                 try {
+                    if (splash) splash.innerHTML = "<h1>Loading Model (HTTP)...</h1>";
+                    console.time("fetch_model");
+                    const modelResponse = await fetch("/model");
+                    console.timeEnd("fetch_model");
+                    
+                    if (!modelResponse.ok) throw new Error(`Failed to fetch model: ${modelResponse.status} ${modelResponse.statusText}`);
+                    
+                    if (splash) splash.innerHTML = "<h1>Parsing Model JSON...</h1>";
+                    console.time("parse_model");
+                    const model = await modelResponse.json();
+                    console.timeEnd("parse_model");
+
+                    console.log("Model received, initializing components...");
                     this.initFromModel(model);
-                    this.canReceiveStates = true; // Allow states reception for new model
-                    socket.off("states"); // Remove any existing states listener
-                    socket.on("states", statesHandler); // Add new states listener
-                    socket.emit("get_states");
+                    this.canReceiveStates = true;
+
+                    if (splash) splash.innerHTML = "<h1>Loading States (HTTP)...</h1>";
+                    console.time("fetch_states");
+                    const statesResponse = await fetch("/states");
+                    console.timeEnd("fetch_states");
+                    
+                    if (!statesResponse.ok) throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
+                    
+                    if (splash) splash.innerHTML = "<h1>Parsing States JSON...</h1>";
+                    console.time("parse_states");
+                    const statesData = await statesResponse.json();
+                    console.timeEnd("parse_states");
+
+                    console.log(`Received ${statesData.length} states, processing...`);
+                    this.processStates(statesData);
+
+                    socket.off("states");
+                    socket.on("states", statesHandler);
+
+                    console.log("Initialization complete!");
+                    clearTimeout(timeout);
                     resolve();
                 } catch (error) {
+                    console.error("Critical error during initial data fetch:", error);
+                    if (splash) {
+                        splash.innerHTML = `<h1 style="color: red;">Load Error</h1><p>${error.message}</p><p>Check browser console for details.</p>`;
+                    }
                     reject(error);
                 }
-            });
+            };
 
-            socket.on("error", (error) => {
-                clearTimeout(timeout);
-                reject(new Error(error.message || "Server sent an error"));
-            });
+            if (socket.connected) {
+                doFetch();
+            } else {
+                socket.once("connect", doFetch);
+            }
         });
     }
 
