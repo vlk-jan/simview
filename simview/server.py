@@ -1,7 +1,13 @@
+import gzip
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+try:
+    import orjson
+except ImportError:
+    orjson = None
+
+from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import socketio
@@ -13,30 +19,58 @@ TEMPLATES = str(files("simview").joinpath("templates"))
 STATIC = str(files("simview").joinpath("static"))
 
 
+class OrjsonWrapper:
+    """Wrapper to make orjson compatible with socketio's json argument (expects dumps to return str)."""
+    @staticmethod
+    def dumps(obj, **kwargs):
+        if orjson:
+            return orjson.dumps(obj).decode('utf-8')
+        return json.dumps(obj, **kwargs)
+
+    @staticmethod
+    def loads(s, **kwargs):
+        if orjson:
+            return orjson.loads(s)
+        return json.loads(s, **kwargs)
+
+
 class SimViewServer:
     def __init__(self, sim_path: str | Path):
         self.sim_path = Path(sim_path)
-
+        
         # Initialize Socket.IO AsyncServer
         self.sio = socketio.AsyncServer(
             async_mode="asgi",
             cors_allowed_origins="*",
-            max_http_buffer_size=1000 * 1024 * 1024,  # 1000MB (1GB)
+            # Buffer size for smaller real-time updates (kept generous at 100MB)
+            max_http_buffer_size=100 * 1024 * 1024,
+            json=OrjsonWrapper,
         )
-
-        # Initialize FastAPI app
+        
         self.app = FastAPI()
 
         # Mount static files and setup templates
         self.app.mount("/static", StaticFiles(directory=STATIC), name="static")
         self.templates = Jinja2Templates(directory=TEMPLATES)
-
+        
         # Combine SIO and FastAPI into one ASGI application
         self.socket_app = socketio.ASGIApp(self.sio, self.app)
+
+        # Add middleware to disable caching for static files
+        @self.app.middleware("http")
+        async def add_no_cache_header(request: Request, call_next):
+            response = await call_next(request)
+            if request.url.path.startswith("/static"):
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            return response
 
         # Load simulation data once to avoid redundant I/O and memory spikes
         self.model_data = None
         self.states_data = None
+        self.model_bytes = None   # pre-serialized bytes for HTTP serving
+        self.states_bytes = None
         self._load_data()
 
         self.setup_routes()
@@ -45,22 +79,61 @@ class SimViewServer:
     def _load_data(self):
         try:
             print(f"Loading simulation data from {self.sim_path}...")
-            with open(self.sim_path, "r") as f:
-                data = json.load(f)
-                self.model_data = data.get("model")
-                self.states_data = data.get("states")
+            if orjson:
+                with open(self.sim_path, "rb") as f:
+                    data = orjson.loads(f.read())
+            else:
+                with open(self.sim_path, "r") as f:
+                    data = json.load(f)
+
+            self.model_data = data.get("model")
+            self.states_data = data.get("states")
+
+            # Pre-serialize and pre-compress once so HTTP endpoints never do work per request.
+            # compresslevel=1 is fastest (still typically 5-10x smaller for JSON).
+            _dumps = orjson.dumps if orjson else json.dumps
+            if self.model_data is not None:
+                self.model_bytes = gzip.compress(_dumps(self.model_data), compresslevel=1)
+            if self.states_data is not None:
+                self.states_bytes = gzip.compress(_dumps(self.states_data), compresslevel=1)
+
             print("Simulation data loaded successfully.")
         except Exception as e:
             print(f"Error loading simulation data: {e}")
             self.model_data = None
             self.states_data = None
+            self.model_bytes = None
+            self.states_bytes = None
 
     def setup_routes(self):
         @self.app.get("/")
         async def index(request: Request):
+            import time
             return self.templates.TemplateResponse(
-                request=request, name="index.html", context={"request": request}
+                request=request, 
+                name="index.html", 
+                context={"request": request, "t": int(time.time())}
             )
+            
+        _gzip_headers = {"Content-Encoding": "gzip"}
+
+        @self.app.get("/model")
+        async def get_model():
+            print("HTTP: Client requested /model")
+            if self.model_bytes is not None:
+                return Response(content=self.model_bytes, media_type="application/json",
+                                headers=_gzip_headers)
+            return Response(content=b'{"message":"Model data not available"}',
+                            media_type="application/json", status_code=404)
+
+        @self.app.get("/states")
+        async def get_states():
+            print("HTTP: Client requested /states")
+            if self.states_bytes is not None:
+                return Response(content=self.states_bytes, media_type="application/json",
+                                headers=_gzip_headers)
+            return Response(content=b'{"message":"States data not available"}',
+                            media_type="application/json", status_code=404)
 
     def setup_socket_handlers(self):
         @self.sio.on("connect")
@@ -71,30 +144,32 @@ class SimViewServer:
         async def handle_disconnect(sid):
             print(f"Client disconnected: {sid}")
 
+        # Note: Large data is now fetched via HTTP GET /model and /states
+        # We keep these handlers for backward compatibility if needed, but 
+        # the client should be updated to use HTTP for large payloads.
         @self.sio.on("get_model")
         async def handle_get_model(sid):
             if self.model_data is not None:
                 await self.sio.emit("model", self.model_data, to=sid)
             else:
-                await self.sio.emit(
-                    "error", {"message": "Model data not available"}, to=sid
-                )
+                await self.sio.emit("error", {"message": "Model data not available"}, to=sid)
 
         @self.sio.on("get_states")
         async def handle_get_states(sid):
             if self.states_data is not None:
                 await self.sio.emit("states", self.states_data, to=sid)
             else:
-                await self.sio.emit(
-                    "error", {"message": "States data not available"}, to=sid
-                )
+                await self.sio.emit("error", {"message": "States data not available"}, to=sid)
 
     def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
+        print(f"SimView server running on http://{host}:{port}")
         uvicorn.run(
             self.socket_app,
             host=host,
             port=port,
             log_level="debug" if debug else "info",
+            loop="uvloop",
+            http="httptools",
         )
 
     @staticmethod

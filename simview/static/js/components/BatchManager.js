@@ -34,7 +34,8 @@ export class BatchManager {
             this.app.simBatches = this.simBatches;
         }
         
-        const sideLength = Math.ceil(Math.sqrt(this.simBatches));
+        this.sideLength = Math.ceil(Math.sqrt(this.simBatches));
+        const sideLength = this.sideLength;
         // Use README-defined terrain dimension names: sizeX, sizeY
         const { sizeX, sizeY } = modelData.terrain.dimensions;
 
@@ -74,14 +75,14 @@ export class BatchManager {
         if (batchIndex < 0 || batchIndex >= this.simBatches) {
             return { row: -1, col: -1 };
         }
-        const sideLength = Math.ceil(Math.sqrt(this.simBatches));
+        const sideLength = this.sideLength;
         const rowIdx = Math.floor(batchIndex / sideLength);
         const colIdx = batchIndex % sideLength;
         return { row: rowIdx, col: colIdx };
     }
 
     getBatchIndexFromRowCol(rowIdx, colIdx) {
-        const sideLength = Math.ceil(Math.sqrt(this.simBatches));
+        const sideLength = this.sideLength;
         if (
             rowIdx < 0 ||
             colIdx < 0 ||
@@ -98,7 +99,7 @@ export class BatchManager {
     }
 
     getOffsetByRowCol(rowIdx, colIdx) {
-        const sideLength = Math.ceil(Math.sqrt(this.simBatches));
+        const sideLength = this.sideLength;
         if (
             rowIdx < 0 ||
             colIdx < 0 ||

@@ -82,6 +82,12 @@ export class Body {
 
         this.hasContacts = true;
 
+        // Reusable temporaries for hot-path matrix updates (avoid per-frame allocations)
+        this._worldPos = new THREE.Vector3();
+        this._unitScale = new THREE.Vector3(1, 1, 1);
+        this._matrix = new THREE.Matrix4();
+        this._normalizedVec = new THREE.Vector3();
+
         // Scene setup
         this.group = new THREE.Group();
         this.group.name = this.name;
@@ -235,36 +241,36 @@ export class Body {
             ? this.app.batchManager.getBatchOffset(batchIndex)
             : { x: 0, y: 0, z: 0 };
 
-        const worldPos = new THREE.Vector3(
+        this._worldPos.set(
             position.x + offset.x,
             position.y + offset.y,
             position.z + offset.z
         );
 
-        const matrix = new THREE.Matrix4().compose(worldPos, quaternion, new THREE.Vector3(1, 1, 1));
+        this._matrix.compose(this._worldPos, quaternion, this._unitScale);
 
         // Update InstancedMesh instances without setting needsUpdate yet
         if (this.representations["mesh"] instanceof THREE.InstancedMesh) {
-            this.representations["mesh"].setMatrixAt(batchIndex, matrix);
+            this.representations["mesh"].setMatrixAt(batchIndex, this._matrix);
         }
         if (this.representations["wireframe"] instanceof THREE.InstancedMesh) {
-            this.representations["wireframe"].setMatrixAt(batchIndex, matrix);
+            this.representations["wireframe"].setMatrixAt(batchIndex, this._matrix);
         }
 
         // Update non-instanced representations with strict index checks
         const pointsRep = this.representations["points"];
         if (Array.isArray(pointsRep) && pointsRep[batchIndex]) {
-            pointsRep[batchIndex].position.copy(worldPos);
+            pointsRep[batchIndex].position.copy(this._worldPos);
             pointsRep[batchIndex].quaternion.copy(quaternion);
         }
 
         if (Array.isArray(this.contactPoints) && this.contactPoints[batchIndex]) {
-            this.contactPoints[batchIndex].position.copy(worldPos);
+            this.contactPoints[batchIndex].position.copy(this._worldPos);
             this.contactPoints[batchIndex].quaternion.copy(quaternion);
         }
 
         if (Array.isArray(this.batchGroups) && this.batchGroups[batchIndex]) {
-            this.batchGroups[batchIndex].position.copy(worldPos);
+            this.batchGroups[batchIndex].position.copy(this._worldPos);
             this.batchGroups[batchIndex].quaternion.copy(quaternion);
         }
     }
@@ -398,8 +404,8 @@ export class Body {
             arrow.setLength(0);
             return;
         }
-        const normalizedVector = vector.clone().normalize();
-        arrow.setDirection(normalizedVector);
+        this._normalizedVec.copy(vector).normalize();
+        arrow.setDirection(this._normalizedVec);
         const headLength = Math.min(length * 0.2, 0.5);
         const headWidth = Math.min(length * 0.1, 0.25);
         arrow.setLength(length, headLength, headWidth);

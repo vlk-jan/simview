@@ -501,11 +501,10 @@ export class BodyStateWindow {
                 typeof vector.y === "number" &&
                 typeof vector.z === "number"
             ) {
-                cell.textContent = `(${vector.x.toFixed(3)}, ${vector.y.toFixed(
-                    3
-                )}, ${vector.z.toFixed(3)})`;
+                const text = `(${vector.x.toFixed(3)}, ${vector.y.toFixed(3)}, ${vector.z.toFixed(3)})`;
+                if (cell.textContent !== text) cell.textContent = text;
             } else {
-                cell.textContent = "N/A"; // Handle cases where data might be missing/malformed
+                if (cell.textContent !== "N/A") cell.textContent = "N/A";
             }
         }
     }

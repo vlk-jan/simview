@@ -15,6 +15,12 @@ export class InteractionController {
 
         this.currentSelectionMode = null;
 
+        // Cache for getIntersectableObjects — rebuilt only when selection mode changes
+        this._intersectableCache = null;
+        this._intersectableCacheMode = null;
+        // Reusable Vector3 for screen-projection in selection box
+        this._projPoint = new THREE.Vector3();
+
         // Bind methods to preserve context
         this.onMouseMove = this.onMouseMove.bind(this);
         this.onClick = this.onClick.bind(this);
@@ -206,14 +212,28 @@ export class InteractionController {
     getIntersectableObjects() {
         if (!this.currentSelectionMode) return [];
 
-        const objects = this.app[this.currentSelectionMode.objects];
-        if (this.currentSelectionMode.objects === "bodies") {
-            return Object.values(objects)
+        const modeKey = this.currentSelectionMode.objects;
+        if (this._intersectableCache && this._intersectableCacheMode === modeKey) {
+            return this._intersectableCache;
+        }
+
+        const objects = this.app[modeKey];
+        let result;
+        if (modeKey === "bodies") {
+            result = Object.values(objects)
                 .flatMap((body) => body.children)
                 .filter((child) => child.isMesh);
         } else {
-            return Object.values(objects);
+            result = Object.values(objects);
         }
+        this._intersectableCache = result;
+        this._intersectableCacheMode = modeKey;
+        return result;
+    }
+
+    invalidateIntersectableCache() {
+        this._intersectableCache = null;
+        this._intersectableCacheMode = null;
     }
 
     selectObjectsInBox() {
@@ -231,12 +251,12 @@ export class InteractionController {
 
         // Function to check if a point is inside the selection box
         const isPointInSelectionBox = (point) => {
-            // Convert 3D point to screen coordinates
-            const screenPoint = point.clone().project(camera);
+            // Convert 3D point to screen coordinates (reuse _projPoint to avoid allocation)
+            this._projPoint.copy(point).project(camera);
 
             // Convert to pixel coordinates
-            const x = ((screenPoint.x + 1) * rect.width) / 2 + rect.left;
-            const y = ((-screenPoint.y + 1) * rect.height) / 2 + rect.top;
+            const x = ((this._projPoint.x + 1) * rect.width) / 2 + rect.left;
+            const y = ((-this._projPoint.y + 1) * rect.height) / 2 + rect.top;
 
             return (
                 x >= boxLeft &&
@@ -255,12 +275,12 @@ export class InteractionController {
         });
         selectionSet.clear();
 
-        // Select objects
+        // Select objects (reuse bbox/center to avoid per-object allocations)
         const selectableObjects = this.getIntersectableObjects();
+        const bbox = new THREE.Box3();
+        const center = new THREE.Vector3();
         selectableObjects.forEach((object) => {
-            // Get object's center point
-            const center = new THREE.Vector3();
-            const bbox = new THREE.Box3().setFromObject(object);
+            bbox.setFromObject(object);
             bbox.getCenter(center);
 
             if (isPointInSelectionBox(center)) {
