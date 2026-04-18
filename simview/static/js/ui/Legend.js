@@ -50,7 +50,7 @@ export class Legend {
             unit = "";
             title = "Friction";
         } else if (mode === "stiffness") {
-            minVal = 10000.0;
+            minVal = 100000.0;
             maxVal = 500000.0;
             unit = "N/m";
             title = "Stiffness";

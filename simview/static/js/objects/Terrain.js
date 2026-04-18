@@ -96,7 +96,7 @@ export class Terrain {
             `Creating terrain geometry: ${this.dimensions.sizeX}x${this.dimensions.sizeY} m, resolution: ${this.dimensions.resolutionX}x${this.dimensions.resolutionY}`
         );
         const { surfaceMaterial, wireframeMaterial } = this.#createMaterials();
-        
+
         let singletonSurfaceGeometry = null;
         let singletonNormals = null;
 
@@ -116,11 +116,11 @@ export class Terrain {
         for (let i = 0; i < this.app.batchManager.simBatches; i++) {
             const batchGroup = new THREE.Group();
             batchGroup.name = `batch${i}`;
-            
-            const surfaceGeometry = this.isSingleton 
-                ? singletonSurfaceGeometry 
+
+            const surfaceGeometry = this.isSingleton
+                ? singletonSurfaceGeometry
                 : this.#createSurfaceGeometryFromHeightData(heightData[i], i);
-            
+
             const surfaceMesh = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
             surfaceMesh.name = "surface";
             surfaceMesh.receiveShadow = true;
@@ -134,7 +134,7 @@ export class Terrain {
             const surfaceNormals = this.isSingleton
                 ? singletonNormals.clone()
                 : this.#createNormalVectors(heightData[i], normals[i]);
-            
+
             surfaceNormals.name = "normals";
             batchGroup.add(surfaceNormals);
 
@@ -355,9 +355,9 @@ export class Terrain {
                     value = Math.max(0, Math.min(1, value));
                 } else if (mode === "stiffness" && this.stiffnessData && this.stiffnessData[batchIndex]) {
                     // Normalize stiffness using a fixed range for comparison
-                    // Model outputs range [10000, 500000]
+                    // Model outputs range [100000, 500000]
                     const s = this.stiffnessData[batchIndex][dataIndex];
-                    const stiffnessMin = 10000.0;
+                    const stiffnessMin = 100000.0;
                     const stiffnessMax = 500000.0;
                     value = (s - stiffnessMin) / (stiffnessMax - stiffnessMin);
                     value = Math.max(0, Math.min(1, value));
@@ -377,7 +377,7 @@ export class Terrain {
         // Update the main terrain surface
         const callableColormap = this.getCallableFromColorMapName(colormapName);
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
-        
+
         for (let i = 0; i < batchesToUpdate; i++) {
             const batchGroup = this.group.getObjectByName(`batch${i}`);
             const surfaceMesh = batchGroup.getObjectByName("surface");
@@ -390,7 +390,7 @@ export class Terrain {
     setColorMode(mode) {
         const callableColormap = this.getCallableFromColorMapName(this.app.uiState.terrainColorMap);
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
-        
+
         for (let i = 0; i < batchesToUpdate; i++) {
             const batchGroup = this.group.getObjectByName(`batch${i}`);
             const surfaceMesh = batchGroup.getObjectByName("surface");
