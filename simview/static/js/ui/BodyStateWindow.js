@@ -285,6 +285,7 @@ export class BodyStateWindow {
                     e.target.blur(); // Remove focus from the selector
                 });
 
+                selectorContainer.addEventListener("click", (e) => e.stopPropagation());
                 selectorContainer.appendChild(batchSelector);
                 this.header.appendChild(selectorContainer); // Append to header
                 this.batchSelector = batchSelector;
