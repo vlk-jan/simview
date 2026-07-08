@@ -1,7 +1,8 @@
 import torch
-from simview.scene import SimulationScene, BodyShapeType
-from simview.state import SimViewBodyState
+
 from simview.launcher import SimViewLauncher
+from simview.scene import BodyShapeType, SimulationScene
+from simview.state import SimViewBodyState
 
 # 1. Initialize the Scene
 # We create a scene for 2 parallel simulations (batches)
