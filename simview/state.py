@@ -1,4 +1,5 @@
 import torch
+
 from simview.model import OptionalBodyStateAttribute
 
 
@@ -21,9 +22,10 @@ class SimViewBodyState:
     def _set_optional_attributes(self, attrs):
         self.optional_attrs = {}
         for key, value in attrs.items():
-            assert key in OptionalBodyStateAttribute, (
-                f"Unknown optional attribute: {key}"
-            )
+            try:
+                key = OptionalBodyStateAttribute(key)
+            except ValueError:
+                raise ValueError(f"Unknown optional attribute: {key}")
             if key == OptionalBodyStateAttribute.CONTACTS:
                 value = self._process_contacts(value)
             elif isinstance(value, torch.Tensor):
@@ -37,16 +39,19 @@ class SimViewBodyState:
                     raise ValueError("Unknown list format")
             else:
                 raise ValueError(f"Unknown attribute type for {key}: {type(value)}")
-            self.optional_attrs[key] = value
+            self.optional_attrs[key.value] = value
 
     @staticmethod
     def _process_contacts(contacts: torch.Tensor | list):
         if isinstance(contacts, torch.Tensor):  # tensor
             dtype = contacts.dtype
-            if dtype in [torch.bool, torch.float]:  # assume a boolean mask
+            if dtype == torch.bool or dtype.is_floating_point:
+                # Boolean mask (floats treated as a mask of non-zero entries)
                 return [torch.nonzero(c, as_tuple=True)[0].tolist() for c in contacts]
-            elif dtype in [torch.int, torch.long]:  # assume indices
+            elif not dtype.is_complex:  # integer dtype: assume indices
                 return contacts.tolist()
+            else:
+                raise ValueError(f"Unsupported contact tensor dtype: {dtype}")
         else:  # list of tensors or list of lists
             first = contacts[0]
             if isinstance(first, torch.Tensor):
