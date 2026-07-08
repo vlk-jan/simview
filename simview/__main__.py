@@ -1,33 +1,17 @@
-import sys
 import argparse
 import shutil
+import sys
 from pathlib import Path
+
 from simview import CACHE_DIR
 from simview.server import SimViewServer
 
 
 def clear_cache():
-    tmp_dir = Path("/tmp") / CACHE_DIR
-    home_dir = Path.home() / f".cache/{CACHE_DIR}"
-
-    if tmp_dir.exists():
-        print(f"Removing {tmp_dir}")
-        for item in tmp_dir.iterdir():
-            if item.is_dir():
-                try:
-                    item.rmdir()  # Might fail if not empty, but cache usually flat files or we need shutil
-                except OSError:
-                    shutil.rmtree(item)
-            else:
-                item.unlink()
-        try:
-            tmp_dir.rmdir()
-        except OSError:
-            pass
-
-    if home_dir.exists():
-        print(f"Removing {home_dir}")
-        shutil.rmtree(home_dir)  # Safer for recursive delete
+    for cache_dir in (Path("/tmp") / CACHE_DIR, Path.home() / ".cache" / CACHE_DIR):
+        if cache_dir.exists():
+            print(f"Removing {cache_dir}")
+            shutil.rmtree(cache_dir, ignore_errors=True)
 
     print("Cache cleared.")
 
@@ -60,4 +44,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

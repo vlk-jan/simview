@@ -1,8 +1,9 @@
-import torch
-from einops import rearrange
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
+
+import torch
+from einops import rearrange
 
 
 class BodyShapeType(StrEnum):
@@ -308,9 +309,7 @@ class SimViewModel:
     dt: float
     collapse: bool
     terrain: SimViewTerrain | None = None
-    bodies: dict[str, SimViewBody] = field(
-        default_factory=dict
-    )  # Renamed from 'bodies' for clarity
+    bodies: dict[str, SimViewBody] = field(default_factory=dict)
     static_objects: dict[str, SimViewStaticObject] = field(default_factory=dict)
 
     def add_terrain(self, terrain: SimViewTerrain) -> None:
@@ -319,9 +318,9 @@ class SimViewModel:
         self.terrain = terrain
 
     def add_body(self, body: SimViewBody) -> None:
-        if body.name in self.bodies:  # Use renamed attribute
+        if body.name in self.bodies:
             raise ValueError(f"Dynamic body {body.name} already exists")
-        self.bodies[body.name] = body  # Use renamed attribute
+        self.bodies[body.name] = body
 
     def add_static_object(self, static_object: SimViewStaticObject) -> None:
         if static_object.name in self.static_objects:
@@ -400,7 +399,7 @@ class SimViewModel:
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
         **kwargs,
     ) -> None:
-        if body_name in self.bodies:  # Use renamed attribute
+        if body_name in self.bodies:
             raise ValueError(f"Dynamic body {body_name} already exists")
         body = SimViewBody.create(
             body_name, shape_type, available_attributes=available_attributes, **kwargs
@@ -427,7 +426,7 @@ class SimViewModel:
         )  # add_static_object already performs the length check
 
     def to_json(self) -> dict:
-        if not self.bodies:  # Use renamed attribute
+        if not self.bodies:
             print("Warning: No dynamic bodies defined in the model.")
         if self.terrain is None:
             raise ValueError("No terrain defined")
@@ -437,9 +436,7 @@ class SimViewModel:
             "dt": self.dt,
             "collapse": self.collapse,
             "terrain": self.terrain.to_json(),
-            "bodies": [
-                b.to_json() for b in self.bodies.values()
-            ],  # Use renamed attribute
+            "bodies": [b.to_json() for b in self.bodies.values()],
             "staticObjects": [s.to_json() for s in self.static_objects.values()],
         }
         return r

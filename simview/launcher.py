@@ -1,10 +1,11 @@
-import os
 import gc
-from simview.server import SimViewServer  # Make sure this import is correct
+import os
 import tempfile  # For creating temporary files if needed
+from pathlib import Path
+
+from simview.server import SimViewServer  # Make sure this import is correct
 
 from .scene import SimulationScene
-from pathlib import Path
 
 # If CACHE_DIR is used by SimViewVisualizer for its temporary files:
 CACHE_DIR = ".simview_cache"  # Already defined above or manage scope
@@ -96,7 +97,8 @@ class SimViewLauncher:
 
     def cleanup(self) -> None:
         """
-        Performs cleanup of temporary files and internal data.
+        Performs cleanup of temporary files and internal data. Safe to call
+        multiple times; subsequent calls are no-ops.
         """
         if self._source_data_object_to_clear is not None:
             print("SimViewLauncher: Clearing source SimulationScene internal data...")
@@ -113,8 +115,8 @@ class SimViewLauncher:
                     f"Warning: Could not delete temporary file {self._sim_file_path}: {e}"
                 )
 
-    def __del__(self):
-        """
-        Fallback cleanup in case launch() wasn't called or was interrupted before finally.
-        """
+    def __enter__(self) -> "SimViewLauncher":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.cleanup()
