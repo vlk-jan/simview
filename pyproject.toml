@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "simview"
 version = "2.5"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 authors = [
     { name = "Ales Kucera", email = "kuceral@fel.cvut.cz" },
     { name = "David Korcak", email = "david.korcak@gmail.com" },
@@ -14,7 +16,6 @@ authors = [
 ]
 description = "THREE.js-based simulation visualization tool"
 dependencies = [
-    "einops",
     "fastapi>=0.135.3",
     "httptools>=0.7.1",
     "jinja2>=3.1.6",
@@ -22,6 +23,14 @@ dependencies = [
     "python-socketio>=5.16.1",
     "uvicorn>=0.44.0",
     "uvloop>=0.22.1",
+]
+
+[project.optional-dependencies]
+# Needed only to author simulations via the Python API (simview.scene / state / model).
+# Viewing an existing JSON file does not require these.
+authoring = [
+    "torch",
+    "einops",
 ]
 
 [project.scripts]
