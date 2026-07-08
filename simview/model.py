@@ -38,8 +38,28 @@ class SimViewTerrain:
     is_singleton: bool
     friction_data: list[list[float]] | None = None
     stiffness_data: list[list[float]] | None = None
+    # Value ranges used by the viewer to normalize the color map (analogous to
+    # min_z/max_z for height). None when the corresponding data is absent.
+    min_friction: float | None = None
+    max_friction: float | None = None
+    min_stiffness: float | None = None
+    max_stiffness: float | None = None
 
     def to_json(self):
+        bounds = {
+            "minX": self.min_x,
+            "minY": self.min_y,
+            "maxX": self.max_x,
+            "maxY": self.max_y,
+            "minZ": self.min_z,
+            "maxZ": self.max_z,
+        }
+        if self.friction_data is not None:
+            bounds["minFriction"] = self.min_friction
+            bounds["maxFriction"] = self.max_friction
+        if self.stiffness_data is not None:
+            bounds["minStiffness"] = self.min_stiffness
+            bounds["maxStiffness"] = self.max_stiffness
         return {
             "dimensions": {
                 "sizeX": self.extent_x,
@@ -47,14 +67,7 @@ class SimViewTerrain:
                 "resolutionX": self.shape_x,
                 "resolutionY": self.shape_y,
             },
-            "bounds": {
-                "minX": self.min_x,
-                "minY": self.min_y,
-                "maxX": self.max_x,
-                "maxY": self.max_y,
-                "minZ": self.min_z,
-                "maxZ": self.max_z,
-            },
+            "bounds": bounds,
             "heightData": self.height_data,
             "normals": self.normals,
             "isSingleton": self.is_singleton,
@@ -86,18 +99,24 @@ class SimViewTerrain:
         normals_list = rearrange(normals, "b c d1 d2 -> b (d1 d2) c").tolist()
 
         friction_data_list = None
+        min_friction = max_friction = None
         if friction_map is not None:
             assert friction_map.ndim == 3
             friction_data_list = rearrange(
                 friction_map, "b d1 d2 -> b (d1 d2)"
             ).tolist()
+            min_friction = friction_map.min().item()
+            max_friction = friction_map.max().item()
 
         stiffness_data_list = None
+        min_stiffness = max_stiffness = None
         if stiffness_map is not None:
             assert stiffness_map.ndim == 3
             stiffness_data_list = rearrange(
                 stiffness_map, "b d1 d2 -> b (d1 d2)"
             ).tolist()
+            min_stiffness = stiffness_map.min().item()
+            max_stiffness = stiffness_map.max().item()
 
         return SimViewTerrain(
             extent_x=extent_x,
@@ -115,6 +134,10 @@ class SimViewTerrain:
             is_singleton=is_singleton,
             friction_data=friction_data_list,
             stiffness_data=stiffness_data_list,
+            min_friction=min_friction,
+            max_friction=max_friction,
+            min_stiffness=min_stiffness,
+            max_stiffness=max_stiffness,
         )
 
 

@@ -151,6 +151,20 @@ export class Terrain {
         }
     }
 
+    // Normalize a value into [0, 1] against an explicit [min, max] range.
+    // Falls back to [0, 1] clamping when the range is missing or degenerate.
+    #normalizeToRange(value, min, max) {
+        if (
+            typeof min !== "number" ||
+            typeof max !== "number" ||
+            max - min === 0
+        ) {
+            return Math.max(0, Math.min(1, value));
+        }
+        const normalized = (value - min) / (max - min);
+        return Math.max(0, Math.min(1, normalized));
+    }
+
     calculateNormalizedHeight(height) {
         var normalizedHeight =
             (height - this.bounds.minZ) / (this.bounds.maxZ - this.bounds.minZ);
@@ -350,17 +364,19 @@ export class Terrain {
                 const dataIndex = row * resolutionX + col;
 
                 if (mode === "friction" && this.frictionData && this.frictionData[batchIndex]) {
-                    // Friction is already [0, 1] from Sigmoid in the model
-                    value = this.frictionData[batchIndex][dataIndex];
-                    value = Math.max(0, Math.min(1, value));
+                    // Normalize against the data range shipped in bounds (falls back to [0, 1]).
+                    value = this.#normalizeToRange(
+                        this.frictionData[batchIndex][dataIndex],
+                        this.bounds.minFriction,
+                        this.bounds.maxFriction
+                    );
                 } else if (mode === "stiffness" && this.stiffnessData && this.stiffnessData[batchIndex]) {
-                    // Normalize stiffness using a fixed range for comparison
-                    // Model outputs range [100000, 500000]
-                    const s = this.stiffnessData[batchIndex][dataIndex];
-                    const stiffnessMin = 100000.0;
-                    const stiffnessMax = 500000.0;
-                    value = (s - stiffnessMin) / (stiffnessMax - stiffnessMin);
-                    value = Math.max(0, Math.min(1, value));
+                    // Normalize against the data range shipped in bounds (falls back to [0, 1]).
+                    value = this.#normalizeToRange(
+                        this.stiffnessData[batchIndex][dataIndex],
+                        this.bounds.minStiffness,
+                        this.bounds.maxStiffness
+                    );
                 } else {
                     value = this.calculateNormalizedHeight(position.getZ(i));
                 }
