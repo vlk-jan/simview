@@ -26,20 +26,27 @@ python example.py
 
 This script demonstrates how to use the Python API to create a simulation with wavy terrain, dynamic bodies, and time-series data.
 
-To run the script, ensure that `numpy` and `torch` are installed in your Python environment. You can install them using pip:
-
-```bash
-pip install numpy torch
-```
+The Python authoring API (`simview.scene`, `simview.state`, `simview.model`) depends on
+`torch` and `einops`. Install them with the optional `authoring` extra shown below.
+Only these are needed to *build* simulations; *viewing* an existing JSON file does not
+require `torch`.
 
 ---
 
 ## Installation
 
-You can install SimView directly from the source:
+Requires **Python 3.12+**.
+
+To only view existing simulation JSON files:
 
 ```bash
 pip install -e .
+```
+
+To also author simulations from Python (installs `torch` and `einops`):
+
+```bash
+pip install -e ".[authoring]"
 ```
 
 For independent use of this repository, use `venv` or `uv`:
@@ -47,11 +54,11 @@ For independent use of this repository, use `venv` or `uv`:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[authoring]"
 ```
 
 ```bash
-uv sync
+uv sync --extra authoring
 source .venv/bin/activate
 ```
 
@@ -112,130 +119,104 @@ Once the visualizer is running, you can interact with the simulation using the f
 
 ## JSON Format Specification
 
-If you prefer to generate data files manually or from another language, SimView uses a JSON format split into two main sections: `model` (static data) and `state` (dynamic data).
+If you prefer to generate data files manually or from another language, SimView uses a
+single JSON document with two top-level keys: `model` (static data, sent once) and
+`states` (an array of time-ordered snapshots). This is exactly what `SimulationScene.save()`
+produces.
+
+```json
+{ "model": { ... }, "states": [ { ... }, { ... } ] }
+```
 
 ### Model (Static Data)
 
-The `model` section defines the static components of your simulation, including bodies and terrain shared across all batches.
+- **`simBatches`** *(integer)* — number of parallel simulation instances (batches).
+- **`scalarNames`** *(array[string])* — names of per-batch scalar time-series (e.g. `"energy"`).
+- **`dt`** *(float)* — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.
+- **`collapse`** *(boolean)* — UI hint to start with the body-state window collapsed.
+- **`bodies`** *(array)* — dynamic bodies. Each entry:
+  - **`name`** *(string)* — unique identifier, referenced from each state.
+  - **`shape`** *(object)* — geometry, keyed by a **string** `type`:
+    - `"box"` — requires `hx`, `hy`, `hz` (half-extents).
+    - `"sphere"` — requires `radius`.
+    - `"cylinder"` — requires `radius`, `height`.
+    - `"pointcloud"` — requires `points` *(array[array[3]])* in the body's local frame.
+    - `"mesh"` — requires `vertices` *(array[array[3]])* and `faces` *(array[array[3]])*.
+  - **`availableAttributes`** *(array[string], optional)* — which optional per-state
+    fields this body provides. Any of `"contacts"`, `"velocity"`, `"angularVelocity"`,
+    `"force"`, `"torque"`.
+- **`staticObjects`** *(array, optional)* — non-moving geometry. Each entry has `name`,
+  `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
+  *(array, one per batch)* using the same shape objects as bodies.
+- **`terrain`** *(object)* — heightfield shared or per-batch:
+  - **`dimensions`**: `sizeX`, `sizeY` *(float)* and `resolutionX`, `resolutionY` *(int)*.
+  - **`bounds`**: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`. When friction/stiffness
+    data is present, also `minFriction`/`maxFriction` and/or `minStiffness`/`maxStiffness`,
+    which the viewer uses to normalize the color map.
+  - **`isSingleton`** *(boolean)* — `true` when one terrain is shared by all batches;
+    `false` when each batch has its own.
+  - **`heightData`** *(array[array[float]])* — one flattened `resolutionX * resolutionY`
+    grid per batch (a single flat array is also accepted and treated as one batch).
+  - **`normals`** *(array[array[array[3]]])* — per-batch surface normals, one `[x, y, z]`
+    per grid point.
+  - **`frictionData`**, **`stiffnessData`** *(array[array[float]] | null, optional)* —
+    per-batch scalar fields over the grid, selectable as terrain color modes.
 
-- **`simBatches`** *(integer)*
-  The number of simulation batches to visualize. Each batch can have unique transforms for the bodies, but shares the same terrain.
-  *Example*: `2` for two parallel simulations.
+### States (Dynamic Data)
 
-- **`scalarNames`** *(array[string])*
-  A list of names for scalar properties (e.g., `"energy"`, `"reward"`) that can vary over time and across batches.
+`states` is an array; each element is one snapshot:
 
-- **`bodies`** *(array)*
-  An array of objects representing the physical bodies in the simulation. Each body includes:
-  - **`name`** *(string)*
-    A unique identifier for the body (e.g., `"Box"`).
-  - **`shape`** *(object)*
-    Defines the body’s geometry:
-    - **`type`** *(integer)*
-      The shape type:
-      - `0`: Custom (user-defined)
-      - `1`: Box (requires `hx`, `hy`, `hz`)
-      - `2`: Sphere (requires `radius`)
-      - `3`: Cylinder (requires `radius`, `height`)
-    - **`hx`, `hy`, `hz`** *(float)*
-      Half-lengths along x, y, z axes for a box shape.
-    - **`radius`** *(float)*
-      Radius for sphere or cylinder shapes.
-    - **`height`** *(float)*
-      Height for cylinder shapes.
-  - **`bodyTransform`** *(array[array[7]])*
-    An array of transforms, one per batch. Each transform is `[x, y, z, w, qx, qy, qz]`, where:
-    - `[x, y, z]`: Position
-    - `[w, qx, qy, qz]`: Quaternion rotation (scalar-first).
-  - **`bodyPoints`** *(array[array[3]])*
-    Points in the body’s local frame used for collision detection, each as `[x, y, z]`.
+- **`time`** *(float)* — snapshot time in seconds.
+- **`bodies`** *(array)* — per body:
+  - **`name`** *(string)* — matches a `model.bodies[].name`.
+  - **`bodyTransform`** — pose. Batched: `array[array[7]]`, one `[x, y, z, w, qx, qy, qz]`
+    per batch; single: a flat `[x, y, z, w, qx, qy, qz]`.
+  - **`contacts`** *(array[array[int]], optional)* — per batch, indices of contacting
+    points (into the body's pointcloud `points`). Empty array means no contacts.
+  - **`velocity`**, **`angularVelocity`**, **`force`**, **`torque`**
+    *(array[array[3]], optional)* — per-batch 3-vectors.
+- **`<scalarName>`** *(array[float])* — for each name in `model.scalarNames`, one value per batch.
 
-- **`terrain`** *(object)*
-  Defines the terrain shared across all batches:
-  - **`dimensions`** *(object)*
-    - **`sizeX`, `sizeY`** *(float)*: Physical size of the terrain.
-    - **`resolutionX`, `resolutionY`** *(integer)*: Number of grid points.
-  - **`bounds`** *(object)*: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`.
-  - **`heightData`** *(array[float])*: A flattened 2D array of height values.
-  - **`normals`** *(array[array[3]])*: Surface normals for each grid point.
-
-### State (Dynamic Data)
-
-The `state` section captures the simulation’s current state at a specific time.
-
-- **`time`** *(float)*
-  The current simulation time in seconds.
-
-- **`bodies`** *(array)*
-  Dynamic properties for each body across all batches:
-  - **`name`** *(string)*
-    Matches the body name from the `model`.
-  - **`bodyTransform`** *(array[array[7]])*
-    Current transforms for each batch (`[x, y, z, w, qx, qy, qz]`).
-  - **`bodyVelocity`** *(array[array[6]])*
-    Velocities for each batch, as `[vx, vy, vz, ωx, ωy, ωz]`.
-  - **`bodyForce`** *(array[array[6]])*
-    Forces and torques for each batch, as `[fx, fy, fz, τx, τy, τz]`.
-  - **`contacts`** *(array[array[integer]])*
-    An array of contact point indices (from `bodyPoints`) for each batch.
-  - **[Scalar Values]** *(array[float])*
-    For each name in `model.scalarNames`, an array of values, one per batch.
-
----
-
-## Examples
-
-### Example Model (2 Batches)
-
-This defines a simple model with one box in two simulation batches:
+### Example (2 batches, one box, flat terrain)
 
 ```json
 {
   "model": {
     "simBatches": 2,
     "scalarNames": ["energy"],
+    "dt": 0.1,
+    "collapse": false,
     "bodies": [
       {
         "name": "Box",
-        "shape": { "type": 1, "hx": 1.0, "hy": 1.0, "hz": 1.0 },
-        "bodyTransform": [
-          [0, 0, 0, 1, 0, 0, 0],  // Batch 1: Positioned at origin
-          [2, 0, 0, 1, 0, 0, 0]   // Batch 2: Shifted 2 units along x-axis
-        ],
-        "bodyPoints": [[0, 0, 0]]  // Single collision point at center
+        "shape": { "type": "box", "hx": 0.5, "hy": 0.5, "hz": 0.5 },
+        "availableAttributes": ["velocity"]
       }
     ],
+    "staticObjects": [],
     "terrain": {
       "dimensions": { "sizeX": 10.0, "sizeY": 10.0, "resolutionX": 2, "resolutionY": 2 },
       "bounds": { "minX": -5.0, "maxX": 5.0, "minY": -5.0, "maxY": 5.0, "minZ": 0.0, "maxZ": 0.0 },
-      "heightData": [0.0, 0.0, 0.0, 0.0],
-      "normals": [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]]
+      "isSingleton": true,
+      "heightData": [[0.0, 0.0, 0.0, 0.0]],
+      "normals": [[[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]]]
     }
-  }
-}
-```
-
-### Example State (2 Batches)
-
-This shows the dynamic state of the above model at time 1.5 seconds:
-
-```json
-{
-  "time": 1.5,
-  "bodies": [
+  },
+  "states": [
     {
-      "name": "Box",
-      "bodyTransform": [
-        [0, 0, 1, 1, 0, 0, 0],  // Batch 1: Moved up 1 unit
-        [2, 0, 0, 1, 0, 0, 0]   // Batch 2: Still at initial position
-      ],
-      "bodyVelocity": [
-        [0, 0, -0.1, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0]
-      ],
-      "contacts": [
-        [0],  // Batch 1: Center point in contact
-        []    // Batch 2: No contacts
+      "time": 0.0,
+      "bodies": [
+        {
+          "name": "Box",
+          "bodyTransform": [
+            [0, 0, 1, 1, 0, 0, 0],
+            [2, 0, 1, 1, 0, 0, 0]
+          ],
+          "velocity": [
+            [0, 0, -0.1],
+            [0, 0, 0]
+          ]
+        }
       ],
       "energy": [1.2, 0.1]
     }
@@ -248,13 +229,29 @@ This shows the dynamic state of the above model at time 1.5 seconds:
 ## Notes
 
 - **Quaternion Convention**
-  Quaternions use `[w, x, y, z]` (scalar-first format).
+  Quaternions use `[w, x, y, z]` (scalar-first format), packed into `bodyTransform` after the position.
 
 - **Terrain Consistency**
-  Ensure `heightData` and `normals` arrays contain exactly `resolutionX * resolutionY` elements.
+  Each per-batch `heightData` grid and `normals` list must contain exactly
+  `resolutionX * resolutionY` elements.
 
 - **Batch Synchronization**
-  All arrays (e.g., `bodyTransform`, `bodyVelocity`) must have the same length as `simBatches`.
+  Per-batch arrays (`bodyTransform`, `velocity`, scalar values, …) must have length `simBatches`.
+  When `terrain.isSingleton` is `true`, `heightData`/`normals` hold a single batch that is
+  reused for all instances.
 
 - **Contact Points**
-  The `contacts` field lists indices from `bodyPoints` for each batch. An empty array means no contacts.
+  The `contacts` field lists point indices into a body's pointcloud `points` for each batch.
+  An empty array means no contacts.
+
+---
+
+## License and Third-Party Notices
+
+SimView is distributed under the [BSD 3-Clause License](LICENSE).
+
+The web interface loads several third-party libraries from CDNs, including
+[**CanvasJS**](https://canvasjs.com/) for scalar plotting. **CanvasJS is a commercial
+product**; its free version is licensed for non-commercial use only. If you intend to use
+SimView in a commercial setting, review the CanvasJS license and obtain a license or
+replace it with a permissively licensed charting library.
