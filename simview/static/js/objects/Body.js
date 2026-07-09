@@ -58,29 +58,28 @@ export class Body {
             }
         }
 
-        // Optional attributes management
+        // Optional attributes management: only what the JSON actually declares as
+        // available is exposed to the UI, so options for missing data stay hidden.
         this.availableAttributes = new Set();
         if (bodyData.availableAttributes) {
             bodyData.availableAttributes.forEach(attr => this.availableAttributes.add(attr));
         }
 
-        // Ensure standard attributes are marked as available if they arrive in state
-        // We map README names (velocity, force) to internal storage
+        // Storage/updaters are always set up so state updates can be applied if
+        // data arrives, independent of whether the attribute is UI-visible.
         this.attributeStorage = new Map();
         this.attributeUpdaters = new Map();
 
         const vectorAttrs = ["velocity", "angularVelocity", "force", "torque"];
         vectorAttrs.forEach(attr => {
-            this.availableAttributes.add(attr);
             this.attributeStorage.set(attr, Array(this.simBatches).fill().map(() => new THREE.Vector3()));
             this.attributeUpdaters.set(attr, (data, batchIndex) => this.updateBodyVector(attr, data, batchIndex));
         });
 
-        this.availableAttributes.add("contacts");
         this.attributeStorage.set("contacts", Array(this.simBatches).fill().map(() => []));
         this.attributeUpdaters.set("contacts", (data, batchIndex) => this.updateContactPointsVisibility(data, batchIndex));
 
-        this.hasContacts = true;
+        this.hasContacts = this.availableAttributes.has("contacts");
 
         // Reusable temporaries for hot-path matrix updates (avoid per-frame allocations)
         this._worldPos = new THREE.Vector3();
@@ -419,33 +418,20 @@ export class Body {
             }
         }
 
-        // Update bodyVelocity -> velocity + angularVelocity
-        if (bodyState.bodyVelocity) {
-            const velData = bodyState.bodyVelocity;
-            if (Array.isArray(velData[0])) {
-                for (let i = 0; i < Math.min(this.simBatches, velData.length); i++) {
-                    const v = velData[i];
-                    if (v.length >= 6) {
-                        this.updateAttribute("velocity", [v[0], v[1], v[2]], i);
-                        this.updateAttribute("angularVelocity", [v[3], v[4], v[5]], i);
-                    }
+        // Update vector attributes (velocity, angularVelocity, force, torque). Each
+        // is provided directly under its own key, batched or single like bodyTransform.
+        const vectorAttrs = ["velocity", "angularVelocity", "force", "torque"];
+        vectorAttrs.forEach((attr) => {
+            const data = bodyState[attr];
+            if (!data) return;
+            if (Array.isArray(data[0])) {
+                for (let i = 0; i < Math.min(this.simBatches, data.length); i++) {
+                    this.updateAttribute(attr, data[i], i);
                 }
+            } else {
+                this.updateAttribute(attr, data, 0);
             }
-        }
-
-        // Update bodyForce -> force + torque
-        if (bodyState.bodyForce) {
-            const forceData = bodyState.bodyForce;
-            if (Array.isArray(forceData[0])) {
-                for (let i = 0; i < Math.min(this.simBatches, forceData.length); i++) {
-                    const f = forceData[i];
-                    if (f.length >= 6) {
-                        this.updateAttribute("force", [f[0], f[1], f[2]], i);
-                        this.updateAttribute("torque", [f[3], f[4], f[5]], i);
-                    }
-                }
-            }
-        }
+        });
 
         if (bodyState.contacts) {
             const contactsData = bodyState.contacts;
@@ -580,6 +566,22 @@ export class Body {
 
     getAvailableAttributes() {
         return this.availableAttributes;
+    }
+
+    // Which of the mesh/wireframe/points representations this body actually has,
+    // so the UI can only offer visualization modes that will show something.
+    getAvailableVisualizationModes() {
+        const modes = [];
+        for (const type of ["mesh", "wireframe", "points"]) {
+            const rep = this.representations[type];
+            if (
+                rep instanceof THREE.InstancedMesh ||
+                (Array.isArray(rep) && rep.length > 0)
+            ) {
+                modes.push(type);
+            }
+        }
+        return modes;
     }
 
     dispose() {

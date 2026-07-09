@@ -6,6 +6,7 @@ export class UIControls {
     constructor(app) {
         this.app = app;
         this.attributeAvailability = this.determineAttributeAvailability();
+        this.visualizationModes = this.determineAvailableVisualizationModes();
         this.gui = this.createDatGUI();
         this.keyboardControlsListener = null;
         this.setupKeyboardControls(app);
@@ -38,6 +39,17 @@ export class UIControls {
         });
 
         return availability;
+    }
+
+    // Union of visualization modes actually available across all bodies, plus a
+    // "none" option to hide bodies entirely (e.g. for terrain-only viewing).
+    determineAvailableVisualizationModes() {
+        const modes = new Set();
+        this.app.bodies.forEach((body) => {
+            body.getAvailableVisualizationModes().forEach((m) => modes.add(m));
+        });
+        modes.add("none");
+        return [...modes];
     }
 
     changeTargetBatch(key) {
@@ -82,76 +94,83 @@ export class UIControls {
     createDatGUI() {
         this.gui = new GUI();
 
-        const controls = {
-            bodyVisualizationMode: this.app.uiState.bodyVisualizationMode,
-            showAxes: this.app.uiState.axesVisible,
-            showTrails: this.app.uiState.trailsVisible,
-            showContacts: this.app.uiState.attributeVisible.contacts,
-            showVelocity: this.app.uiState.attributeVisible.velocity,
-            showAngularVelocity: this.app.uiState.attributeVisible.angularVelocity,
-            showForce: this.app.uiState.attributeVisible.force,
-            showTorque: this.app.uiState.attributeVisible.torque,
-        };
+        // Only show body-related controls when there's actually a body to control
+        if (this.app.bodies && this.app.bodies.size > 0) {
+            let defaultVisualizationMode = this.app.uiState.bodyVisualizationMode;
+            if (!this.visualizationModes.includes(defaultVisualizationMode)) {
+                defaultVisualizationMode =
+                    this.visualizationModes.find((m) => m !== "none") || "none";
+                this.app.uiState.bodyVisualizationMode = defaultVisualizationMode;
+            }
 
-        this.bodyFolder = this.gui.addFolder("Body Options");
+            const controls = {
+                bodyVisualizationMode: defaultVisualizationMode,
+                showAxes: this.app.uiState.axesVisible,
+                showTrails: this.app.uiState.trailsVisible,
+                showContacts: this.app.uiState.attributeVisible.contacts,
+                showVelocity: this.app.uiState.attributeVisible.velocity,
+                showAngularVelocity: this.app.uiState.attributeVisible.angularVelocity,
+                showForce: this.app.uiState.attributeVisible.force,
+                showTorque: this.app.uiState.attributeVisible.torque,
+            };
 
-        this.bodyFolder
-            .add(controls, "bodyVisualizationMode", ["mesh", "wireframe", "points"])
-            .name("Body Visualization Mode (B)")
-            .onChange((value) => {
-                this.updateVisualizationMode(value);
-            });
+            this.bodyFolder = this.gui.addFolder("Body Options");
 
-        this.bodyFolder
-            .add(controls, "showAxes")
-            .name("Show Axes (A)")
-            .onChange((value) => {
-                this.updateAxesVisibility(value);
-            });
-
-        this.bodyFolder
-            .add(controls, "showTrails")
-            .name("Show Trails (G)")
-            .onChange((value) => {
-                this.updateTrailsVisibility(value);
-            });
-
-        // Combined attribute controls with availability check
-        const attributeControls = [
-            { property: "showContacts", name: "Show Contacts (C)", type: "contacts" },
-            {
-                property: "showVelocity",
-                name: "Show Linear Velocity (V)",
-                type: "velocity",
-            },
-            {
-                property: "showAngularVelocity",
-                name: "Show Angular Velocity (W)",
-                type: "angularVelocity",
-            },
-            {
-                property: "showForce",
-                name: "Show Linear Force (F)",
-                type: "force",
-            },
-            { property: "showTorque", name: "Show Torque (T)", type: "torque" },
-        ];
-
-        attributeControls.forEach((control) => {
-            const controller = this.bodyFolder
-                .add(controls, control.property)
-                .name(control.name)
+            this.bodyFolder
+                .add(controls, "bodyVisualizationMode", this.visualizationModes)
+                .name("Body Visualization Mode (B)")
                 .onChange((value) => {
-                    this.updateAttributeVisibility(control.type, value);
+                    this.updateVisualizationMode(value);
                 });
 
-            // Disable the controller if the attribute type is not available in any body
-            if (!this.attributeAvailability[control.type]) {
-                controller.disable();
-            }
-        });
+            this.bodyFolder
+                .add(controls, "showAxes")
+                .name("Show Axes (A)")
+                .onChange((value) => {
+                    this.updateAxesVisibility(value);
+                });
 
-        this.bodyFolder.open();
+            this.bodyFolder
+                .add(controls, "showTrails")
+                .name("Show Trails (G)")
+                .onChange((value) => {
+                    this.updateTrailsVisibility(value);
+                });
+
+            // Only create toggles for attributes actually present in the loaded data
+            const attributeControls = [
+                { property: "showContacts", name: "Show Contacts (C)", type: "contacts" },
+                {
+                    property: "showVelocity",
+                    name: "Show Linear Velocity (V)",
+                    type: "velocity",
+                },
+                {
+                    property: "showAngularVelocity",
+                    name: "Show Angular Velocity (W)",
+                    type: "angularVelocity",
+                },
+                {
+                    property: "showForce",
+                    name: "Show Linear Force (F)",
+                    type: "force",
+                },
+                { property: "showTorque", name: "Show Torque (T)", type: "torque" },
+            ];
+
+            attributeControls
+                .filter((control) => this.attributeAvailability[control.type])
+                .forEach((control) => {
+                    this.bodyFolder
+                        .add(controls, control.property)
+                        .name(control.name)
+                        .onChange((value) => {
+                            this.updateAttributeVisibility(control.type, value);
+                        });
+                });
+
+            this.bodyFolder.open();
+        }
 
         // Terrain controls (unchanged)
         this.terrainFolder = this.gui.addFolder("Terrain Options");
@@ -233,7 +252,7 @@ export class UIControls {
             (event) => {
                 switch (event.key.toLowerCase()) {
                     case "b":
-                        const modes = ["mesh", "wireframe", "points"];
+                        const modes = this.visualizationModes;
                         const currentIndex = modes.indexOf(
                             this.app.uiState.bodyVisualizationMode
                         );
@@ -283,6 +302,7 @@ export class UIControls {
     }
 
     findController(property) {
+        if (!this.bodyFolder) return null;
         for (const controller of this.bodyFolder.controllers) {
             if (controller.property === property) {
                 return controller;
