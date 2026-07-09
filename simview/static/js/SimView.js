@@ -92,6 +92,10 @@ export class SimView {
                     const model = await modelResponse.json();
                     console.timeEnd("parse_model");
 
+                    console.time("fetch_blobs");
+                    await this.fetchModelBlobs(model);
+                    console.timeEnd("fetch_blobs");
+
                     console.log("Model received, initializing components...");
                     this.initFromModel(model);
                     this.canReceiveStates = true;
@@ -132,6 +136,25 @@ export class SimView {
                 socket.once("connect", doFetch);
             }
         });
+    }
+
+    async fetchModelBlobs(obj) {
+        if (!obj || typeof obj !== 'object') return;
+        for (const key of Object.keys(obj)) {
+            const val = obj[key];
+            if (typeof val === 'string' && val.startsWith('/blob/')) {
+                const res = await fetch(val);
+                const arrayBuffer = await res.arrayBuffer();
+                const dataView = new DataView(arrayBuffer);
+                const floatArray = new Float32Array(arrayBuffer.byteLength / 4);
+                for (let i = 0; i < floatArray.length; i++) {
+                    floatArray[i] = dataView.getFloat32(i * 4, true); // true = little-endian
+                }
+                obj[key] = floatArray;
+            } else if (typeof val === 'object') {
+                await this.fetchModelBlobs(val);
+            }
+        }
     }
 
     processStates(statesData) {

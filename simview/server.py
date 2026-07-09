@@ -129,7 +129,32 @@ class SimViewServer:
             except (OSError, ValueError, json.JSONDecodeError) as e:
                 print(f"Warning: failed to load batch names from {names_path}: {e}")
 
+        self.blobs = []
+
+        def extract_blobs(obj):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if isinstance(v, str) and v.startswith("__b64__"):
+                        blob_id = len(self.blobs)
+                        import base64
+                        self.blobs.append(base64.b64decode(v[7:]))
+                        obj[k] = f"/blob/{blob_id}"
+                    else:
+                        extract_blobs(v)
+            elif isinstance(obj, list):
+                for i, v in enumerate(obj):
+                    if isinstance(v, str) and v.startswith("__b64__"):
+                        blob_id = len(self.blobs)
+                        import base64
+                        self.blobs.append(base64.b64decode(v[7:]))
+                        obj[i] = f"/blob/{blob_id}"
+                    else:
+                        extract_blobs(v)
+
         self.model_data = model_data
+
+        if self.model_data is not None:
+            extract_blobs(self.model_data)
 
         # Pre-serialize and pre-compress once so HTTP endpoints never do work per request.
         # compresslevel=1 is fastest (still typically 5-10x smaller for JSON). model_data
@@ -183,6 +208,15 @@ class SimViewServer:
                 media_type="application/json",
                 status_code=404,
             )
+
+        @self.app.get("/blob/{blob_id}")
+        async def get_blob(blob_id: int):
+            if 0 <= blob_id < len(self.blobs):
+                return Response(
+                    content=self.blobs[blob_id],
+                    media_type="application/octet-stream"
+                )
+            return Response(status_code=404)
 
         @self.app.post("/batch-names")
         async def set_batch_names(request: Request):

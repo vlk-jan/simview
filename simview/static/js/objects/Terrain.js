@@ -10,7 +10,15 @@ export class Terrain {
         this.group = null;
 
         // Data normalization: Ensure heightData is array of arrays (batches)
-        if (
+        if (terrainData.heightData instanceof Float32Array) {
+            const batchSize = this.app.batchManager.simBatches;
+            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
+            const batches = [];
+            for (let i = 0; i < batchSize; i++) {
+                batches.push(terrainData.heightData.subarray(i * resolution, (i + 1) * resolution));
+            }
+            terrainData.heightData = batches;
+        } else if (
             Array.isArray(terrainData.heightData) &&
             terrainData.heightData.length > 0 &&
             typeof terrainData.heightData[0] === "number"
@@ -21,7 +29,15 @@ export class Terrain {
         this.heightData = terrainData.heightData;
 
         // Normalize frictionData
-        if (
+        if (terrainData.frictionData instanceof Float32Array) {
+            const batchSize = this.app.batchManager.simBatches;
+            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
+            const batches = [];
+            for (let i = 0; i < batchSize; i++) {
+                batches.push(terrainData.frictionData.subarray(i * resolution, (i + 1) * resolution));
+            }
+            terrainData.frictionData = batches;
+        } else if (
             Array.isArray(terrainData.frictionData) &&
             terrainData.frictionData.length > 0 &&
             typeof terrainData.frictionData[0] === "number"
@@ -31,7 +47,15 @@ export class Terrain {
         this.frictionData = terrainData.frictionData;
 
         // Normalize stiffnessData
-        if (
+        if (terrainData.stiffnessData instanceof Float32Array) {
+            const batchSize = this.app.batchManager.simBatches;
+            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
+            const batches = [];
+            for (let i = 0; i < batchSize; i++) {
+                batches.push(terrainData.stiffnessData.subarray(i * resolution, (i + 1) * resolution));
+            }
+            terrainData.stiffnessData = batches;
+        } else if (
             Array.isArray(terrainData.stiffnessData) &&
             terrainData.stiffnessData.length > 0 &&
             typeof terrainData.stiffnessData[0] === "number"
@@ -42,7 +66,16 @@ export class Terrain {
         this.isSingleton = terrainData.isSingleton;
 
         // Data normalization: Ensure normals is array of arrays of vectors
-        if (
+        if (terrainData.normals instanceof Float32Array) {
+            const batchSize = this.app.batchManager.simBatches;
+            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
+            const batches = [];
+            const normalsPerBatch = resolution * 3;
+            for (let i = 0; i < batchSize; i++) {
+                batches.push(terrainData.normals.subarray(i * normalsPerBatch, (i + 1) * normalsPerBatch));
+            }
+            terrainData.normals = batches;
+        } else if (
             Array.isArray(terrainData.normals) &&
             terrainData.normals.length > 0
         ) {
@@ -313,7 +346,14 @@ export class Terrain {
                     const z = heightData[dataIndex];
 
                     // Get normal data
-                    const [nx, ny, nz] = normals[dataIndex];
+                    let nx, ny, nz;
+                    if (normals instanceof Float32Array) {
+                        nx = normals[dataIndex * 3];
+                        ny = normals[dataIndex * 3 + 1];
+                        nz = normals[dataIndex * 3 + 2];
+                    } else {
+                        [nx, ny, nz] = normals[dataIndex];
+                    }
 
                     const origin = new THREE.Vector3(x, y, z);
                     const direction = new THREE.Vector3(nx, ny, nz);

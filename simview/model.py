@@ -96,16 +96,16 @@ class SimViewTerrain:
         max_z = heightmap.max().item()
         extent_x = max_x - min_x
         extent_y = max_y - min_y
-        height_data_list = rearrange(heightmap, "b d1 d2 -> b (d1 d2)").tolist()
-        normals_list = rearrange(normals, "b c d1 d2 -> b (d1 d2) c").tolist()
+        height_data_list = "__b64__" + __import__('base64').b64encode(rearrange(heightmap, "b d1 d2 -> b (d1 d2)").cpu().numpy().astype('<f4').tobytes()).decode('utf-8')
+        normals_list = "__b64__" + __import__('base64').b64encode(rearrange(normals, "b c d1 d2 -> b (d1 d2) c").cpu().numpy().astype('<f4').tobytes()).decode('utf-8')
 
         friction_data_list = None
         min_friction = max_friction = None
         if friction_map is not None:
             assert friction_map.ndim == 3
-            friction_data_list = rearrange(
+            friction_data_list = "__b64__" + __import__('base64').b64encode(rearrange(
                 friction_map, "b d1 d2 -> b (d1 d2)"
-            ).tolist()
+            ).cpu().numpy().astype('<f4').tobytes()).decode('utf-8')
             min_friction = friction_map.min().item()
             max_friction = friction_map.max().item()
 
@@ -113,9 +113,9 @@ class SimViewTerrain:
         min_stiffness = max_stiffness = None
         if stiffness_map is not None:
             assert stiffness_map.ndim == 3
-            stiffness_data_list = rearrange(
+            stiffness_data_list = "__b64__" + __import__('base64').b64encode(rearrange(
                 stiffness_map, "b d1 d2 -> b (d1 d2)"
-            ).tolist()
+            ).cpu().numpy().astype('<f4').tobytes()).decode('utf-8')
             min_stiffness = stiffness_map.min().item()
             max_stiffness = stiffness_map.max().item()
 
@@ -166,18 +166,10 @@ class SimViewBody:
         shape_dict = {"type": body_type.value}
         for key, value in kwargs.items():
             if isinstance(value, torch.Tensor):
-                # Specific handling for mesh/pointcloud data if needed later
-                if (
-                    body_type == BodyShapeType.MESH and key in ["vertices", "faces"]
-                ) or (body_type == BodyShapeType.POINTCLOUD and key == "points"):
-                    assert value.ndim == 2, f"{key} must be a 2D tensor"
-                    assert value.shape[1] == 3, f"{key} must have shape (N, 3)"
-                    shape_dict[key] = value.tolist()
+                if value.numel() > 1:
+                    shape_dict[key] = "__b64__" + __import__('base64').b64encode(value.cpu().numpy().astype('<f4').tobytes()).decode('utf-8')
                 else:
-                    # General tensor conversion (might need adjustment)
-                    shape_dict[key] = (
-                        value.tolist() if value.numel() > 1 else value.item()
-                    )
+                    shape_dict[key] = value.item()
             else:
                 shape_dict[key] = value
         return shape_dict
