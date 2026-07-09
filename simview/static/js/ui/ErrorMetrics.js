@@ -273,6 +273,13 @@ export class ErrorMetrics {
                     lineThickness: 1,
                     color: "#4c9aff",
                     dataPoints: this.posSeries,
+                    click: (e) => {
+                        if (e.dataPoint && e.dataPoint.x !== undefined) {
+                            if (this.app.animationController) {
+                                this.app.animationController.goToTime(e.dataPoint.x);
+                            }
+                        }
+                    }
                 },
                 {
                     type: "line",
@@ -282,6 +289,13 @@ export class ErrorMetrics {
                     lineThickness: 1,
                     color: "#ff9f4c",
                     dataPoints: this.rotSeries,
+                    click: (e) => {
+                        if (e.dataPoint && e.dataPoint.x !== undefined) {
+                            if (this.app.animationController) {
+                                this.app.animationController.goToTime(e.dataPoint.x);
+                            }
+                        }
+                    }
                 },
             ],
         });

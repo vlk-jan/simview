@@ -301,8 +301,13 @@ export class ScalarPlotter {
                     color: this.app.batchManager.getColorForBatch(i),
                     name: `${name} ${i}`,
                     dataPoints: [],
-                    click: () => {
+                    click: (e) => {
                         this.app.batchManager.setActiveBatch(i);
+                        if (e.dataPoint && e.dataPoint.x !== undefined) {
+                            if (this.app.animationController) {
+                                this.app.animationController.goToTime(e.dataPoint.x);
+                            }
+                        }
                     },
                     lineColor: this.app.batchManager.getColorForBatch(i),
                     lineDashType: "solid",
