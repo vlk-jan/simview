@@ -33,11 +33,20 @@ def _load_json(path: Path) -> dict:
 
 
 def _expand_batched(
-    values: list, is_singleton: bool, batch_size: int, field: str, label: str
-) -> list:
+    values: list | str, is_singleton: bool, batch_size: int, field: str, label: str
+) -> list | str:
     # Singleton data is nominally a single shared entry, but some producers (e.g.
     # SimViewModel.create_terrain's auto-broadcast) already write it out fully
     # replicated to batch_size while still marking isSingleton=true. Accept both.
+    if isinstance(values, str) and values.startswith("__b64__"):
+        import base64
+
+        if is_singleton and batch_size > 1:
+            raw = base64.b64decode(values[7:])
+            expanded = raw * batch_size
+            return "__b64__" + base64.b64encode(expanded).decode("utf-8")
+        return values
+
     if len(values) == batch_size:
         return values
     if is_singleton and len(values) == 1:
@@ -172,18 +181,34 @@ def _merge_terrain(
             "stiffnessData from the merged terrain."
         )
 
+    def _concat_lists_or_b64(items: list) -> list | str | None:
+        if not items:
+            return None
+        if isinstance(items[0], str) and items[0].startswith("__b64__"):
+            import base64
+
+            merged = bytearray()
+            for item in items:
+                merged.extend(base64.b64decode(item[7:]))
+            return "__b64__" + base64.b64encode(merged).decode("utf-8")
+        else:
+            merged = []
+            for item in items:
+                merged.extend(item)
+            return merged
+
     height_data, normals, friction_data, stiffness_data = [], [], [], []
     min_z = max_z = None
     min_friction = max_friction = min_stiffness = max_stiffness = None
     for model, batch_size, label in zip(models, batch_sizes, labels):
         terrain = model["terrain"]
         singleton = terrain.get("isSingleton", False)
-        height_data.extend(
+        height_data.append(
             _expand_batched(
                 terrain["heightData"], singleton, batch_size, "heightData", label
             )
         )
-        normals.extend(
+        normals.append(
             _expand_batched(terrain["normals"], singleton, batch_size, "normals", label)
         )
 
@@ -191,7 +216,7 @@ def _merge_terrain(
         min_z = bounds["minZ"] if min_z is None else min(min_z, bounds["minZ"])
         max_z = bounds["maxZ"] if max_z is None else max(max_z, bounds["maxZ"])
         if has_friction:
-            friction_data.extend(
+            friction_data.append(
                 _expand_batched(
                     terrain["frictionData"],
                     singleton,
@@ -211,7 +236,7 @@ def _merge_terrain(
                 else max(max_friction, bounds["maxFriction"])
             )
         if has_stiffness:
-            stiffness_data.extend(
+            stiffness_data.append(
                 _expand_batched(
                     terrain["stiffnessData"],
                     singleton,
@@ -250,10 +275,12 @@ def _merge_terrain(
         "dimensions": dims,
         "bounds": merged_bounds,
         "isSingleton": False,
-        "heightData": height_data,
-        "normals": normals,
-        "frictionData": friction_data if has_friction else None,
-        "stiffnessData": stiffness_data if has_stiffness else None,
+        "heightData": _concat_lists_or_b64(height_data),
+        "normals": _concat_lists_or_b64(normals),
+        "frictionData": _concat_lists_or_b64(friction_data) if has_friction else None,
+        "stiffnessData": _concat_lists_or_b64(stiffness_data)
+        if has_stiffness
+        else None,
     }
 
 

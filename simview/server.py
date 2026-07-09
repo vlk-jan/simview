@@ -137,6 +137,7 @@ class SimViewServer:
                     if isinstance(v, str) and v.startswith("__b64__"):
                         blob_id = len(self.blobs)
                         import base64
+
                         self.blobs.append(base64.b64decode(v[7:]))
                         obj[k] = f"/blob/{blob_id}"
                     else:
@@ -146,6 +147,7 @@ class SimViewServer:
                     if isinstance(v, str) and v.startswith("__b64__"):
                         blob_id = len(self.blobs)
                         import base64
+
                         self.blobs.append(base64.b64decode(v[7:]))
                         obj[i] = f"/blob/{blob_id}"
                     else:
@@ -214,8 +216,7 @@ class SimViewServer:
         async def get_blob(blob_id: int):
             if 0 <= blob_id < len(self.blobs):
                 return Response(
-                    content=self.blobs[blob_id],
-                    media_type="application/octet-stream"
+                    content=self.blobs[blob_id], media_type="application/octet-stream"
                 )
             return Response(status_code=404)
 
@@ -272,11 +273,13 @@ class SimViewServer:
                 return
             chunk_size = 500
             for i in range(0, len(self.states_data), chunk_size):
-                chunk = self.states_data[i:i+chunk_size]
+                chunk = self.states_data[i : i + chunk_size]
                 # Send the chunk as bytes of JSON to avoid socketio json parser overhead
                 chunk_bytes = self._dumps(chunk)
                 await self.sio.emit("states_chunk", chunk_bytes, to=sid)
-                await self.sio.sleep(0.05)  # Yield control to event loop and pace chunks
+                await self.sio.sleep(
+                    0.05
+                )  # Yield control to event loop and pace chunks
 
     def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
         print(f"SimView server running on http://{host}:{port}")
