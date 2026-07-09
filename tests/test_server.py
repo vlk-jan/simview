@@ -56,11 +56,48 @@ def test_server_accepts_preloaded_data():
     assert resp.json()["simBatches"] == 1
 
 
-def test_server_requires_exactly_one_of_sim_path_or_data(tmp_path):
-    with pytest.raises(ValueError, match="exactly one"):
+def test_server_requires_at_least_one_of_sim_path_or_data():
+    with pytest.raises(ValueError, match="sim_path.*data"):
         SimViewServer()
+
+
+def test_server_accepts_both_sim_path_and_data(tmp_path):
+    # Used by the multi-file merge path: sim_path carries the original file(s) for
+    # deriving where to persist custom batch names, while data is the already-merged
+    # payload to actually serve.
     scene = build_scene(batch_size=1)
     sim_file = tmp_path / "sim.json"
     scene.save(sim_file)
-    with pytest.raises(ValueError, match="exactly one"):
-        SimViewServer(sim_path=sim_file, data={"model": {}, "states": []})
+    server = SimViewServer(
+        sim_path=sim_file, data={"model": {"simBatches": 1}, "states": []}
+    )
+    client = TestClient(server.app)
+    resp = client.get("/model")
+    assert resp.json()["simBatches"] == 1
+
+
+def test_batch_names_endpoint_persists_and_reloads(tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+    resp = client.post("/batch-names", json={"names": ["real", "sim"]})
+    assert resp.status_code == 200
+    assert client.get("/model").json()["batchNames"] == ["real", "sim"]
+
+    # A fresh server instance for the same file should pick up the saved names.
+    reloaded = SimViewServer(sim_path=sim_file)
+    reloaded_client = TestClient(reloaded.app)
+    assert reloaded_client.get("/model").json()["batchNames"] == ["real", "sim"]
+
+
+def test_batch_names_endpoint_rejects_wrong_length(tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+    resp = client.post("/batch-names", json={"names": ["only-one"]})
+    assert resp.status_code == 400

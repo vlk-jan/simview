@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import json
 import time
 from collections.abc import Sequence
@@ -40,11 +41,23 @@ class OrjsonWrapper:
 
 
 class SimViewServer:
-    def __init__(self, sim_path: str | Path | None = None, data: dict | None = None):
-        if (sim_path is None) == (data is None):
-            raise ValueError("Provide exactly one of 'sim_path' or 'data'")
-        self.sim_path = Path(sim_path) if sim_path is not None else None
+    def __init__(
+        self,
+        sim_path: str | Path | Sequence[str | Path] | None = None,
+        data: dict | None = None,
+    ):
+        if sim_path is None and data is None:
+            raise ValueError("Provide 'sim_path' and/or 'data'")
+        if sim_path is None:
+            self.sim_paths: list[Path] | None = None
+        elif isinstance(sim_path, (list, tuple)):
+            self.sim_paths = [Path(p) for p in sim_path]
+        else:
+            self.sim_paths = [Path(sim_path)]
+        # Single-file convenience accessor, used by _load_data when nothing is preloaded.
+        self.sim_path = self.sim_paths[0] if self.sim_paths else None
         self._preloaded_data = data
+        self.model_data = None
 
         # Initialize Socket.IO AsyncServer
         self.sio = socketio.AsyncServer(
@@ -75,6 +88,21 @@ class SimViewServer:
         self.setup_routes()
         self.setup_socket_handlers()
 
+    def _names_sidecar_path(self) -> Path | None:
+        """Where custom batch names get persisted, so they survive a server restart.
+
+        Keyed by a hash of all input paths (not just the first) so that merging the
+        same file with different partners doesn't collide on one sidecar."""
+        if not self.sim_paths:
+            return None
+        key = hashlib.sha1(
+            "|".join(str(p.resolve()) for p in self.sim_paths).encode()
+        ).hexdigest()[:10]
+        return (
+            self.sim_paths[0].parent
+            / f".{self.sim_paths[0].stem}.{key}.batchnames.json"
+        )
+
     def _load_data(self):
         if self._preloaded_data is not None:
             data = self._preloaded_data
@@ -91,13 +119,27 @@ class SimViewServer:
         model_data = data.get("model")
         states_data = data.get("states")
 
+        names_path = self._names_sidecar_path()
+        if model_data is not None and names_path and names_path.is_file():
+            try:
+                saved_names = json.loads(names_path.read_text())
+                sim_batches = int(model_data.get("simBatches", 1))
+                if isinstance(saved_names, list) and len(saved_names) == sim_batches:
+                    model_data["batchNames"] = saved_names
+            except (OSError, ValueError, json.JSONDecodeError) as e:
+                print(f"Warning: failed to load batch names from {names_path}: {e}")
+
+        self.model_data = model_data
+
         # Pre-serialize and pre-compress once so HTTP endpoints never do work per request.
-        # compresslevel=1 is fastest (still typically 5-10x smaller for JSON).
-        _dumps = orjson.dumps if orjson else (lambda o: json.dumps(o).encode())
+        # compresslevel=1 is fastest (still typically 5-10x smaller for JSON). model_data
+        # itself is kept around (it's small, unlike states_data) so /batch-names can
+        # patch and re-serialize it without re-reading the source file.
+        self._dumps = orjson.dumps if orjson else (lambda o: json.dumps(o).encode())
         if model_data is not None:
-            self.model_bytes = gzip.compress(_dumps(model_data), compresslevel=1)
+            self.model_bytes = gzip.compress(self._dumps(model_data), compresslevel=1)
         if states_data is not None:
-            self.states_bytes = gzip.compress(_dumps(states_data), compresslevel=1)
+            self.states_bytes = gzip.compress(self._dumps(states_data), compresslevel=1)
 
         print("Simulation data loaded successfully.")
 
@@ -142,6 +184,44 @@ class SimViewServer:
                 status_code=404,
             )
 
+        @self.app.post("/batch-names")
+        async def set_batch_names(request: Request):
+            if self.model_data is None:
+                return Response(
+                    content=b'{"message":"Model data not available"}',
+                    media_type="application/json",
+                    status_code=404,
+                )
+            body = await request.json()
+            names = body.get("names")
+            sim_batches = int(self.model_data.get("simBatches", 1))
+            if (
+                not isinstance(names, list)
+                or len(names) != sim_batches
+                or not all(isinstance(n, str) for n in names)
+            ):
+                return Response(
+                    content=b'{"message":"Expected {\\"names\\": [str, ...]} matching simBatches"}',
+                    media_type="application/json",
+                    status_code=400,
+                )
+
+            self.model_data["batchNames"] = names
+            self.model_bytes = gzip.compress(
+                self._dumps(self.model_data), compresslevel=1
+            )
+
+            names_path = self._names_sidecar_path()
+            if names_path:
+                try:
+                    names_path.write_text(json.dumps(names))
+                except OSError as e:
+                    print(
+                        f"Warning: failed to persist batch names to {names_path}: {e}"
+                    )
+
+            return {"ok": True}
+
     def setup_socket_handlers(self):
         @self.sio.on("connect")
         async def handle_connect(sid, environ):
@@ -180,7 +260,7 @@ class SimViewServer:
         if len(paths) > 1:
             from simview.merge import merge_simulation_files
 
-            server = SimViewServer(data=merge_simulation_files(paths))
+            server = SimViewServer(data=merge_simulation_files(paths), sim_path=paths)
         else:
             server = SimViewServer(sim_path=paths[0])
         port = find_free_port(host, preferred_port)

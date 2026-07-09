@@ -14,6 +14,7 @@ export class BatchManager {
         this.spacing = 0.5; // Spacing between batches in meters
         this.batchOffsets = []; // Array of {x, y, z} offsets for each batch
         this.batchPalette = []; // Array of colors for each batch
+        this.batchNames = []; // Array of display names for each batch
         this._initialize(modelData);
     }
 
@@ -58,6 +59,43 @@ export class BatchManager {
             BATCH_PALETTE_GENERATION_CONFIG.correctLightness
         );
         console.debug("Batch palette initialized:", this.batchPalette);
+
+        const providedNames = Array.isArray(modelData.batchNames)
+            ? modelData.batchNames
+            : null;
+        this.batchNames = Array.from({ length: this.simBatches }, (_, i) =>
+            providedNames && typeof providedNames[i] === "string" && providedNames[i]
+                ? providedNames[i]
+                : `Batch ${i}`
+        );
+    }
+
+    getBatchName(batchIndex) {
+        return this.batchNames[batchIndex] ?? `Batch ${batchIndex}`;
+    }
+
+    setBatchName(batchIndex, name) {
+        if (batchIndex < 0 || batchIndex >= this.simBatches) return;
+        const trimmed = (name || "").trim() || `Batch ${batchIndex}`;
+        this.batchNames[batchIndex] = trimmed;
+        this._persistBatchNames();
+        if (this.app.batchLegend) this.app.batchLegend.refresh();
+        if (this.app.errorMetrics) this.app.errorMetrics.refreshBatchLabels();
+    }
+
+    async _persistBatchNames() {
+        try {
+            const response = await fetch("/batch-names", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ names: this.batchNames }),
+            });
+            if (!response.ok) {
+                console.warn("Failed to persist batch names:", response.status);
+            }
+        } catch (e) {
+            console.warn("Failed to persist batch names:", e);
+        }
     }
 
     getSimBatches() {
@@ -144,6 +182,9 @@ export class BatchManager {
         this.app.bodyStateWindow.setSelectedBatch(batchIndex);
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setFocusedBatch(batchIndex);
+        }
+        if (this.app.batchLegend) {
+            this.app.batchLegend.highlightActive();
         }
     }
 

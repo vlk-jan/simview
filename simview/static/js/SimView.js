@@ -9,6 +9,7 @@ import { BatchManager } from "./components/BatchManager.js";
 import { ScalarPlotter } from "./ui/ScalarPlotter.js";
 import { StaticObject } from "./objects/StaticObject.js";
 import { Legend } from "./ui/Legend.js";
+import { BatchLegend } from "./ui/BatchLegend.js";
 
 export class SimView {
     constructor() {
@@ -19,6 +20,7 @@ export class SimView {
         this.animationController = null;
         this.scalarPlotter = null;
         this.legend = null;
+        this.batchLegend = null;
         this.batchManager = null;
         this.terrain = null;
         this.bodies = null;
@@ -205,6 +207,9 @@ export class SimView {
             this.uiControls = new UIControls(this);
             this.bodyStateWindow = new BodyStateWindow(this);
             this.legend = new Legend(this);
+            if (this.batchManager.simBatches >= 2) {
+                this.batchLegend = new BatchLegend(this);
+            }
             this.animationController = new AnimationController(this, model.dt);
         } catch (error) {
             console.error("Error during initFromModel:", error);
@@ -260,6 +265,10 @@ export class SimView {
         }
         if (this.legend) {
             this.legend.dispose();
+        }
+        if (this.batchLegend) {
+            this.batchLegend.dispose();
+            this.batchLegend = null;
         }
     }
 

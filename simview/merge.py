@@ -69,6 +69,20 @@ def _merge_bodies(models: list[dict], labels: list[str]) -> list[dict]:
     return bodies
 
 
+def _default_batch_names(paths: list[Path], batch_sizes: list[int]) -> list[str]:
+    """One name per output batch, derived from the source file it came from.
+    Single-batch files just use the file stem; multi-batch files get an index
+    suffix so batches from the same file are still distinguishable."""
+    names = []
+    for path, batch_size in zip(paths, batch_sizes):
+        stem = path.stem
+        if batch_size == 1:
+            names.append(stem)
+        else:
+            names.extend(f"{stem}[{j}]" for j in range(batch_size))
+    return names
+
+
 def _merge_scalar_names(models: list[dict], labels: list[str]) -> list[str]:
     names = models[0].get("scalarNames") or []
     name_set = set(names)
@@ -385,6 +399,7 @@ def merge_simulation_files(paths: list[str | Path]) -> dict:
 
     merged_model = {
         "simBatches": total_batches,
+        "batchNames": _default_batch_names(paths, batch_sizes),
         "scalarNames": scalar_names,
         "dt": models[0].get("dt"),
         "collapse": models[0].get("collapse", False),

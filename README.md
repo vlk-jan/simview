@@ -98,6 +98,11 @@ resampled onto it by nearest timestamp (no interpolation), so put the recording 
 care most about matching frame-for-frame first. See [Error Metrics](#error-metrics)
 below for a way to quantify the difference between two merged batches.
 
+Each merged file's batches are auto-named after its filename (e.g. `real_world`,
+`simulated`), shown in the [Batch Legend](#batch-legend). You can rename them from
+there — renames are saved next to the input file(s) and reloaded automatically the
+next time you open the same file(s).
+
 ---
 
 ## Visualization Controls
@@ -138,6 +143,13 @@ Toggling trails (`G`, or "Show Trails" in the Body Options panel) draws each bod
 path from the start of the simulation up to the current playback time, one line per
 batch in that batch's color. Useful for comparing the overall shape of two
 trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by frame.
+
+### Batch Legend
+
+When a scene has 2 or more batches, a toggleable "Batches" legend appears in the
+bottom-right corner, listing each batch's color, index, and name. Click a row to focus
+that batch, or click a name to rename it in place — renames persist next to the input
+file(s), so they survive a reload or server restart.
 
 ---
 
