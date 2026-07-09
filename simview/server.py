@@ -152,6 +152,7 @@ class SimViewServer:
                         extract_blobs(v)
 
         self.model_data = model_data
+        self.states_data = states_data
 
         if self.model_data is not None:
             extract_blobs(self.model_data)
@@ -264,6 +265,18 @@ class SimViewServer:
         @self.sio.on("disconnect")
         async def handle_disconnect(sid):
             print(f"Client disconnected: {sid}")
+
+        @self.sio.on("request_states")
+        async def handle_request_states(sid):
+            if not getattr(self, "states_data", None):
+                return
+            chunk_size = 500
+            for i in range(0, len(self.states_data), chunk_size):
+                chunk = self.states_data[i:i+chunk_size]
+                # Send the chunk as bytes of JSON to avoid socketio json parser overhead
+                chunk_bytes = self._dumps(chunk)
+                await self.sio.emit("states_chunk", chunk_bytes, to=sid)
+                await self.sio.sleep(0.05)  # Yield control to event loop and pace chunks
 
     def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
         print(f"SimView server running on http://{host}:{port}")

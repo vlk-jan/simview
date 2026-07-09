@@ -100,23 +100,20 @@ export class SimView {
                     this.initFromModel(model);
                     this.canReceiveStates = true;
 
-                    if (splash) splash.innerHTML = "<h1>Loading States (HTTP)...</h1>";
-                    console.time("fetch_states");
-                    const statesResponse = await fetch("/states");
-                    console.timeEnd("fetch_states");
-                    
-                    if (!statesResponse.ok) throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
-                    
-                    if (splash) splash.innerHTML = "<h1>Parsing States JSON...</h1>";
-                    console.time("parse_states");
-                    const statesData = await statesResponse.json();
-                    console.timeEnd("parse_states");
+                    // Request states via WebSocket chunking
+                    socket.emit("request_states");
 
-                    console.log(`Received ${statesData.length} states, processing...`);
-                    this.processStates(statesData);
-
-                    socket.off("states");
-                    socket.on("states", statesHandler);
+                    socket.off("states_chunk");
+                    socket.on("states_chunk", (chunkBytes) => {
+                        const jsonStr = new TextDecoder().decode(chunkBytes);
+                        const chunk = JSON.parse(jsonStr);
+                        if (this.canReceiveStates) {
+                            console.debug(`Received chunk of ${chunk.length} states`);
+                            const splash = document.getElementById("loading-splash");
+                            if (splash) splash.remove();
+                            this.processStatesChunk(chunk);
+                        }
+                    });
 
                     console.log("Initialization complete!");
                     clearTimeout(timeout);
@@ -157,33 +154,63 @@ export class SimView {
         }
     }
 
-    processStates(statesData) {
+    processStatesChunk(chunk) {
+        if (!this.statesBuffer) {
+            this.statesBuffer = [];
+        }
+        const startIndex = this.statesBuffer.length;
+        this.statesBuffer.push(...chunk);
+
         if (this.animationController) {
-            this.animationController.loadAnimation(statesData);
+            if (startIndex === 0) {
+                this.animationController.loadAnimation(this.statesBuffer);
+                if (this.scalarPlotter) {
+                    this.scalarPlotter.initFromStates(this.statesBuffer);
+                }
+            } else {
+                this.animationController.onStatesAppended();
+                if (this.scalarPlotter) {
+                    // scalarPlotter pulls from states array by reference usually
+                }
+            }
         }
-        if (this.scalarPlotter) {
-            this.scalarPlotter.initFromStates(statesData);
-        }
-        this.buildBodyHistories(statesData);
+
+        this.appendBodyHistories(chunk, startIndex);
         if (this.errorMetrics) {
             this.errorMetrics.onHistoryReady();
         }
     }
 
-    // Precomputes per-body, per-batch position/orientation history in a single
-    // pass over all states. Powers trajectory trails and the error metrics panel.
-    buildBodyHistories(states) {
+    appendBodyHistories(chunk, startIndex) {
         if (!this.bodies || this.bodies.size === 0) return;
-        this.bodies.forEach((body) => body.allocateHistory(states.length));
-        for (let s = 0; s < states.length; s++) {
-            const bodyStates = states[s].bodies;
+        for (let i = 0; i < chunk.length; i++) {
+            const s = startIndex + i;
+            const bodyStates = chunk[i].bodies;
             if (!bodyStates) continue;
             for (const bodyState of bodyStates) {
                 const body = this.bodies.get(bodyState.name);
-                if (body) body.setHistoryPointAt(s, bodyState);
+                if (body) {
+                    if (body.appendHistoryPointAt) {
+                        body.appendHistoryPointAt(s, bodyState);
+                    } else if (body.setHistoryPointAt) {
+                        body.setHistoryPointAt(s, bodyState);
+                    }
+                }
             }
         }
-        this.bodies.forEach((body) => body.finalizeTrails());
+        this.bodies.forEach((body) => {
+            if (body.finalizeTrails) body.finalizeTrails();
+        });
+    }
+
+    processStates(statesData) {
+        this.processStatesChunk(statesData);
+    }
+
+    // Precomputes per-body, per-batch position/orientation history in a single
+    // pass over all states. Powers trajectory trails and the error metrics panel.
+    buildBodyHistories(states) {
+        this.appendBodyHistories(states, 0);
     }
 
     initFromModel(model) {

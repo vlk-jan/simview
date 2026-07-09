@@ -45,6 +45,15 @@ export class AnimationController {
         this.goToTime(0);
     }
 
+    onStatesAppended() {
+        if (this.states && this.states.length > 0) {
+            this.totalTime = this.states[this.states.length - 1].time;
+        }
+        if (this.playbackControls) {
+            this.playbackControls.forceRedraw();
+        }
+    }
+
     play() {
         if (!this.isPlaying) {
             this.isPlaying = true;

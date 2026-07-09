@@ -109,7 +109,8 @@ export class Body {
     // --- History (position/orientation over all states) ---
 
     allocateHistory(numStates) {
-        this.numStates = numStates;
+        this.allocatedStates = numStates;
+        this.validStates = numStates;
         this.positionHistory = Array(this.simBatches)
             .fill()
             .map(() => new Float32Array(numStates * 3));
@@ -140,18 +141,40 @@ export class Body {
         }
     }
 
+    appendHistoryPointAt(stateIndex, bodyState) {
+        if (!this.positionHistory || this.positionHistory.length === 0) {
+            this.allocateHistory(100);
+            this.validStates = 0;
+        }
+        if (stateIndex >= this.allocatedStates) {
+            const newNumStates = Math.max(stateIndex + 1, this.allocatedStates * 2 || 100);
+            for(let i=0; i<this.simBatches; i++) {
+                const newPos = new Float32Array(newNumStates * 3);
+                newPos.set(this.positionHistory[i]);
+                this.positionHistory[i] = newPos;
+                const newQuat = new Float32Array(newNumStates * 4);
+                newQuat.set(this.quaternionHistory[i]);
+                this.quaternionHistory[i] = newQuat;
+            }
+            this.allocatedStates = newNumStates;
+        }
+        this.setHistoryPointAt(stateIndex, bodyState);
+        this.validStates = Math.max(this.validStates || 0, stateIndex + 1);
+    }
+
     // --- Trails ---
 
     finalizeTrails() {
         this.disposeTrails();
-        if (this.numStates < 2) return;
+        const count = this.validStates || 0;
+        if (count < 2) return;
         for (let i = 0; i < this.simBatches; i++) {
             const offset = this.app.batchManager
                 ? this.app.batchManager.getBatchOffset(i)
                 : { x: 0, y: 0, z: 0 };
             const localPositions = this.positionHistory[i];
-            const worldPositions = new Float32Array(localPositions.length);
-            for (let s = 0; s < this.numStates; s++) {
+            const worldPositions = new Float32Array(count * 3);
+            for (let s = 0; s < count; s++) {
                 const base = s * 3;
                 worldPositions[base] = localPositions[base] + offset.x;
                 worldPositions[base + 1] = localPositions[base + 1] + offset.y;
@@ -187,7 +210,7 @@ export class Body {
     updateTrails(stateIndex) {
         if (this._trailStateIndex === stateIndex || this.trails.length === 0) return;
         this._trailStateIndex = stateIndex;
-        const count = Math.max(1, Math.min(stateIndex + 1, this.numStates || 1));
+        const count = Math.max(1, Math.min(stateIndex + 1, this.validStates || 1));
         for (const line of this.trails) {
             if (line) line.geometry.setDrawRange(0, count);
         }
