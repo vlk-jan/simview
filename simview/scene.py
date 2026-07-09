@@ -25,6 +25,7 @@ class SimulationScene:
         terrain: SimViewTerrain | None = None,
         bodies: dict[str, SimViewBody] | None = None,
         static_objects: dict[str, SimViewStaticObject] | None = None,
+        batch_names: list[str] | None = None,
     ) -> None:
         """
         Initializes the simulation data container.
@@ -38,6 +39,7 @@ class SimulationScene:
             terrain=terrain,
             bodies=bodies if bodies is not None else {},
             static_objects=static_objects if static_objects is not None else {},
+            batch_names=batch_names,
         )
         self.states: list[dict] = []
 

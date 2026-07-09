@@ -311,6 +311,13 @@ class SimViewModel:
     terrain: SimViewTerrain | None = None
     bodies: dict[str, SimViewBody] = field(default_factory=dict)
     static_objects: dict[str, SimViewStaticObject] = field(default_factory=dict)
+    batch_names: list[str] | None = None
+
+    def __post_init__(self):
+        if self.batch_names is not None and len(self.batch_names) != self.batch_size:
+            raise ValueError(
+                f"batch_names length ({len(self.batch_names)}) must match batch size ({self.batch_size})"
+            )
 
     def add_terrain(self, terrain: SimViewTerrain) -> None:
         if self.terrain is not None:
@@ -439,6 +446,8 @@ class SimViewModel:
             "bodies": [b.to_json() for b in self.bodies.values()],
             "staticObjects": [s.to_json() for s in self.static_objects.values()],
         }
+        if self.batch_names is not None:
+            r["batchNames"] = self.batch_names
         return r
 
     @property
