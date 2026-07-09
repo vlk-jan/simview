@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BODY_CONFIG, BODY_VECTOR_CONFIG } from "../config.js";
+import { BODY_CONFIG, BODY_VECTOR_CONFIG, TRAIL_CONFIG } from "../config.js";
 import {
     createGeometry,
     createMesh,
@@ -97,6 +97,116 @@ export class Body {
         this.contactPointSizes = [];
         this.representations = { mesh: [], wireframe: [], points: [] };
         this.createBatchGroups(bodyData);
+
+        // Position/orientation history across all loaded states, per batch. Local
+        // (un-offset) coordinates, shared by trail rendering and error metrics.
+        this.numStates = 0;
+        this.positionHistory = [];
+        this.quaternionHistory = [];
+        this.trails = [];
+        this._trailStateIndex = -1;
+    }
+
+    // --- History (position/orientation over all states) ---
+
+    allocateHistory(numStates) {
+        this.numStates = numStates;
+        this.positionHistory = Array(this.simBatches)
+            .fill()
+            .map(() => new Float32Array(numStates * 3));
+        this.quaternionHistory = Array(this.simBatches)
+            .fill()
+            .map(() => new Float32Array(numStates * 4));
+    }
+
+    setHistoryPointAt(stateIndex, bodyState) {
+        if (!bodyState.bodyTransform) return;
+        const transformData = bodyState.bodyTransform;
+        const transforms = Array.isArray(transformData[0])
+            ? transformData
+            : [transformData];
+        for (let i = 0; i < Math.min(this.simBatches, transforms.length); i++) {
+            const t = transforms[i];
+            if (t.length < 7) continue;
+            const pBase = stateIndex * 3;
+            this.positionHistory[i][pBase] = t[0];
+            this.positionHistory[i][pBase + 1] = t[1];
+            this.positionHistory[i][pBase + 2] = t[2];
+            const qBase = stateIndex * 4;
+            // Stored as (x, y, z, w) to match THREE.Quaternion's convention.
+            this.quaternionHistory[i][qBase] = t[4];
+            this.quaternionHistory[i][qBase + 1] = t[5];
+            this.quaternionHistory[i][qBase + 2] = t[6];
+            this.quaternionHistory[i][qBase + 3] = t[3];
+        }
+    }
+
+    // --- Trails ---
+
+    finalizeTrails() {
+        this.disposeTrails();
+        if (this.numStates < 2) return;
+        for (let i = 0; i < this.simBatches; i++) {
+            const offset = this.app.batchManager
+                ? this.app.batchManager.getBatchOffset(i)
+                : { x: 0, y: 0, z: 0 };
+            const localPositions = this.positionHistory[i];
+            const worldPositions = new Float32Array(localPositions.length);
+            for (let s = 0; s < this.numStates; s++) {
+                const base = s * 3;
+                worldPositions[base] = localPositions[base] + offset.x;
+                worldPositions[base + 1] = localPositions[base + 1] + offset.y;
+                worldPositions[base + 2] = localPositions[base + 2] + offset.z;
+            }
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute(
+                "position",
+                new THREE.BufferAttribute(worldPositions, 3)
+            );
+            geometry.setDrawRange(0, 1);
+            const color = this.app.batchManager
+                ? this.app.batchManager.getColorForBatch(i)
+                : 0xffffff;
+            const material = new THREE.LineBasicMaterial({
+                color,
+                transparent: true,
+                opacity: TRAIL_CONFIG.opacity,
+            });
+            const line = new THREE.Line(geometry, material);
+            line.frustumCulled = false;
+            line.visible = this.app.uiState.trailsVisible || false;
+            this.group.add(line);
+            this.trails[i] = line;
+        }
+        this._trailStateIndex = -1;
+        const currentIndex = this.app.animationController
+            ? this.app.animationController.getCurrentStateIndex()
+            : 0;
+        this.updateTrails(currentIndex);
+    }
+
+    updateTrails(stateIndex) {
+        if (this._trailStateIndex === stateIndex || this.trails.length === 0) return;
+        this._trailStateIndex = stateIndex;
+        const count = Math.max(1, Math.min(stateIndex + 1, this.numStates || 1));
+        for (const line of this.trails) {
+            if (line) line.geometry.setDrawRange(0, count);
+        }
+    }
+
+    toggleTrails(visible) {
+        this.trails.forEach((line) => line && (line.visible = visible));
+    }
+
+    disposeTrails() {
+        for (const line of this.trails) {
+            if (line) {
+                this.group.remove(line);
+                line.geometry.dispose();
+                line.material.dispose();
+            }
+        }
+        this.trails = [];
     }
 
     createBatchGroups(bodyData) {
@@ -348,6 +458,10 @@ export class Body {
 
         // Finally update all instance matrices in one go
         this.updateAllInstances();
+
+        if (this.trails.length > 0 && this.app.animationController) {
+            this.updateTrails(this.app.animationController.getCurrentStateIndex());
+        }
     }
 
     setPosition(positionData, batchIndex = 0) {
@@ -485,5 +599,6 @@ export class Body {
         this.bodyVectors = [];
         this.contactPoints = [];
         this.contactPointSizes = [];
+        this.trails = [];
     }
 }

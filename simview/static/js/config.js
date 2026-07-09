@@ -1,6 +1,7 @@
 export const UI_DEFAULT_CONFIG = {
     bodyVisualizationMode: "points",
     axesVisible: false,
+    trailsVisible: false,
     attributeVisible: {
         contacts: false,
         velocity: false,
@@ -22,6 +23,7 @@ export const FREQ_CONFIG = {
     scalarPlotter: 20,
     bodyStateWindow: 30,
     playbackControls: 20,
+    errorMetrics: 20,
 };
 
 export const CONTROLS_CONFIG = {
@@ -122,6 +124,10 @@ export const BODY_CONFIG = {
 export const SCALAR_PLOTTER_CONFIG = {
     stepsPerYAxis: 5,
     inactiveBatchOpacity: 0.3,
+};
+
+export const TRAIL_CONFIG = {
+    opacity: 0.6,
 };
 
 export const BODY_VECTOR_CONFIG = {

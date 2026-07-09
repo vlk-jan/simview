@@ -85,6 +85,7 @@ export class UIControls {
         const controls = {
             bodyVisualizationMode: this.app.uiState.bodyVisualizationMode,
             showAxes: this.app.uiState.axesVisible,
+            showTrails: this.app.uiState.trailsVisible,
             showContacts: this.app.uiState.attributeVisible.contacts,
             showVelocity: this.app.uiState.attributeVisible.velocity,
             showAngularVelocity: this.app.uiState.attributeVisible.angularVelocity,
@@ -106,6 +107,13 @@ export class UIControls {
             .name("Show Axes (A)")
             .onChange((value) => {
                 this.updateAxesVisibility(value);
+            });
+
+        this.bodyFolder
+            .add(controls, "showTrails")
+            .name("Show Trails (G)")
+            .onChange((value) => {
+                this.updateTrailsVisibility(value);
             });
 
         // Combined attribute controls with availability check
@@ -237,6 +245,9 @@ export class UIControls {
                     case "a":
                         this.toggleControl("showAxes");
                         break;
+                    case "g":
+                        this.toggleControl("showTrails");
+                        break;
                     case "c":
                         if (this.attributeAvailability.contacts)
                             this.toggleControl("showContacts");
@@ -299,6 +310,13 @@ export class UIControls {
             body.toggleAxes(show);
         });
         this.app.uiState.axesVisible = show;
+    }
+
+    updateTrailsVisibility(show) {
+        this.app.bodies.forEach((body) => {
+            body.toggleTrails(show);
+        });
+        this.app.uiState.trailsVisible = show;
     }
 
     updateAttributeVisibility(attrType, show) {

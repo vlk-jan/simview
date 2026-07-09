@@ -135,6 +135,23 @@ export class SimView {
         if (this.scalarPlotter) {
             this.scalarPlotter.initFromStates(statesData);
         }
+        this.buildBodyHistories(statesData);
+    }
+
+    // Precomputes per-body, per-batch position/orientation history in a single
+    // pass over all states. Powers trajectory trails.
+    buildBodyHistories(states) {
+        if (!this.bodies || this.bodies.size === 0) return;
+        this.bodies.forEach((body) => body.allocateHistory(states.length));
+        for (let s = 0; s < states.length; s++) {
+            const bodyStates = states[s].bodies;
+            if (!bodyStates) continue;
+            for (const bodyState of bodyStates) {
+                const body = this.bodies.get(bodyState.name);
+                if (body) body.setHistoryPointAt(s, bodyState);
+            }
+        }
+        this.bodies.forEach((body) => body.finalizeTrails());
     }
 
     initFromModel(model) {

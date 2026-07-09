@@ -109,11 +109,19 @@ Once the visualizer is running, you can interact with the simulation using the f
 
 - **`B`**: Toggle Body Visualization Mode (Mesh / Wireframe / Points)
 - **`A`**: Toggle Axes Visibility
+- **`G`**: Toggle Trajectory Trails
 - **`C`**: Toggle Contact Points
 - **`V`**: Toggle Linear Velocity
 - **`W`**: Toggle Angular Velocity
 - **`F`**: Toggle Linear Force
 - **`T`**: Toggle Torque
+
+### Trajectory Trails
+
+Toggling trails (`G`, or "Show Trails" in the Body Options panel) draws each body's
+path from the start of the simulation up to the current playback time, one line per
+batch in that batch's color. Useful for comparing the overall shape of two
+trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by frame.
 
 ---
 
