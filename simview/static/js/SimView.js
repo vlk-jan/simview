@@ -10,6 +10,8 @@ import { ScalarPlotter } from "./ui/ScalarPlotter.js";
 import { StaticObject } from "./objects/StaticObject.js";
 import { Legend } from "./ui/Legend.js";
 import { BatchLegend } from "./ui/BatchLegend.js";
+import { ErrorMetrics } from "./ui/ErrorMetrics.js";
+import { AnalysisPanel } from "./ui/AnalysisPanel.js";
 
 export class SimView {
     constructor() {
@@ -19,6 +21,8 @@ export class SimView {
         this.bodyStateWindow = null;
         this.animationController = null;
         this.scalarPlotter = null;
+        this.errorMetrics = null;
+        this.analysisPanel = null;
         this.legend = null;
         this.batchLegend = null;
         this.batchManager = null;
@@ -138,10 +142,13 @@ export class SimView {
             this.scalarPlotter.initFromStates(statesData);
         }
         this.buildBodyHistories(statesData);
+        if (this.errorMetrics) {
+            this.errorMetrics.onHistoryReady();
+        }
     }
 
     // Precomputes per-body, per-batch position/orientation history in a single
-    // pass over all states. Powers trajectory trails.
+    // pass over all states. Powers trajectory trails and the error metrics panel.
     buildBodyHistories(states) {
         if (!this.bodies || this.bodies.size === 0) return;
         this.bodies.forEach((body) => body.allocateHistory(states.length));
@@ -197,12 +204,22 @@ export class SimView {
             } else {
                 throw new Error("Terrain data is missing in model");
             }
-            if (model.scalarNames && model.scalarNames.length > 0) {
+            const hasScalars = model.scalarNames && model.scalarNames.length > 0;
+            const hasErrorMetrics = this.batchManager.simBatches >= 2;
+            if (hasScalars || hasErrorMetrics) {
+                this.analysisPanel = new AnalysisPanel(this);
+            }
+            if (hasScalars) {
                 console.debug(
                     "Initializing scalar plotter for scalars",
                     model.scalarNames
                 );
                 this.scalarPlotter = new ScalarPlotter(this, model.scalarNames);
+                this.analysisPanel.attachScalarPlotter(this.scalarPlotter);
+            }
+            if (hasErrorMetrics) {
+                this.errorMetrics = new ErrorMetrics(this);
+                this.analysisPanel.attachErrorMetrics(this.errorMetrics);
             }
             this.uiControls = new UIControls(this);
             this.bodyStateWindow = new BodyStateWindow(this);
@@ -259,6 +276,15 @@ export class SimView {
         }
         if (this.scalarPlotter) {
             this.scalarPlotter.dispose();
+            this.scalarPlotter = null;
+        }
+        if (this.errorMetrics) {
+            this.errorMetrics.dispose();
+            this.errorMetrics = null;
+        }
+        if (this.analysisPanel) {
+            this.analysisPanel.dispose();
+            this.analysisPanel = null;
         }
         if (this.bodyStateWindow) {
             this.bodyStateWindow.dispose();
@@ -288,7 +314,10 @@ export class SimView {
         if (this.bodyStateWindow) {
             this.bodyStateWindow.animate(now);
         }
-        
+        if (this.errorMetrics) {
+            this.errorMetrics.animate(now);
+        }
+
         // 3. Render the scene
         if (this.scene) {
             this.scene.animate(now);

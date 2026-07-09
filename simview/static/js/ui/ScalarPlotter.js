@@ -34,67 +34,8 @@ export class ScalarPlotter {
     _injectStyles() {
         const styleId = `scalar-styles`;
         if (document.getElementById(styleId)) return;
-        const containerWidthPercentage = 40;
-        const contentMaxHeightPercentage = 25;
         const chartHeightPercentage = 15;
         const css = `
-        .scalar-dropdown-container {
-            width: ${containerWidthPercentage}%;
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            border-radius: 5px;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            z-index: 1000;
-            /* overflow-y: auto; */ /* Let content handle overflow */
-        }
-
-        /* Header */
-        .scalar-header {
-            display: flex;
-            justify-content: flex-start;
-            background-color: transparent;
-            align-items: center;
-            width: 100%;
-            padding: 7px 10px;
-            color: white;
-            cursor: pointer;
-            border-radius: 5px 5px 0 0; /* Adjust rounding */
-            transition: background-color 0.2s ease;
-            box-sizing: border-box;
-        }
-        .scalar-header:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        .scalar-header-title {
-            font-weight: bold;
-            font-size: 1.1em;
-        }
-        .scalar-header-icon {
-            display: inline-block;
-            user-select: none;
-            padding-right: 0.4rem;
-            color: #ccc;
-        }
-
-        /* Content area */
-        .scalar-content {
-            border-radius: 0 0 5px 5px;
-            display: none;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
-        .scalar-content.visible {
-            display: block;
-             max-height: ${contentMaxHeightPercentage}vh;
-             overflow-y: auto;
-        }
-
         /* Tab bar */
         .scalar-tab-bar {
             display: flex;
@@ -173,22 +114,6 @@ export class ScalarPlotter {
     }
 
     _setupHTML() {
-        this.container = document.createElement("div");
-        this.container.className = "scalar-dropdown-container";
-        this.header = document.createElement("div");
-        this.header.className = "scalar-header";
-        this.icon = document.createElement("span");
-        this.icon.className = "scalar-header-icon";
-        this.icon.textContent = "▸"; // Default state is collapsed
-        const title = document.createElement("span");
-        title.className = "scalar-header-title";
-        title.textContent = "Scalars";
-        this.header.appendChild(this.icon);
-        this.header.appendChild(title);
-
-        this.content = document.createElement("div");
-        this.content.className = "scalar-content";
-
         this.tabBar = document.createElement("div");
         this.tabBar.className = "scalar-tab-bar";
 
@@ -212,16 +137,9 @@ export class ScalarPlotter {
             this.plotArea.appendChild(plotDiv);
             this.plotElements[name] = plotDiv;
         });
-
-        this.content.appendChild(this.tabBar);
-        this.content.appendChild(this.plotArea);
-        this.container.appendChild(this.header);
-        this.container.appendChild(this.content);
-        document.body.appendChild(this.container);
     }
 
     _setupEventListeners() {
-        this.header.addEventListener("click", () => this._toggleDropdown());
         this.tabBar.addEventListener("click", (event) => {
             const target = event.target;
             if (target.classList.contains("scalar-tab")) {
@@ -234,10 +152,10 @@ export class ScalarPlotter {
         });
     }
 
-    _toggleDropdown() {
-        this.isExpanded = !this.isExpanded;
-        this.content.classList.toggle("visible", this.isExpanded);
-        this.icon.textContent = this.isExpanded ? "▾" : "▸";
+    // Called by AnalysisPanel when this panel becomes/stops being the visible section.
+    setVisible(visible) {
+        if (this.isExpanded === visible) return;
+        this.isExpanded = visible;
 
         if (this.isExpanded && this.activeScalar) {
             this.setEndIndex(this.currentEndIndex, true);
@@ -359,14 +277,15 @@ export class ScalarPlotter {
                 },
                 toolTip: {
                     fontFamily: "Arial",
-                    contentFormatter: function (e) {
+                    contentFormatter: (e) => {
                         var series = e.entries[0].dataSeries;
-                        var batch = series.name.split(" ").at(-1);
+                        var batchIndex = parseInt(series.name.split(" ").at(-1));
+                        var batchLabel = this.app.batchManager.getBatchName(batchIndex);
                         var time = e.entries[0].dataPoint.x.toFixed(3);
                         var value = e.entries[0].dataPoint.y.toFixed(3);
                         var color = series.color;
                         return `<div style="color: ${color};">
-                        Batch: ${batch}<br>
+                        Batch: ${batchLabel}<br>
                         Time: ${time}<br>
                         Value: ${value}
                     </div>`;
@@ -490,7 +409,6 @@ export class ScalarPlotter {
     }
 
     dispose() {
-        this.container.remove();
         this.charts.clear();
         this.scalarSeries.clear();
         this.scalarBounds.clear();

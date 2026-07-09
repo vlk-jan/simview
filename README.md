@@ -95,7 +95,7 @@ The files must describe the same physical setup (identical bodies and terrain gr
 that's what makes the batches comparable. They don't need to share a timeline: the
 **first** file's timestamps become the merged timeline, and every other file is
 resampled onto it by nearest timestamp (no interpolation), so put the recording you
-care most about matching frame-for-frame first. See [Error Metrics](#error-metrics)
+care most about matching frame-for-frame first. See [Analysis Panel](#analysis-panel)
 below for a way to quantify the difference between two merged batches.
 
 Each merged file's batches are auto-named after its filename (e.g. `real_world`,
@@ -143,6 +143,23 @@ Toggling trails (`G`, or "Show Trails" in the Body Options panel) draws each bod
 path from the start of the simulation up to the current playback time, one line per
 batch in that batch's color. Useful for comparing the overall shape of two
 trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by frame.
+
+### Analysis Panel
+
+Scalars and Error Metrics share one collapsible panel at the top-center of the screen.
+When both are available, a mode switcher lets you flip between them; if only one is
+available (e.g. a single-batch scene has no Error Metrics), that one is shown directly
+without the switcher.
+
+- **Scalars**: one tab per scalar defined in the model, each plotting its value over
+  time for every batch (colored per batch, click a line to focus that batch).
+- **Error Metrics**: shown once a scene has 2 or more batches. Pick a body and two
+  batches ("Batch A" / "Batch B") to compare — e.g. the real and simulated batches
+  produced by [merging multiple files](#comparing-multiple-runs-eg-real-world-vs-simulated)
+  — and it computes, over the full timeline, the Euclidean position error and the
+  quaternion angle (orientation) error between the two batches for that body. A live
+  readout shows the current-frame values, and the chart plots both error curves over
+  time with a marker at the current playback position.
 
 ### Batch Legend
 
