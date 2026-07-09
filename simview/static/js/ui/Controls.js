@@ -232,16 +232,29 @@ export class UIControls {
         this.terrainFolder.open();
 
         const cameraFolder = this.gui.addFolder("Camera Options");
-        const fovObj = {
+        const cameraControls = {
             fov: this.app.scene.camera.fov,
+            trackBody: "None"
         };
         cameraFolder
-            .add(fovObj, "fov", 20, 120)
+            .add(cameraControls, "fov", 20, 120)
             .name("Field of View")
             .onChange((value) => {
                 this.app.scene.camera.fov = value;
                 this.app.scene.camera.updateProjectionMatrix();
             });
+            
+        if (this.app.bodies && this.app.bodies.size > 0) {
+            const bodyNames = ["None", ...Array.from(this.app.bodies.keys())];
+            cameraFolder
+                .add(cameraControls, "trackBody", bodyNames)
+                .name("Track Body")
+                .onChange((value) => {
+                    this.app.uiState.trackBody = value;
+                });
+        }
+        
+        this.cameraControls = cameraControls;
 
         return this.gui;
     }

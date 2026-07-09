@@ -12,6 +12,7 @@ import { Legend } from "./ui/Legend.js";
 import { BatchLegend } from "./ui/BatchLegend.js";
 import { ErrorMetrics } from "./ui/ErrorMetrics.js";
 import { AnalysisPanel } from "./ui/AnalysisPanel.js";
+import { InteractionController } from "./components/InteractionController.js";
 
 export class SimView {
     constructor() {
@@ -26,6 +27,7 @@ export class SimView {
         this.legend = null;
         this.batchLegend = null;
         this.batchManager = null;
+        this.interactionController = null;
         this.terrain = null;
         this.bodies = null;
         this.staticObjects = null;
@@ -271,6 +273,7 @@ export class SimView {
                 this.errorMetrics = new ErrorMetrics(this);
                 this.analysisPanel.attachErrorMetrics(this.errorMetrics);
             }
+            this.interactionController = new InteractionController(this);
             this.uiControls = new UIControls(this);
             this.bodyStateWindow = new BodyStateWindow(this);
             this.legend = new Legend(this);
@@ -346,6 +349,10 @@ export class SimView {
             this.batchLegend.dispose();
             this.batchLegend = null;
         }
+        if (this.interactionController) {
+            this.interactionController.cleanup();
+            this.interactionController = null;
+        }
     }
 
     animate() {
@@ -370,6 +377,24 @@ export class SimView {
 
         // 3. Render the scene
         if (this.scene) {
+            if (this.uiState && this.uiState.trackBody && this.uiState.trackBody !== "None") {
+                const body = this.bodies.get(this.uiState.trackBody);
+                if (body && this.batchManager) {
+                    const activeBatch = this.batchManager.currentlyActiveBatch;
+                    if (body.positions && body.positions[activeBatch]) {
+                        const pos = body.positions[activeBatch];
+                        const offset = this.batchManager.getBatchOffset(activeBatch);
+                        const targetPos = new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z);
+                        
+                        const oldTarget = this.scene.controls.target.clone();
+                        const delta = targetPos.clone().sub(oldTarget);
+                        
+                        this.scene.camera.position.add(delta);
+                        this.scene.controls.target.copy(targetPos);
+                        this.scene.controls.update();
+                    }
+                }
+            }
             this.scene.animate(now);
         }
         
