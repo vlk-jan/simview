@@ -56,7 +56,7 @@ export class ScalarPlotter {
         /* Header */
         .scalar-header {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-start;
             background-color: transparent;
             align-items: center;
             width: 100%;
@@ -75,11 +75,10 @@ export class ScalarPlotter {
             font-size: 1.1em;
         }
         .scalar-header-icon {
-            font-size: 1.2em;
-            transition: transform 0.3s ease;
-        }
-        .scalar-header-icon.expanded {
-            transform: rotate(180deg);
+            display: inline-block;
+            user-select: none;
+            padding-right: 0.4rem;
+            color: #ccc;
         }
 
         /* Content area */
@@ -178,14 +177,14 @@ export class ScalarPlotter {
         this.container.className = "scalar-dropdown-container";
         this.header = document.createElement("div");
         this.header.className = "scalar-header";
+        this.icon = document.createElement("span");
+        this.icon.className = "scalar-header-icon";
+        this.icon.textContent = "▸"; // Default state is collapsed
         const title = document.createElement("span");
         title.className = "scalar-header-title";
         title.textContent = "Scalars";
-        this.icon = document.createElement("span");
-        this.icon.className = "scalar-header-icon";
-        this.icon.innerHTML = "↓";
-        this.header.appendChild(title);
         this.header.appendChild(this.icon);
+        this.header.appendChild(title);
 
         this.content = document.createElement("div");
         this.content.className = "scalar-content";
@@ -238,7 +237,7 @@ export class ScalarPlotter {
     _toggleDropdown() {
         this.isExpanded = !this.isExpanded;
         this.content.classList.toggle("visible", this.isExpanded);
-        this.icon.classList.toggle("expanded", this.isExpanded);
+        this.icon.textContent = this.isExpanded ? "▾" : "▸";
 
         if (this.isExpanded && this.activeScalar) {
             this.setEndIndex(this.currentEndIndex, true);

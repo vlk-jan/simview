@@ -45,23 +45,24 @@ export class Legend {
             unit = "m";
             title = "Height";
         } else if (mode === "friction") {
-            minVal = 0.0;
-            maxVal = 1.0;
+            minVal = this.app.terrain.bounds.minFriction ?? 0.0;
+            maxVal = this.app.terrain.bounds.maxFriction ?? 1.0;
             unit = "";
             title = "Friction";
         } else if (mode === "stiffness") {
-            minVal = 100000.0;
-            maxVal = 500000.0;
+            minVal = this.app.terrain.bounds.minStiffness ?? 100000.0;
+            maxVal = this.app.terrain.bounds.maxStiffness ?? 500000.0;
             unit = "N/m";
             title = "Stiffness";
         }
 
+        const decimals = (mode === "stiffness" && maxVal > 1000) ? 0 : 2;
         this.container.innerHTML = `
             <div style="font-weight: bold; margin-bottom: 5px; text-align: center;">${title} ${unit ? `(${unit})` : ""}</div>
             <div id="legend-gradient" style="height: 20px; width: 100%; margin-bottom: 5px; border: 1px solid white;"></div>
             <div style="display: flex; justify-content: space-between;">
-                <span>${minVal.toFixed(mode === "stiffness" ? 0 : 2)}</span>
-                <span>${maxVal.toFixed(mode === "stiffness" ? 0 : 2)}</span>
+                <span>${minVal.toFixed(decimals)}</span>
+                <span>${maxVal.toFixed(decimals)}</span>
             </div>
         `;
 

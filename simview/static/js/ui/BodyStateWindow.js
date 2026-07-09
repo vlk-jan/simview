@@ -203,15 +203,10 @@ export class BodyStateWindow {
           display: none;
       }
       .body-state-window-toggle-icon {
-          font-size: 0.7rem;
-          transition: transform 0.1s ease-out;
-          user-select: none;
           display: inline-block;
-          margin-right: 0.5rem;
+          user-select: none;
+          padding-right: 0.4rem;
           color: #ccc;
-      }
-      .body-state-window-toggle-icon.expanded {
-          transform: rotate(90deg);
       }
     `;
 
@@ -249,8 +244,7 @@ export class BodyStateWindow {
 
         this.toggleIcon = document.createElement("span");
         this.toggleIcon.classList.add("body-state-window-toggle-icon");
-        this.toggleIcon.innerHTML = "▶";
-        this.toggleIcon.classList.add("expanded"); // Default state is expanded (rotated down)
+        this.toggleIcon.textContent = "▾"; // Default state is expanded
         titleGroup.appendChild(this.toggleIcon);
 
         const title = document.createElement("span");
@@ -326,7 +320,7 @@ export class BodyStateWindow {
     toggleCollapse() {
         if (!this.window) return;
         const isCollapsed = this.window.classList.toggle("collapsed");
-        this.toggleIcon.classList.toggle("expanded", !isCollapsed);
+        this.toggleIcon.textContent = isCollapsed ? "▸" : "▾";
     }
 
     updateBodyList() {
