@@ -469,6 +469,45 @@ export class Terrain {
         return modes;
     }
 
+    getPropertiesAt(x, y, batchIndex) {
+        const batchOffset = this.app.batchManager.getBatchOffset(batchIndex);
+        const localX = x - batchOffset.x;
+        const localY = y - batchOffset.y;
+
+        const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
+        const { minX, minY, maxX, maxY } = this.bounds;
+
+        if (localX < minX || localX > maxX || localY < minY || localY > maxY) {
+            return null;
+        }
+
+        const col = Math.round(((localX - minX) / sizeX) * (resolutionX - 1));
+        const row = Math.round(((localY - minY) / sizeY) * (resolutionY - 1));
+
+        if (col < 0 || col >= resolutionX || row < 0 || row >= resolutionY) return null;
+
+        const dataIndex = row * resolutionX + col;
+        const props = {};
+        
+        const dataBatchIndex = this.isSingleton ? 0 : batchIndex;
+
+        if (this.heightData && this.heightData[dataBatchIndex]) {
+            props.height = this.heightData[dataBatchIndex][dataIndex];
+        } else {
+            return null;
+        }
+
+        if (this.frictionData && this.frictionData[dataBatchIndex]) {
+            props.friction = this.frictionData[dataBatchIndex][dataIndex];
+        }
+        
+        if (this.stiffnessData && this.stiffnessData[dataBatchIndex]) {
+            props.stiffness = this.stiffnessData[dataBatchIndex][dataIndex];
+        }
+
+        return props;
+    }
+
     // Get THREE.js group containing all visualizations
     getObject3D() {
         return this.group;

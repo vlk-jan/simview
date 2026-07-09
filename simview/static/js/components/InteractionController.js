@@ -78,7 +78,7 @@ export class InteractionController {
         this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     }
 
-    onClick() {
+    onClick(e) {
         this.raycaster.setFromCamera(this.mouse, this.app.camera);
         const intersects = this.raycaster.intersectObjects(
             Object.values(this.app.bodies).flatMap((body) =>
@@ -89,6 +89,72 @@ export class InteractionController {
 
         if (intersects.length > 0) {
             this.selectedObject = intersects[0].object;
+            this.hideTerrainTooltip();
+            return;
+        }
+
+        // Raycast against terrain
+        if (this.app.terrain && this.app.terrain.group) {
+            const terrainIntersects = this.raycaster.intersectObject(this.app.terrain.group, true);
+            const surfaceIntersect = terrainIntersects.find(i => i.object.name === "surface");
+            if (surfaceIntersect) {
+                this.showTerrainTooltip(e, surfaceIntersect);
+                return;
+            }
+        }
+        
+        this.hideTerrainTooltip();
+    }
+
+    showTerrainTooltip(e, intersect) {
+        const point = intersect.point;
+        let batchIndex = 0;
+        let current = intersect.object;
+        while (current) {
+            if (current.name && current.name.startsWith("batch")) {
+                batchIndex = parseInt(current.name.replace("batch", ""));
+                break;
+            }
+            current = current.parent;
+        }
+        
+        const props = this.app.terrain.getPropertiesAt(point.x, point.y, batchIndex);
+        if (!props) return;
+
+        let tooltip = document.getElementById("terrain-tooltip");
+        if (!tooltip) {
+            tooltip = document.createElement("div");
+            tooltip.id = "terrain-tooltip";
+            Object.assign(tooltip.style, {
+                position: "absolute",
+                background: "rgba(0, 0, 0, 0.8)",
+                color: "white",
+                padding: "8px",
+                borderRadius: "4px",
+                pointerEvents: "none",
+                zIndex: "1000",
+                fontSize: "12px",
+                fontFamily: "monospace",
+                whiteSpace: "pre"
+            });
+            document.body.appendChild(tooltip);
+        }
+
+        tooltip.style.left = `${e.clientX + 10}px`;
+        tooltip.style.top = `${e.clientY + 10}px`;
+        tooltip.style.display = "block";
+        
+        let text = `Batch: ${batchIndex}\nX: ${point.x.toFixed(3)}, Y: ${point.y.toFixed(3)}\nHeight: ${props.height.toFixed(3)}`;
+        if (props.friction !== undefined) text += `\nFriction: ${props.friction.toFixed(3)}`;
+        if (props.stiffness !== undefined) text += `\nStiffness: ${props.stiffness.toExponential(2)}`;
+        
+        tooltip.innerText = text;
+    }
+
+    hideTerrainTooltip() {
+        const tooltip = document.getElementById("terrain-tooltip");
+        if (tooltip) {
+            tooltip.style.display = "none";
         }
     }
 
