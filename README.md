@@ -101,7 +101,10 @@ below for a way to quantify the difference between two merged batches.
 Each merged file's batches are auto-named after its filename (e.g. `real_world`,
 `simulated`), shown in the [Batch Legend](#batch-legend). You can rename them from
 there — renames are saved next to the input file(s) and reloaded automatically the
-next time you open the same file(s).
+next time you open the same file(s). You can also set initial batch names yourself by
+including a `batchNames` array directly in the JSON's `model` object (see
+[JSON Format Specification](#json-format-specification)); renames from the UI take
+precedence over this once saved.
 
 ---
 
@@ -184,6 +187,11 @@ produces.
 ### Model (Static Data)
 
 - **`simBatches`** *(integer)* — number of parallel simulation instances (batches).
+- **`batchNames`** *(array[string], optional)* — display name for each batch, length
+  must equal `simBatches`. Shown in the [Batch Legend](#batch-legend); falls back to
+  `"Batch <index>"` per entry if omitted, empty, or the wrong length. Renames made from
+  the Batch Legend are persisted server-side (see below) and take precedence over this
+  field on subsequent loads.
 - **`scalarNames`** *(array[string])* — names of per-batch scalar time-series (e.g. `"energy"`).
 - **`dt`** *(float)* — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.
 - **`collapse`** *(boolean)* — UI hint to start with the body-state window collapsed.
