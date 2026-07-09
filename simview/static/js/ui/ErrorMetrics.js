@@ -33,22 +33,31 @@ export class ErrorMetrics {
         .error-metrics-content {
             padding: 10px;
         }
-        .error-metrics-row {
+        .error-metrics-controls {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 10px;
             margin-top: 8px;
         }
-        .error-metrics-row label {
-            color: #ccc;
+        .error-metrics-control-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
-        .error-metrics-row select {
+        .error-metrics-control-group label {
+            color: #ccc;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        .error-metrics-control-group select {
             background-color: rgba(50, 50, 50, 0.8);
             color: white;
             border: 1px solid white;
-            padding: 0.2em 0.4em;
+            padding: 0.1em 0.2em;
             border-radius: 3px;
-            font-size: 1em;
+            font-size: 0.9em;
+            max-width: 100px;
         }
         .error-metrics-readout {
             margin-top: 10px;
@@ -76,10 +85,14 @@ export class ErrorMetrics {
         this.content = document.createElement("div");
         this.content.className = "error-metrics-content";
 
-        this.bodySelect = this._addSelectRow("Body:", [...this.app.bodies.keys()], this.selectedBody);
+        this.controlsContainer = document.createElement("div");
+        this.controlsContainer.className = "error-metrics-controls";
+        this.content.appendChild(this.controlsContainer);
+
+        this.bodySelect = this._addSelectGroup("Body:", [...this.app.bodies.keys()], this.selectedBody);
         const batchOptions = [...Array(this.app.batchManager.simBatches).keys()];
-        this.batchASelect = this._addSelectRow("Batch A:", batchOptions, this.batchA, true);
-        this.batchBSelect = this._addSelectRow("Batch B:", batchOptions, this.batchB, true);
+        this.batchASelect = this._addSelectGroup("Batch A:", batchOptions, this.batchA, true);
+        this.batchBSelect = this._addSelectGroup("Batch B:", batchOptions, this.batchB, true);
 
         this.readout = document.createElement("div");
         this.readout.className = "error-metrics-readout";
@@ -96,9 +109,9 @@ export class ErrorMetrics {
         this.content.appendChild(this.plotDiv);
     }
 
-    _addSelectRow(labelText, options, selected, isBatch = false) {
-        const row = document.createElement("div");
-        row.className = "error-metrics-row";
+    _addSelectGroup(labelText, options, selected, isBatch = false) {
+        const group = document.createElement("div");
+        group.className = "error-metrics-control-group";
         const label = document.createElement("label");
         label.textContent = labelText;
         const select = document.createElement("select");
@@ -111,9 +124,9 @@ export class ErrorMetrics {
             if (opt === selected) option.selected = true;
             select.appendChild(option);
         });
-        row.appendChild(label);
-        row.appendChild(select);
-        this.content.appendChild(row);
+        group.appendChild(label);
+        group.appendChild(select);
+        this.controlsContainer.appendChild(group);
         return select;
     }
 
@@ -160,7 +173,7 @@ export class ErrorMetrics {
 
     _computeSeries() {
         const body = this.app.bodies.get(this.selectedBody);
-        if (!body || !body.numStates) {
+        if (!body || !body.validStates) {
             this.posSeries = [];
             this.rotSeries = [];
             return;
@@ -182,7 +195,7 @@ export class ErrorMetrics {
             return;
         }
 
-        const n = body.numStates;
+        const n = body.validStates;
         const posSeries = new Array(n);
         const rotSeries = new Array(n);
         for (let s = 0; s < n; s++) {

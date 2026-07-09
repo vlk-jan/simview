@@ -99,7 +99,7 @@ export class Body {
 
         // Position/orientation history across all loaded states, per batch. Local
         // (un-offset) coordinates, shared by trail rendering and error metrics.
-        this.numStates = 0;
+        this.validStates = 0;
         this.positionHistory = [];
         this.quaternionHistory = [];
         this.trails = [];
