@@ -82,6 +82,22 @@ To visualize a simulation defined in a JSON file, run the following command, rep
 simview [path_to_json_file]
 ```
 
+### Comparing multiple runs (e.g. real-world vs. simulated)
+
+Pass multiple JSON files to merge them into a single scene, each file's batches appended
+as extra batches in the viewer:
+
+```bash
+simview real_world.json simulated.json
+```
+
+The files must describe the same physical setup (identical bodies and terrain grid) —
+that's what makes the batches comparable. They don't need to share a timeline: the
+**first** file's timestamps become the merged timeline, and every other file is
+resampled onto it by nearest timestamp (no interpolation), so put the recording you
+care most about matching frame-for-frame first. See [Error Metrics](#error-metrics)
+below for a way to quantify the difference between two merged batches.
+
 ---
 
 ## Visualization Controls

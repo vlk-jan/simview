@@ -19,27 +19,34 @@ def clear_cache():
 def main():
     parser = argparse.ArgumentParser(description="SimView CLI")
     parser.add_argument(
-        "input",
-        nargs="?",
-        help="Path to simulation JSON file to visualize, or 'clear' to clear cache.",
+        "inputs",
+        nargs="*",
+        help=(
+            "Path(s) to simulation JSON file(s) to visualize, or 'clear' to clear "
+            "cache. Multiple files are merged into one scene, each file's batches "
+            "appended as extra batches (e.g. a real-world recording plus a "
+            "simulated rerun)."
+        ),
     )
 
     # We parse known args to allow for potential future flags for the server passed through
     args, unknown = parser.parse_known_args()
 
-    if not args.input:
+    if not args.inputs:
         parser.print_help()
         sys.exit(1)
 
-    if args.input == "clear":
+    if args.inputs == ["clear"]:
         clear_cache()
-    else:
-        path = Path(args.input)
-        if path.exists() and path.is_file():
-            SimViewServer.start(sim_path=path)
-        else:
+        return
+
+    paths = [Path(p) for p in args.inputs]
+    for path in paths:
+        if not (path.exists() and path.is_file()):
             print(f"Error: File '{path}' not found or is not a file.")
             sys.exit(1)
+
+    SimViewServer.start(sim_path=paths if len(paths) > 1 else paths[0])
 
 
 if __name__ == "__main__":

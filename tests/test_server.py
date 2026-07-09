@@ -39,3 +39,28 @@ def test_payload_advertises_gzip_encoding(client):
 def test_missing_file_raises():
     with pytest.raises(FileNotFoundError):
         SimViewServer.start(sim_path="does-not-exist.json")
+
+
+def test_missing_file_in_multi_path_list_raises(tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    with pytest.raises(FileNotFoundError):
+        SimViewServer.start(sim_path=[sim_file, tmp_path / "does-not-exist.json"])
+
+
+def test_server_accepts_preloaded_data():
+    server = SimViewServer(data={"model": {"simBatches": 1}, "states": []})
+    client = TestClient(server.app)
+    resp = client.get("/model")
+    assert resp.json()["simBatches"] == 1
+
+
+def test_server_requires_exactly_one_of_sim_path_or_data(tmp_path):
+    with pytest.raises(ValueError, match="exactly one"):
+        SimViewServer()
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    with pytest.raises(ValueError, match="exactly one"):
+        SimViewServer(sim_path=sim_file, data={"model": {}, "states": []})

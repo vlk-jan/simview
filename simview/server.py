@@ -1,6 +1,7 @@
 import gzip
 import json
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 try:
@@ -39,8 +40,11 @@ class OrjsonWrapper:
 
 
 class SimViewServer:
-    def __init__(self, sim_path: str | Path):
-        self.sim_path = Path(sim_path)
+    def __init__(self, sim_path: str | Path | None = None, data: dict | None = None):
+        if (sim_path is None) == (data is None):
+            raise ValueError("Provide exactly one of 'sim_path' or 'data'")
+        self.sim_path = Path(sim_path) if sim_path is not None else None
+        self._preloaded_data = data
 
         # Initialize Socket.IO AsyncServer
         self.sio = socketio.AsyncServer(
@@ -72,13 +76,17 @@ class SimViewServer:
         self.setup_socket_handlers()
 
     def _load_data(self):
-        print(f"Loading simulation data from {self.sim_path}...")
-        if orjson:
-            with open(self.sim_path, "rb") as f:
-                data = orjson.loads(f.read())
+        if self._preloaded_data is not None:
+            data = self._preloaded_data
+            self._preloaded_data = None  # allow it to be garbage-collected
         else:
-            with open(self.sim_path, "r") as f:
-                data = json.load(f)
+            print(f"Loading simulation data from {self.sim_path}...")
+            if orjson:
+                with open(self.sim_path, "rb") as f:
+                    data = orjson.loads(f.read())
+            else:
+                with open(self.sim_path, "r") as f:
+                    data = json.load(f)
 
         model_data = data.get("model")
         states_data = data.get("states")
@@ -156,11 +164,25 @@ class SimViewServer:
 
     @staticmethod
     def start(
-        sim_path: str | Path, host: str = "127.0.0.1", preferred_port: int = 5420
+        sim_path: str | Path | Sequence[str | Path],
+        host: str = "127.0.0.1",
+        preferred_port: int = 5420,
     ):
-        if not Path(sim_path).is_file():
-            raise FileNotFoundError(f"Simulation file '{sim_path}' does not exist.")
-        server = SimViewServer(sim_path=sim_path)
+        paths = (
+            [Path(p) for p in sim_path]
+            if isinstance(sim_path, (list, tuple))
+            else [Path(sim_path)]
+        )
+        for p in paths:
+            if not p.is_file():
+                raise FileNotFoundError(f"Simulation file '{p}' does not exist.")
+
+        if len(paths) > 1:
+            from simview.merge import merge_simulation_files
+
+            server = SimViewServer(data=merge_simulation_files(paths))
+        else:
+            server = SimViewServer(sim_path=paths[0])
         port = find_free_port(host, preferred_port)
         if port != preferred_port:
             print(
