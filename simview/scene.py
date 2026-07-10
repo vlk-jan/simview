@@ -326,6 +326,27 @@ class SimulationScene:
                 "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
             )
 
+        # Reconcile available_attributes with actual data in the first state
+        if self.states:
+            first_state = self.states[0]
+            provided_attrs_by_body = {}
+            for body_data in first_state.get("bodies", []):
+                name = body_data.get("name")
+                if name:
+                    # Everything in the body's dict other than name and bodyTransform is an optional attribute
+                    provided = set(body_data.keys()) - {"name", "bodyTransform"}
+                    provided_attrs_by_body[name] = provided
+
+            for name, body in self.model.bodies.items():
+                if name in provided_attrs_by_body:
+                    provided = provided_attrs_by_body[name]
+                    if provided:
+                        body.available_attributes = [
+                            OptionalBodyStateAttribute(k) for k in provided
+                        ]
+                    else:
+                        body.available_attributes = None
+
         output_path = Path(filepath)
         if compress and output_path.suffix != ".gz":
             output_path = output_path.with_name(output_path.name + ".gz")
