@@ -68,7 +68,10 @@ source .venv/bin/activate
 
 ### Cache Management
 
-SimView caches some temporary files for visualization. You can clear this cache using the following command:
+SimView caches some temporary files for visualization. It also cleans up any
+`simview_viz_*.json` temp scene files left behind by older versions (a launched viewer
+now serves an in-memory `SimulationScene` directly, without writing one). You can clear
+all of this using the following command:
 
 ```bash
 simview clear
