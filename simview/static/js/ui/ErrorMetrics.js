@@ -1,3 +1,4 @@
+import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
 
 // Compares two batches of the same body over the full timeline: Euclidean
@@ -18,6 +19,8 @@ export class ErrorMetrics {
         this.minRenderDelay = 1000 / FREQ_CONFIG.errorMetrics;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
         this.chart = null;
+        this.resizeObserver = null;
+        this.markerTime = null;
 
         this._injectStyles();
         this._setupHTML();
@@ -72,6 +75,17 @@ export class ErrorMetrics {
             width: 100%;
             height: 15vh;
             margin-top: 10px;
+            position: relative;
+            background-color: rgba(0, 0, 0, 1);
+            cursor: pointer;
+        }
+        .error-metrics-plot .uplot,
+        .error-metrics-plot .u-wrap {
+            width: 100%;
+            height: 100%;
+        }
+        .error-metrics-plot .u-legend {
+            display: none;
         }
         `;
         const styleElement = document.createElement("style");
@@ -227,79 +241,162 @@ export class ErrorMetrics {
         this._buildChart();
     }
 
+    // Draws the current playback time as a vertical marker line over the
+    // finished plot.
+    _drawMarker(u) {
+        if (this.markerTime === null) return;
+        const x = u.valToPos(this.markerTime, "x", true);
+        if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
+        const ctx = u.ctx;
+        ctx.save();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, u.bbox.top);
+        ctx.lineTo(x, u.bbox.top + u.bbox.height);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     _buildChart() {
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
         if (this.chart) {
-            this.chart.destroy?.();
+            this.chart.destroy();
             this.chart = null;
         }
+        this.plotDiv.innerHTML = "";
         if (this.posSeries.length === 0) {
-            this.plotDiv.innerHTML = "";
             return;
         }
 
-        this.chart = new CanvasJS.Chart(this.plotDiv, {
-            backgroundColor: "rgba(0, 0, 0, 1)",
-            axisX: {
-                lineColor: "rgba(255, 255, 255, 0.3)",
-                labelFontColor: "white",
-                labelFontFamily: "Arial",
-                tickLength: 0,
-                stripLines: [{ value: 0, thickness: 1, color: "#ffffff", id: "currentTime" }],
-            },
-            axisY: {
-                title: "Position (m)",
-                titleFontColor: "#4c9aff",
-                gridColor: "rgb(53, 53, 53)",
-                lineColor: "rgb(73, 73, 73)",
-                labelFontColor: "#4c9aff",
-                labelFontFamily: "Arial",
-                minimum: 0,
-            },
-            axisY2: {
-                title: "Orientation (deg)",
-                titleFontColor: "#ff9f4c",
-                gridColor: "rgb(53, 53, 53)",
-                lineColor: "rgb(73, 73, 73)",
-                labelFontColor: "#ff9f4c",
-                labelFontFamily: "Arial",
-                minimum: 0,
-            },
-            toolTip: { fontFamily: "Arial" },
-            data: [
-                {
-                    type: "line",
-                    name: "Position error",
-                    markerSize: 0,
-                    lineThickness: 1,
-                    color: "#4c9aff",
-                    dataPoints: this.posSeries,
-                    click: (e) => {
-                        if (e.dataPoint && e.dataPoint.x !== undefined) {
-                            if (this.app.animationController) {
-                                this.app.animationController.goToTime(e.dataPoint.x);
-                            }
-                        }
-                    }
+        const xValues = this.posSeries.map((p) => p.x);
+        const posValues = this.posSeries.map((p) => p.y);
+        const rotValues = this.rotSeries.map((p) => p.y);
+
+        const rect = this.plotDiv.getBoundingClientRect();
+        this.chart = new uPlot(
+            {
+                width: Math.max(rect.width, 1),
+                height: Math.max(rect.height, 1),
+                padding: [8, 8, 0, 0],
+                series: [
+                    {},
+                    {
+                        label: "Position error",
+                        stroke: "#4c9aff",
+                        width: 1,
+                        points: { show: false },
+                        scale: "pos",
+                    },
+                    {
+                        label: "Orientation error",
+                        stroke: "#ff9f4c",
+                        width: 1,
+                        points: { show: false },
+                        scale: "rot",
+                    },
+                ],
+                scales: {
+                    x: { time: false },
+                    pos: { range: (u, min, max) => [0, max * 1.01 || 1] },
+                    rot: { range: (u, min, max) => [0, max * 1.01 || 1] },
                 },
-                {
-                    type: "line",
-                    name: "Orientation error",
-                    axisYType: "secondary",
-                    markerSize: 0,
-                    lineThickness: 1,
-                    color: "#ff9f4c",
-                    dataPoints: this.rotSeries,
-                    click: (e) => {
-                        if (e.dataPoint && e.dataPoint.x !== undefined) {
-                            if (this.app.animationController) {
-                                this.app.animationController.goToTime(e.dataPoint.x);
-                            }
-                        }
-                    }
+                axes: [
+                    {
+                        show: true,
+                        stroke: "rgba(255, 255, 255, 0.3)",
+                        grid: { show: false },
+                        ticks: { show: false },
+                        font: "12px Arial",
+                    },
+                    {
+                        scale: "pos",
+                        show: true,
+                        side: 3,
+                        label: "Position (m)",
+                        labelFont: "12px Arial",
+                        stroke: "#4c9aff",
+                        grid: { stroke: "rgb(53, 53, 53)", width: 1 },
+                        ticks: { stroke: "rgb(73, 73, 73)" },
+                        font: "12px Arial",
+                    },
+                    {
+                        scale: "rot",
+                        show: true,
+                        side: 1,
+                        label: "Orientation (deg)",
+                        labelFont: "12px Arial",
+                        stroke: "#ff9f4c",
+                        grid: { show: false },
+                        ticks: { stroke: "rgb(73, 73, 73)" },
+                        font: "12px Arial",
+                    },
+                ],
+                legend: { show: false },
+                cursor: {
+                    drag: { x: false, y: false },
+                    points: { show: false },
                 },
-            ],
+                hooks: {
+                    draw: [(u) => this._drawMarker(u)],
+                    setCursor: [(u) => this._updateTooltip(u)],
+                },
+            },
+            [xValues, posValues, rotValues],
+            this.plotDiv
+        );
+
+        this.chart.over.addEventListener("click", (e) => {
+            const idx = this.chart.cursor.idx;
+            if (idx === null || idx === undefined) return;
+            const xVal = this.chart.data[0][idx];
+            if (xVal !== undefined && xVal !== null && this.app.animationController) {
+                this.app.animationController.goToTime(xVal);
+            }
         });
-        this.chart.render();
+
+        this._createTooltip();
+
+        this.resizeObserver = new ResizeObserver(() => {
+            const r = this.plotDiv.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0 && this.chart) {
+                this.chart.setSize({ width: r.width, height: r.height });
+            }
+        });
+        this.resizeObserver.observe(this.plotDiv);
+    }
+
+    _createTooltip() {
+        const tooltip = document.createElement("div");
+        tooltip.style.cssText =
+            "position:absolute;pointer-events:none;display:none;" +
+            "background:rgba(20,20,20,0.9);border:1px solid rgba(255,255,255,0.3);" +
+            "border-radius:3px;padding:4px 6px;font-family:Arial;font-size:11px;" +
+            "color:white;white-space:nowrap;z-index:10;";
+        this.plotDiv.appendChild(tooltip);
+        this._tooltip = tooltip;
+    }
+
+    _updateTooltip(u) {
+        if (!this._tooltip) return;
+        const idx = u.cursor.idx;
+        if (idx === null || idx === undefined || u.cursor.left < 0) {
+            this._tooltip.style.display = "none";
+            return;
+        }
+        const time = u.data[0][idx];
+        const pos = u.data[1][idx];
+        const rot = u.data[2][idx];
+        this._tooltip.innerHTML =
+            `Time: ${time.toFixed(3)}<br>` +
+            `<span style="color:#4c9aff;">Position: ${pos.toFixed(3)} m</span><br>` +
+            `<span style="color:#ff9f4c;">Orientation: ${rot.toFixed(2)}°</span>`;
+        this._tooltip.style.left = `${u.cursor.left + 12}px`;
+        this._tooltip.style.top = `${u.cursor.top + 12}px`;
+        this._tooltip.style.display = "block";
     }
 
     _updateReadoutAndMarker() {
@@ -311,10 +408,9 @@ export class ErrorMetrics {
         this.rotReadout.innerHTML = `<span>Orientation error:</span><span>${rot ? rot.y.toFixed(2) + "°" : "-"}</span>`;
 
         if (this.chart && pos) {
-            const stripLine = this.chart.options.axisX.stripLines[0];
-            if (stripLine.value !== pos.x) {
-                stripLine.value = pos.x;
-                this.chart.render();
+            if (this.markerTime !== pos.x) {
+                this.markerTime = pos.x;
+                this.chart.redraw(false, false);
             }
         }
     }
@@ -327,6 +423,13 @@ export class ErrorMetrics {
     }
 
     dispose() {
-        this.chart = null;
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+        if (this.chart) {
+            this.chart.destroy();
+            this.chart = null;
+        }
     }
 }

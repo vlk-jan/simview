@@ -1,3 +1,4 @@
+import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
 
 export class ScalarPlotter {
@@ -15,6 +16,7 @@ export class ScalarPlotter {
         this.plotElements = {};
         this.tabElements = {};
         this.charts = new Map();
+        this.resizeObservers = new Map();
         this.scalarSeries = new Map();
         this.scalarBounds = new Map();
         this.fullDataPoints = new Map();
@@ -96,15 +98,24 @@ export class ScalarPlotter {
             height: ${chartHeightPercentage}vh;
           }
 
-        .canvasjs-plot-div {
-                     border-top: 1px solid white; /* Re-add border here */
-
+        .uplot-plot-div {
+            border-top: 1px solid white;
             width: 100%;
             height: 99%;
             display: none;
+            background-color: rgba(0, 0, 0, 1);
+            cursor: pointer;
         }
-        .canvasjs-plot-div.visible {
+        .uplot-plot-div.visible {
             display: block;
+        }
+        .uplot-plot-div .uplot,
+        .uplot-plot-div .u-wrap {
+            width: 100%;
+            height: 100%;
+        }
+        .uplot-plot-div .u-legend {
+            display: none;
         }
     `;
         const styleElement = document.createElement("style");
@@ -131,7 +142,7 @@ export class ScalarPlotter {
 
             const plotDiv = document.createElement("div");
             plotDiv.id = `plot-${name}`;
-            plotDiv.className = "canvasjs-plot-div";
+            plotDiv.className = "uplot-plot-div";
             plotDiv.dataset.scalarName = name;
             if (index === 0) plotDiv.classList.add("visible");
             this.plotArea.appendChild(plotDiv);
@@ -158,6 +169,7 @@ export class ScalarPlotter {
         this.isExpanded = visible;
 
         if (this.isExpanded && this.activeScalar) {
+            this._resizeChart(this.activeScalar);
             this.setEndIndex(this.currentEndIndex, true);
             this.setFocusedBatch(this.currentFocusedBatch, true);
         }
@@ -182,6 +194,7 @@ export class ScalarPlotter {
         if (newPlot) newPlot.classList.add("visible");
 
         this.activeScalar = newScalarName;
+        this._resizeChart(this.activeScalar);
         this.setEndIndex(this.currentEndIndex, true);
         this.setFocusedBatch(this.currentFocusedBatch, true);
     }
@@ -211,7 +224,8 @@ export class ScalarPlotter {
                             `Scalar "${scalarName}" not found in state at index ${i}.`
                         );
                     }
-                    // Store as CanvasJS data points directly
+                    // Store as plain {x, y} points; sliced into uPlot's columnar
+                    // format on render.
                     this.scalarSeries.get(scalarName)[i].push({ x: state.time, y: scalarValue });
                     min = Math.min(min, scalarValue);
                     max = Math.max(max, scalarValue);
@@ -247,6 +261,24 @@ export class ScalarPlotter {
         return diff / SCALAR_PLOTTER_CONFIG.stepsPerYAxis;
     }
 
+    // Finds the batch series whose y-value at the clicked x-index is closest
+    // to the clicked y-pixel, so a click near a particular line focuses that
+    // batch.
+    _closestSeriesAtIndex(u, dataIdx, yVal) {
+        let bestBatch = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
+            const y = u.data[i + 1][dataIdx];
+            if (y === null || y === undefined) continue;
+            const dist = Math.abs(y - yVal);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestBatch = i;
+            }
+        }
+        return bestBatch;
+    }
+
     _initializePlots() {
         const limOffset = 1e-2;
         this.scalarNames.forEach((name) => {
@@ -254,67 +286,143 @@ export class ScalarPlotter {
             var [min, max] = this.scalarBounds.get(name);
             min = min - limOffset;
             max = max + limOffset;
-            const chart = new CanvasJS.Chart(plotDiv, {
-                backgroundColor: "rgba(0, 0, 0, 1)",
-                axisX: {
-                    lineColor: "rgba(255, 255, 255, 0.00)",
-                    labelFontColor: "transparent",
-                    tickLength: 0,
-                    minimum: this.times[0],
-                    maximum: this.times[this.times.length - 1],
-                    zoomEnabled: false,
-                    margin: -10,
-                },
-                axisY: {
-                    gridColor: "rgb(53, 53, 53)",
-                    lineColor: "rgb(73, 73, 73)",
-                    labelFontColor: "white",
-                    minimum: min,
-                    maximum: max,
-                    zoomEnabled: false,
-                    labelFontFamily: "Arial",
-                    interval: this.getChartInterval(min, max),
-                },
-                toolTip: {
-                    fontFamily: "Arial",
-                    contentFormatter: (e) => {
-                        var series = e.entries[0].dataSeries;
-                        var batchIndex = parseInt(series.name.split(" ").at(-1));
-                        var batchLabel = this.app.batchManager.getBatchName(batchIndex);
-                        var time = e.entries[0].dataPoint.x.toFixed(3);
-                        var value = e.entries[0].dataPoint.y.toFixed(3);
-                        var color = series.color;
-                        return `<div style="color: ${color};">
-                        Batch: ${batchLabel}<br>
-                        Time: ${time}<br>
-                        Value: ${value}
-                    </div>`;
-                    },
-                },
-                data: [],
-            });
+
+            const series = [{}];
             for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-                chart.options.data.push({
-                    type: "line",
-                    markerSize: 0,
-                    lineThickness: 1,
-                    color: this.app.batchManager.getColorForBatch(i),
-                    name: `${name} ${i}`,
-                    dataPoints: [],
-                    click: (e) => {
-                        this.app.batchManager.setActiveBatch(i);
-                        if (e.dataPoint && e.dataPoint.x !== undefined) {
-                            if (this.app.animationController) {
-                                this.app.animationController.goToTime(e.dataPoint.x);
-                            }
-                        }
-                    },
-                    lineColor: this.app.batchManager.getColorForBatch(i),
-                    lineDashType: "solid",
+                series.push({
+                    label: `${name} ${i}`,
+                    stroke: this.app.batchManager.getColorForBatch(i),
+                    width: 1,
+                    points: { show: false },
                 });
             }
+
+            const rect = plotDiv.getBoundingClientRect();
+            const chart = new uPlot(
+                {
+                    width: Math.max(rect.width, 1),
+                    height: Math.max(rect.height, 1),
+                    padding: [8, 8, 0, 8],
+                    series,
+                    scales: {
+                        x: { time: false, min: this.times[0], max: this.times[this.times.length - 1] },
+                        y: { min, max },
+                    },
+                    axes: [
+                        {
+                            show: true,
+                            stroke: "transparent",
+                            grid: { show: false },
+                            ticks: { show: false },
+                            values: () => [],
+                        },
+                        {
+                            show: true,
+                            stroke: "white",
+                            grid: { stroke: "rgb(53, 53, 53)", width: 1 },
+                            ticks: { stroke: "rgb(73, 73, 73)" },
+                            font: "12px Arial",
+                            space: 30,
+                            incrs: [this.getChartInterval(min, max)],
+                        },
+                    ],
+                    legend: { show: false },
+                    cursor: {
+                        drag: { x: false, y: false },
+                        points: { show: false },
+                    },
+                    hooks: {
+                        setCursor: [
+                            (u) => {
+                                this._updateTooltip(u, name);
+                            },
+                        ],
+                    },
+                },
+                [[], ...new Array(this.app.batchManager.simBatches).fill([])],
+                plotDiv
+            );
+
+            chart.over.addEventListener("click", (e) => {
+                const idx = chart.cursor.idx;
+                if (idx === null || idx === undefined) return;
+                const xVal = chart.data[0][idx];
+                const yVal = chart.posToVal(e.offsetY, "y");
+                const batchIndex = this._closestSeriesAtIndex(chart, idx, yVal);
+                if (batchIndex >= 0) {
+                    this.app.batchManager.setActiveBatch(batchIndex);
+                }
+                if (xVal !== undefined && xVal !== null && this.app.animationController) {
+                    this.app.animationController.goToTime(xVal);
+                }
+            });
+
+            this._createTooltip(plotDiv);
+
             this.charts.set(name, chart);
+
+            const resizeObserver = new ResizeObserver(() => this._resizeChart(name));
+            resizeObserver.observe(plotDiv);
+            this.resizeObservers.set(name, resizeObserver);
         });
+    }
+
+    _createTooltip(plotDiv) {
+        const tooltip = document.createElement("div");
+        tooltip.style.cssText =
+            "position:absolute;pointer-events:none;display:none;" +
+            "background:rgba(20,20,20,0.9);border:1px solid rgba(255,255,255,0.3);" +
+            "border-radius:3px;padding:4px 6px;font-family:Arial;font-size:11px;" +
+            "color:white;white-space:nowrap;z-index:10;";
+        plotDiv.style.position = "relative";
+        plotDiv.appendChild(tooltip);
+        plotDiv._tooltip = tooltip;
+    }
+
+    _updateTooltip(u, name) {
+        const plotDiv = this.plotElements[name];
+        const tooltip = plotDiv && plotDiv._tooltip;
+        if (!tooltip) return;
+
+        const idx = u.cursor.idx;
+        if (idx === null || idx === undefined || u.cursor.left < 0) {
+            tooltip.style.display = "none";
+            return;
+        }
+
+        const yVal = u.posToVal(u.cursor.top, "y");
+        const batchIndex = this._closestSeriesAtIndex(u, idx, yVal);
+        if (batchIndex < 0) {
+            tooltip.style.display = "none";
+            return;
+        }
+
+        const time = u.data[0][idx];
+        const value = u.data[batchIndex + 1][idx];
+        if (value === null || value === undefined) {
+            tooltip.style.display = "none";
+            return;
+        }
+        const batchLabel = this.app.batchManager.getBatchName(batchIndex);
+        const color = this.app.batchManager.getColorForBatch(batchIndex);
+
+        tooltip.style.color = color;
+        tooltip.innerHTML = `Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}`;
+        tooltip.style.display = "block";
+
+        const left = u.cursor.left + 12;
+        const top = u.cursor.top + 12;
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+    }
+
+    _resizeChart(name) {
+        const chart = this.charts.get(name);
+        const plotDiv = this.plotElements[name];
+        if (!chart || !plotDiv) return;
+        const rect = plotDiv.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        chart.setSize({ width: rect.width, height: rect.height });
     }
 
     setEndIndex(newEndIndex, force = false) {
@@ -342,9 +450,12 @@ export class ScalarPlotter {
 
         this.seriesRenderCallback = () => {
             const numPoints = this.currentEndIndex + 1;
+            const xValues = this.times.slice(0, numPoints);
+            const data = [xValues];
             for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-                activeChart.options.data[i].dataPoints = scalarData[i].slice(0, numPoints);
+                data.push(scalarData[i].slice(0, numPoints).map((p) => p.y));
             }
+            activeChart.setData(data, false);
         };
     }
 
@@ -369,7 +480,8 @@ export class ScalarPlotter {
                     i === batchIndex ? 1 : SCALAR_PLOTTER_CONFIG.inactiveBatchOpacity;
                 const baseColor = this.app.batchManager.getColorForBatch(i);
                 const rgbaColor = this._hexToRgba(baseColor, opacity);
-                activeChart.options.data[i].lineColor = rgbaColor;
+                activeChart.series[i + 1].stroke = rgbaColor;
+                activeChart.series[i + 1]._stroke = rgbaColor;
             }
         };
     }
@@ -404,7 +516,7 @@ export class ScalarPlotter {
         }
 
         if (!needRender) return;
-        activeChart.render();
+        activeChart.redraw(false, true);
     }
 
     animate(now) {
@@ -414,7 +526,14 @@ export class ScalarPlotter {
     }
 
     dispose() {
+        for (const chart of this.charts.values()) {
+            chart.destroy();
+        }
+        for (const observer of this.resizeObservers.values()) {
+            observer.disconnect();
+        }
         this.charts.clear();
+        this.resizeObservers.clear();
         this.scalarSeries.clear();
         this.scalarBounds.clear();
     }

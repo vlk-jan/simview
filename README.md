@@ -372,8 +372,8 @@ decompress it transparently regardless of extension.
 
 SimView is distributed under the [BSD 3-Clause License](LICENSE).
 
-The web interface loads several third-party libraries from CDNs, including
-[**CanvasJS**](https://canvasjs.com/) for scalar plotting. **CanvasJS is a commercial
-product**; its free version is licensed for non-commercial use only. If you intend to use
-SimView in a commercial setting, review the CanvasJS license and obtain a license or
-replace it with a permissively licensed charting library.
+The web interface uses [**uPlot**](https://github.com/leeoniya/uPlot) (MIT licensed) for
+scalar and error-metric plotting; it is vendored under `simview/static/lib/`. Three.js and
+chroma-js are loaded from the jsdelivr CDN, pinned to exact versions with Subresource
+Integrity (SRI) hashes. All third-party libraries used by SimView are permissively
+licensed (MIT/BSD), so there are no licensing restrictions on commercial use.

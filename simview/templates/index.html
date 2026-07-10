@@ -12,6 +12,10 @@
       rel="stylesheet"
       href="{{ url_for('static', path='css/controls.css') }}"
     />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='lib/uPlot.min.css') }}"
+    />
     <style>
       body {
         margin: 0;
@@ -40,14 +44,28 @@
     <script src="{{ url_for('static', path='lib/gif.js') }}"></script>
     <script src="{{ url_for('static', path='lib/tar.js') }}"></script>
     <script src="{{ url_for('static', path='lib/download.js') }}"></script>
-    <script src="https://cdn.canvasjs.com/ga/canvasjs.min.js"></script>
 
+    <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are loaded
+         from jsdelivr and pinned to exact versions. The "integrity" map below
+         provides Subresource Integrity (SRI) hashes for every URL these
+         specifiers can resolve to, so a compromised/MITM'd CDN response would
+         be rejected by browsers that support import-map integrity (e.g.
+         Chrome/Edge 127+). Older browsers ignore the unknown "integrity" key
+         and load normally, so this is purely an additive hardening measure.
+         If any of the pinned versions below change, regenerate the hashes with:
+           curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
     <script type="importmap">
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three@v0.174.0/build/three.module.js",
           "three/addons/": "https://cdn.jsdelivr.net/npm/three@v0.174.0/examples/jsm/",
           "chroma": "https://cdn.jsdelivr.net/npm/chroma-js@3.1.2/index.min.js"
+        },
+        "integrity": {
+          "https://cdn.jsdelivr.net/npm/three@v0.174.0/build/three.module.js": "sha384-XYnXNAOuPDbehWj5Esz4dUjqxDbdgiQMzzHwBk3u+S8hIT06xorwCCqxT2/levx+",
+          "https://cdn.jsdelivr.net/npm/three@v0.174.0/examples/jsm/controls/OrbitControls.js": "sha384-c9YLmewZHOfGIW5NdQaKmSG/Usm1hVeJrvQBagK3ye/U76jh7/1HAse4iFmmi+HK",
+          "https://cdn.jsdelivr.net/npm/three@v0.174.0/examples/jsm/libs/lil-gui.module.min.js": "sha384-oY4zQcwn6I9JeaMxMO2kcoi8TrDiUl9+CsZMvfcw8yPs7l5U8coPfmOA+tU9Noq3",
+          "https://cdn.jsdelivr.net/npm/chroma-js@3.1.2/index.min.js": "sha384-/hWE+Lv1uJ9maja6P/BNyxjbfgatW3uSO0hab30xdNW8bbgUHRTfU4jLHpLFxA7h"
         }
       }
     </script>
