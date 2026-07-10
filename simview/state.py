@@ -1,6 +1,38 @@
+from dataclasses import dataclass
+
 import torch
 
 from simview.model import OptionalBodyStateAttribute
+
+# Maps a BodyTrajectory field name to the wire key used in each state's body dict.
+# These are the numeric per-body fields that add_trajectory can pack as binary
+# float32 blobs; contacts are ragged integer lists and stay as JSON.
+TRAJECTORY_VECTOR_FIELDS = {
+    "velocity": OptionalBodyStateAttribute.VELOCITY.value,
+    "angular_velocity": OptionalBodyStateAttribute.ANGULAR_VELOCITY.value,
+    "force": OptionalBodyStateAttribute.FORCE.value,
+    "torque": OptionalBodyStateAttribute.TORQUE.value,
+}
+
+
+@dataclass
+class BodyTrajectory:
+    """A whole-timeline pose (and optional vectors) for one body.
+
+    Shapes are ``(T, B, k)`` — T timesteps, B batches — or ``(T, k)`` when the
+    scene has a single batch. Orientations are ``[w, x, y, z]`` (scalar-first),
+    matching the rest of SimView. Pass a list of these to
+    :meth:`SimulationScene.add_trajectory` to append an entire time-series in one
+    call instead of building a ``SimViewBodyState`` per frame.
+    """
+
+    name: str
+    positions: torch.Tensor  # (T, B, 3) or (T, 3)
+    orientations: torch.Tensor  # (T, B, 4) or (T, 4), [w, x, y, z]
+    velocity: torch.Tensor | None = None  # (T, B, 3) or (T, 3)
+    angular_velocity: torch.Tensor | None = None
+    force: torch.Tensor | None = None
+    torque: torch.Tensor | None = None
 
 
 class SimViewBodyState:

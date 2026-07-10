@@ -15,6 +15,7 @@ about matching frame-for-frame first.
 import base64
 import bisect
 import json
+import struct
 from pathlib import Path
 
 try:
@@ -23,6 +24,28 @@ except ImportError:
     orjson = None
 
 _OPTIONAL_VECTOR_ATTRS = ["velocity", "angularVelocity", "force", "torque"]
+
+# Trailing width of each binary per-body state field, used to reshape a decoded
+# flat float32 buffer back into per-batch rows.
+_STATE_FIELD_WIDTHS = {
+    "bodyTransform": 7,
+    "velocity": 3,
+    "angularVelocity": 3,
+    "force": 3,
+    "torque": 3,
+}
+
+
+def _decode_state_field(value, width: int):
+    """Expand a binary ``__b64__`` per-body state field to a list of per-batch
+    rows. Plain lists pass through unchanged, so merged output is always JSON
+    lists regardless of whether inputs used binary encoding. Kept dependency-free
+    (no numpy/torch) so it works in viewing-only installs."""
+    if not (isinstance(value, str) and value.startswith("__b64__")):
+        return value
+    raw = base64.b64decode(value[7:])
+    flat = struct.unpack(f"<{len(raw) // 4}f", raw)
+    return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
 
 
 def _load_json(path: Path) -> dict:
@@ -343,7 +366,13 @@ def _merge_states(
                         f"t={states[state_idx]['time']}."
                     )
                 transform.extend(
-                    _normalize_per_batch(body_state["bodyTransform"], batch_size)
+                    _normalize_per_batch(
+                        _decode_state_field(
+                            body_state["bodyTransform"],
+                            _STATE_FIELD_WIDTHS["bodyTransform"],
+                        ),
+                        batch_size,
+                    )
                 )
                 for attr in attr_values:
                     if attr not in body_state:
@@ -352,7 +381,12 @@ def _merge_states(
                             f"available but is missing it at t={states[state_idx]['time']}."
                         )
                     attr_values[attr].extend(
-                        _normalize_per_batch(body_state[attr], batch_size)
+                        _normalize_per_batch(
+                            _decode_state_field(
+                                body_state[attr], _STATE_FIELD_WIDTHS[attr]
+                            ),
+                            batch_size,
+                        )
                     )
                 if contacts is not None:
                     if "contacts" not in body_state:

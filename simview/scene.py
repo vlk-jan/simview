@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 
 from .model import (
@@ -11,8 +12,56 @@ from .model import (
     SimViewModel,
     SimViewStaticObject,
     SimViewTerrain,
+    _encode_blob,
 )
-from .state import SimViewBodyState
+from .state import TRAJECTORY_VECTOR_FIELDS, BodyTrajectory, SimViewBodyState
+
+
+def _to_f4(value) -> np.ndarray:
+    """Coerce a tensor / array / nested list to a contiguous little-endian float32 array."""
+    if isinstance(value, torch.Tensor):
+        value = value.detach().cpu().numpy()
+    return np.ascontiguousarray(np.asarray(value, dtype="<f4"))
+
+
+def _as_tbk(value, T: int, B: int, k: int, field: str, body: str) -> np.ndarray:
+    """Normalize a per-body trajectory field to shape (T, B, k), float32.
+
+    Accepts (T, B, k), or (T, k) when B == 1. Validates T, B and the trailing
+    width so mistakes surface here rather than as a corrupt scene.
+    """
+    arr = _to_f4(value)
+    if arr.ndim == 2:  # (T, k) -> single batch
+        arr = arr[:, None, :]
+    if arr.ndim != 3:
+        raise ValueError(
+            f"{body}.{field} must have shape (T, {k}) or (T, B, {k}); got {arr.shape}."
+        )
+    Tt, Bb, kk = arr.shape
+    if kk != k:
+        raise ValueError(f"{body}.{field} last dim is {kk}; expected {k}.")
+    if Tt != T:
+        raise ValueError(
+            f"{body}.{field} has {Tt} timesteps; expected {T} (from times)."
+        )
+    if Bb != B:
+        raise ValueError(
+            f"{body}.{field} has batch dim {Bb}; expected {B} "
+            f"(use (T, {k}) only when batch size is 1)."
+        )
+    return np.ascontiguousarray(arr)
+
+
+def _as_tb(value, T: int, B: int, name: str) -> np.ndarray:
+    """Normalize a scalar time-series to shape (T, B). Accepts (T,) when B == 1."""
+    arr = _to_f4(value)
+    if arr.ndim == 1:
+        arr = arr[:, None]
+    if arr.shape != (T, B):
+        raise ValueError(
+            f"scalar '{name}' must have shape (T,) or (T, B) = ({T}, {B}); got {arr.shape}."
+        )
+    return arr
 
 
 class SimulationScene:
@@ -86,6 +135,92 @@ class SimulationScene:
                 **processed_scalars,
             }
         )
+
+    def add_trajectory(
+        self,
+        times,
+        trajectories: list[BodyTrajectory],
+        scalar_values: dict[str, torch.Tensor | list] | None = None,
+        binary: bool = True,
+    ) -> None:
+        """Append an entire time-series in one call.
+
+        Equivalent to looping ``add_state`` over ``T`` frames, but converts each
+        body's pose/vector tensors once (vectorised) instead of per frame, which
+        is dramatically faster for long trajectories. With ``binary=True`` the
+        numeric per-body fields (``bodyTransform`` and any provided vectors) are
+        packed as float32 ``__b64__`` blobs, shrinking the output file and the
+        parse cost; the viewer and :func:`merge_simulation_files` decode these
+        transparently. Set ``binary=False`` to emit plain JSON lists.
+
+        Args:
+            times: sequence of length ``T`` of snapshot times (seconds).
+            trajectories: one :class:`BodyTrajectory` per body; each body must
+                already exist in the model.
+            scalar_values: for a scene with ``scalar_names``, maps each name to a
+                ``(T, B)`` (or ``(T,)`` when ``B == 1``) series.
+        """
+        times = [
+            float(t)
+            for t in (times.tolist() if isinstance(times, torch.Tensor) else times)
+        ]
+        T = len(times)
+        B = self.model.batch_size
+
+        if self.model.scalar_names:
+            if scalar_values is None or set(scalar_values) != set(
+                self.model.scalar_names
+            ):
+                raise ValueError(
+                    "scalar_values keys must match the model's scalar_names."
+                )
+            scalars = {
+                name: _as_tb(scalar_values[name], T, B, name)
+                for name in self.model.scalar_names
+            }
+        else:
+            if scalar_values:
+                print(
+                    "Warning: scalar_values provided but no scalar_names defined; ignoring."
+                )
+            scalars = {}
+
+        # Pre-normalize every field to (T, B, k) float32 up front so the per-frame
+        # loop below only slices and encodes.
+        prepared: list[tuple[str, dict[str, np.ndarray]]] = []
+        for traj in trajectories:
+            if traj.name not in self.model.bodies:
+                raise ValueError(
+                    f"Unknown body '{traj.name}'; create it in the model before "
+                    "adding its trajectory."
+                )
+            fields = {
+                "bodyTransform": np.concatenate(
+                    [
+                        _as_tbk(traj.positions, T, B, 3, "positions", traj.name),
+                        _as_tbk(traj.orientations, T, B, 4, "orientations", traj.name),
+                    ],
+                    axis=-1,
+                )
+            }
+            for attr, wire_key in TRAJECTORY_VECTOR_FIELDS.items():
+                value = getattr(traj, attr)
+                if value is not None:
+                    fields[wire_key] = _as_tbk(value, T, B, 3, attr, traj.name)
+            prepared.append((traj.name, fields))
+
+        def encode(slice_: np.ndarray):
+            return _encode_blob(slice_) if binary else slice_.tolist()
+
+        for t in range(T):
+            bodies = [
+                {"name": name, **{key: encode(arr[t]) for key, arr in fields.items()}}
+                for name, fields in prepared
+            ]
+            state = {"time": times[t], "bodies": bodies}
+            for name, arr in scalars.items():
+                state[name] = arr[t].tolist()
+            self.states.append(state)
 
     def save(self, filepath: str | Path) -> None:
         """

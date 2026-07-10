@@ -15,6 +15,7 @@ _LAZY_EXPORTS = {
     "BodyShapeType": "simview.model",
     "OptionalBodyStateAttribute": "simview.model",
     "SimViewBodyState": "simview.state",
+    "BodyTrajectory": "simview.state",
 }
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
         SimViewTerrain,
     )
     from simview.scene import SimulationScene
-    from simview.state import SimViewBodyState
+    from simview.state import BodyTrajectory, SimViewBodyState
 
 __all__ = [
     "CACHE_DIR",
@@ -39,6 +40,7 @@ __all__ = [
     "BodyShapeType",
     "OptionalBodyStateAttribute",
     "SimViewBodyState",
+    "BodyTrajectory",
 ]
 
 

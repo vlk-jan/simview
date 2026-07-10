@@ -238,6 +238,40 @@ produces.
     *(array[array[3]], optional)* — per-batch 3-vectors.
 - **`<scalarName>`** *(array[float])* — for each name in `model.scalarNames`, one value per batch.
 
+> **Binary state fields.** The numeric per-body fields (`bodyTransform`, `velocity`,
+> `angularVelocity`, `force`, `torque`) may alternatively be a string of the form
+> `"__b64__<base64>"`, where the base64 payload is the little-endian float32 bytes of the
+> batched array in row-major order (`bodyTransform` is width 7, the vectors width 3). This
+> is what [`SimulationScene.add_trajectory`](#authoring-whole-trajectories) emits by
+> default; the viewer and the file-merge decode it transparently. `contacts`, scalars, and
+> `time` are always plain JSON.
+
+### Authoring whole trajectories
+
+Building states one frame at a time (`add_state`) is fine for short scenes, but for long,
+dense trajectories prefer `SimulationScene.add_trajectory`, which appends an entire
+time-series in one call — converting each body's tensors once instead of per frame, and
+packing the numeric fields as the binary blobs described above (typically ~3× smaller
+files and noticeably faster save/load):
+
+```python
+from simview import SimulationScene, BodyShapeType, BodyTrajectory
+
+scene = SimulationScene(batch_size=B, scalar_names=[], dt=0.001)
+scene.create_terrain(...)
+scene.create_body(body_name="box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.3, hz=0.15)
+
+# positions: (T, B, 3), orientations: (T, B, 4) as [w, x, y, z]
+# (2-D (T, 3) / (T, 4) is accepted when batch_size == 1)
+scene.add_trajectory(
+    times=times,                                  # length-T sequence or tensor
+    trajectories=[BodyTrajectory("box", positions, orientations)],
+)
+scene.save("scene.json")
+```
+
+Pass `binary=False` to emit plain JSON lists instead.
+
 ### Example (2 batches, one box, flat terrain)
 
 ```json
