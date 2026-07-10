@@ -2,6 +2,7 @@ import base64
 import gzip
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -22,6 +23,8 @@ from pydantic import BaseModel
 from starlette.types import Scope
 
 from simview.utils import find_free_port, read_maybe_gzipped_bytes
+
+logger = logging.getLogger("simview.server")
 
 TEMPLATES = str(files("simview").joinpath("templates"))
 STATIC = str(files("simview").joinpath("static"))
@@ -133,7 +136,7 @@ class SimViewServer:
             data = self._preloaded_data
             self._preloaded_data = None  # allow it to be garbage-collected
         else:
-            print(f"Loading simulation data from {self.sim_path}...")
+            logger.info("Loading simulation data from %s...", self.sim_path)
             raw = read_maybe_gzipped_bytes(self.sim_path)
             data = orjson.loads(raw) if orjson else json.loads(raw)
 
@@ -148,7 +151,7 @@ class SimViewServer:
                 if isinstance(saved_names, list) and len(saved_names) == sim_batches:
                     model_data["batchNames"] = saved_names
             except (OSError, ValueError, json.JSONDecodeError) as e:
-                print(f"Warning: failed to load batch names from {names_path}: {e}")
+                logger.warning("Failed to load batch names from %s: %s", names_path, e)
 
         self.blobs = []
 
@@ -185,7 +188,7 @@ class SimViewServer:
         if states_data is not None:
             self.states_bytes = gzip.compress(self._dumps(states_data), compresslevel=1)
 
-        print("Simulation data loaded successfully.")
+        logger.info("Simulation data loaded successfully.")
 
     def setup_routes(self):
         @self.app.get("/")
@@ -200,7 +203,7 @@ class SimViewServer:
 
         @self.app.get("/model")
         async def get_model():
-            print("HTTP: Client requested /model")
+            logger.debug("HTTP: Client requested /model")
             if self.model_bytes is not None:
                 return Response(
                     content=self.model_bytes,
@@ -215,7 +218,7 @@ class SimViewServer:
 
         @self.app.get("/states")
         async def get_states():
-            print("HTTP: Client requested /states")
+            logger.debug("HTTP: Client requested /states")
             if self.states_bytes is not None:
                 return Response(
                     content=self.states_bytes,
@@ -263,8 +266,8 @@ class SimViewServer:
                 try:
                     names_path.write_text(json.dumps(names))
                 except OSError as e:
-                    print(
-                        f"Warning: failed to persist batch names to {names_path}: {e}"
+                    logger.warning(
+                        "Failed to persist batch names to %s: %s", names_path, e
                     )
 
             return {"ok": True}
@@ -276,7 +279,7 @@ class SimViewServer:
         port: int = 5420,
         open_browser: bool = False,
     ):
-        print(f"SimView server running on http://{host}:{port}")
+        logger.info("SimView server running on http://%s:%s", host, port)
         if open_browser:
             import threading
             import webbrowser
@@ -338,8 +341,10 @@ class SimViewServer:
             server = SimViewServer(sim_path=paths[0])
         port = find_free_port(host, preferred_port)
         if port != preferred_port:
-            print(
-                f"Preferred port {preferred_port} is not available. Using port {port} instead."
+            logger.warning(
+                "Preferred port %s is not available. Using port %s instead.",
+                preferred_port,
+                port,
             )
         server.run(host=host, port=port, open_browser=open_browser)
 

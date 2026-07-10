@@ -43,7 +43,7 @@ def test_missing_file_errors(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "not found" in capsys.readouterr().out
+    assert "not found" in capsys.readouterr().err
 
 
 def test_single_file_starts_server_with_host_port_and_browser_flag(
@@ -162,5 +162,5 @@ def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path)
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "at least 2" in capsys.readouterr().out
+    assert "at least 2" in capsys.readouterr().err
     assert not out_path.exists()

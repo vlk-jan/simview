@@ -7,15 +7,24 @@ from pathlib import Path
 _GZIP_MAGIC = b"\x1f\x8b"
 
 
-def find_free_port(host: str, base_port: int):
+_MAX_PORT = 65535
+
+
+def find_free_port(host: str, base_port: int) -> int:
+    """Return the first free TCP port on `host` starting at `base_port`.
+
+    Raises OSError if no port is free up to the maximum valid port number
+    (65535), rather than looping forever.
+    """
     port = base_port
-    while True:
+    while port <= _MAX_PORT:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.bind((host, port))
                 return port
             except OSError:
                 port += 1
+    raise OSError(f"No free port found on {host} in range [{base_port}, {_MAX_PORT}].")
 
 
 def read_maybe_gzipped_bytes(path: str | Path) -> bytes:

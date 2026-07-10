@@ -39,6 +39,9 @@ simview = "simview.__main__:main"
 [tool.setuptools.package-dir]
 simview = "simview"
 
+[tool.setuptools.package-data]
+simview = ["py.typed", "static/**/*", "templates/**/*"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",

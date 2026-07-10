@@ -1,6 +1,13 @@
+import logging
 from typing import TYPE_CHECKING
 
 CACHE_DIR = ".simview_cache"
+
+# Library best practice: attach a NullHandler to the package root logger so
+# `import simview` is silent by default for downstream users. Applications
+# (including simview's own CLI, in __main__.py) are responsible for adding
+# their own handler(s) if they want to see log output.
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 # Public authoring API. These live in submodules that depend on the optional
 # `authoring` extra (torch, einops), so they are imported lazily: a viewing-only

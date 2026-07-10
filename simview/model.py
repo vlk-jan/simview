@@ -1,4 +1,5 @@
 import base64
+import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -6,6 +7,8 @@ from typing import Any
 import numpy as np
 import torch
 from einops import rearrange
+
+logger = logging.getLogger("simview.model")
 
 BLOB_PREFIX = "__b64__"
 
@@ -552,7 +555,7 @@ class SimViewModel:
 
     def to_json(self) -> dict:
         if not self.bodies:
-            print("Warning: No dynamic bodies defined in the model.")
+            logger.warning("No dynamic bodies defined in the model.")
         if self.terrain is None:
             raise ValueError("No terrain defined")
         r = {

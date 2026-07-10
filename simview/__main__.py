@@ -1,6 +1,7 @@
 import argparse
 import gzip
 import json
+import logging
 import shutil
 import sys
 import tempfile
@@ -9,6 +10,29 @@ from pathlib import Path
 
 from simview import CACHE_DIR
 from simview.server import SimViewServer
+
+logger = logging.getLogger("simview.cli")
+
+_logging_configured = False
+
+
+def _configure_logging() -> None:
+    """CLI entry point default: INFO-level, message-only output on stderr.
+
+    Kept minimal (no timestamps/level names) since this is user-facing CLI
+    chatter, not application log output meant for parsing. Idempotent, so
+    calling `main()` more than once in the same process (e.g. across tests)
+    doesn't stack up duplicate handlers.
+    """
+    global _logging_configured
+    if _logging_configured:
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    root = logging.getLogger("simview")
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    _logging_configured = True
 
 
 def _package_version() -> str:
@@ -25,7 +49,7 @@ def clear_cache():
     # Legacy cache directories (kept for cleanup of older installs).
     for cache_dir in (Path("/tmp") / CACHE_DIR, Path.home() / ".cache" / CACHE_DIR):
         if cache_dir.exists():
-            print(f"Removing {cache_dir}")
+            logger.info("Removing %s", cache_dir)
             shutil.rmtree(cache_dir, ignore_errors=True)
 
     # Temp scenes written by SimViewLauncher (tempfile.mkstemp with this prefix);
@@ -36,18 +60,18 @@ def clear_cache():
             leftover.unlink()
             removed += 1
         except OSError as e:
-            print(f"Warning: could not remove {leftover}: {e}")
+            logger.warning("Could not remove %s: %s", leftover, e)
     if removed:
-        print(f"Removed {removed} leftover temporary scene file(s).")
+        logger.info("Removed %d leftover temporary scene file(s).", removed)
 
-    print("Cache cleared.")
+    logger.info("Cache cleared.")
 
 
 def save_merged(paths: list[Path], out_path: Path) -> None:
     """Merge `paths` (must be >= 2) and write the result to `out_path`, gzipped
     if it ends in .gz, without starting the server."""
     if len(paths) < 2:
-        print("Error: --save-merged requires at least 2 input files to merge.")
+        logger.error("Error: --save-merged requires at least 2 input files to merge.")
         sys.exit(1)
 
     from simview.merge import merge_simulation_files
@@ -57,7 +81,7 @@ def save_merged(paths: list[Path], out_path: Path) -> None:
     if out_path.suffix == ".gz":
         payload = gzip.compress(payload, compresslevel=1)
     out_path.write_bytes(payload)
-    print(f"Merged scene written to {out_path}")
+    logger.info("Merged scene written to %s", out_path)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -112,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
+    _configure_logging()
     parser = build_parser()
     args = parser.parse_args()
 
@@ -130,7 +155,7 @@ def main():
     paths = [Path(p) for p in args.inputs]
     for path in paths:
         if not (path.exists() and path.is_file()):
-            print(f"Error: File '{path}' not found or is not a file.")
+            logger.error("Error: File '%s' not found or is not a file.", path)
             sys.exit(1)
 
     if args.save_merged:

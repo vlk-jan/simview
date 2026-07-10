@@ -1,5 +1,6 @@
 import gzip
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,8 @@ from .model import (
 )
 from .state import TRAJECTORY_VECTOR_FIELDS, BodyTrajectory, SimViewBodyState
 from .utils import read_maybe_gzipped_bytes
+
+logger = logging.getLogger("simview.scene")
 
 
 def _to_f4(value) -> np.ndarray:
@@ -181,8 +184,9 @@ class SimulationScene:
         else:
             processed_scalars = {}
             if scalar_values:
-                print(
-                    "Warning: scalar_values provided but no scalar_names defined in the model. These values will be ignored."
+                logger.warning(
+                    "scalar_values provided but no scalar_names defined in the "
+                    "model. These values will be ignored."
                 )
 
         self.states.append(
@@ -244,8 +248,8 @@ class SimulationScene:
             }
         else:
             if scalar_values:
-                print(
-                    "Warning: scalar_values provided but no scalar_names defined; ignoring."
+                logger.warning(
+                    "scalar_values provided but no scalar_names defined; ignoring."
                 )
             scalars = {}
 
@@ -329,7 +333,7 @@ class SimulationScene:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            print(f"Saving simulation data to {output_path}...")
+            logger.info("Saving simulation data to %s...", output_path)
             open_fn = (
                 (lambda p: gzip.open(p, "wt")) if compress else (lambda p: open(p, "w"))
             )
@@ -345,9 +349,9 @@ class SimulationScene:
                     f.write("    ")
                     json.dump(state, f)
                 f.write("\n  ]\n}")
-            print(f"Simulation data successfully saved to {output_path}")
-        except Exception as e:
-            print(f"Error saving simulation data to {output_path}: {e}")
+            logger.info("Simulation data successfully saved to %s", output_path)
+        except Exception:
+            logger.exception("Error saving simulation data to %s", output_path)
             raise
 
     def create_terrain(
@@ -416,4 +420,4 @@ class SimulationScene:
             self.model.terrain.normals = []
             self.model.terrain.friction_data = None
             self.model.terrain.stiffness_data = None
-        print("SimulationScene: Internal data cleared.")
+        logger.info("SimulationScene: Internal data cleared.")

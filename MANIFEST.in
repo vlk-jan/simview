@@ -1,2 +1,3 @@
 recursive-include simview/static *
 recursive-include simview/templates *
+include simview/py.typed

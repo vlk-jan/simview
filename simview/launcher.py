@@ -1,10 +1,13 @@
 import gc
+import logging
 from pathlib import Path
 
 from simview.server import SimViewServer
 from simview.utils import find_free_port
 
 from .scene import SimulationScene
+
+logger = logging.getLogger("simview.launcher")
 
 
 class SimViewLauncher:
@@ -38,8 +41,9 @@ class SimViewLauncher:
                 raise FileNotFoundError(
                     f"Simulation JSON file not found at: {self._sim_file_path}"
                 )
-            print(
-                f"SimViewLauncher: Using existing simulation file: {self._sim_file_path}"
+            logger.info(
+                "SimViewLauncher: Using existing simulation file: %s",
+                self._sim_file_path,
             )
         else:
             raise TypeError(
@@ -54,7 +58,7 @@ class SimViewLauncher:
             if self._scene is not None:
                 # Serialize the scene once and hand it to the server directly,
                 # avoiding a temp-file write + read-back round-trip.
-                print("SimViewLauncher: Serving in-memory SimulationScene")
+                logger.info("SimViewLauncher: Serving in-memory SimulationScene")
                 data = {
                     "model": self._scene.model.to_json(),
                     "states": self._scene.states,
@@ -62,9 +66,10 @@ class SimViewLauncher:
                 server = SimViewServer(data=data)
                 port = find_free_port(host, preferred_port)
                 if port != preferred_port:
-                    print(
-                        f"Preferred port {preferred_port} is not available. "
-                        f"Using port {port} instead."
+                    logger.warning(
+                        "Preferred port %s is not available. Using port %s instead.",
+                        preferred_port,
+                        port,
                     )
                 server.run(host=host, port=port)
             else:
@@ -74,9 +79,10 @@ class SimViewLauncher:
                     preferred_port=preferred_port,
                 )
         except KeyboardInterrupt:
-            print("\nSimView server stopped by user.")
-        except Exception as e:
-            print(f"Error starting SimView server: {e}")
+            logger.info("SimView server stopped by user.")
+        except Exception:
+            logger.exception("Error starting SimView server")
+            raise
         finally:
             self.cleanup()
 
@@ -85,7 +91,9 @@ class SimViewLauncher:
         Clears the in-memory scene's data. Safe to call multiple times.
         """
         if self._scene is not None:
-            print("SimViewLauncher: Clearing source SimulationScene internal data...")
+            logger.info(
+                "SimViewLauncher: Clearing source SimulationScene internal data..."
+            )
             self._scene._clear_internal_data()
             self._scene = None
             gc.collect()

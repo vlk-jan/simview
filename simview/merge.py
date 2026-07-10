@@ -15,6 +15,7 @@ about matching frame-for-frame first.
 import base64
 import bisect
 import json
+import logging
 import struct
 from pathlib import Path
 
@@ -24,6 +25,8 @@ except ImportError:
     orjson = None
 
 from .utils import read_maybe_gzipped_bytes
+
+logger = logging.getLogger("simview.merge")
 
 _OPTIONAL_VECTOR_ATTRS = ["velocity", "angularVelocity", "force", "torque"]
 
@@ -265,15 +268,15 @@ def _merge_terrain(
     if not has_friction and any(
         model["terrain"].get("frictionData") is not None for model in models
     ):
-        print(
-            "Warning: not all files provide terrain friction data; dropping "
+        logger.warning(
+            "Not all files provide terrain friction data; dropping "
             "frictionData from the merged terrain."
         )
     if not has_stiffness and any(
         model["terrain"].get("stiffnessData") is not None for model in models
     ):
-        print(
-            "Warning: not all files provide terrain stiffness data; dropping "
+        logger.warning(
+            "Not all files provide terrain stiffness data; dropping "
             "stiffnessData from the merged terrain."
         )
 
@@ -543,7 +546,9 @@ def merge_simulation_files(paths: list[str | Path]) -> dict:
         f"'{label}' -> batches {offset}-{offset + size - 1}"
         for label, offset, size in zip(labels, offsets, batch_sizes)
     )
-    print(f"Merged {len(paths)} files into {total_batches} batches ({ranges})")
+    logger.info(
+        "Merged %d files into %d batches (%s)", len(paths), total_batches, ranges
+    )
 
     merged_model = {
         "simBatches": total_batches,
