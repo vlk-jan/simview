@@ -15,13 +15,50 @@ from importlib.resources import files
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from starlette.types import Scope
 
 from simview.utils import find_free_port, read_maybe_gzipped_bytes
 
 TEMPLATES = str(files("simview").joinpath("templates"))
 STATIC = str(files("simview").joinpath("static"))
+
+# Local-only viewer: CORS is restricted to localhost/127.0.0.1 on any port so a
+# browser tab open on another local dev server can't be silently allowed, while
+# still letting the bundled UI (served from the same host) talk to the API.
+_ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+# Subdirectories of simview/static that hold vendored, version-pinned third-party
+# libraries. These never change for a given release, so they get a long-lived,
+# immutable cache header. Everything else under /static (our own JS/CSS/textures)
+# is cache-busted via the ?v= query param in index.html instead, so it only needs
+# a short revalidation window.
+_IMMUTABLE_STATIC_DIRS = ("lib/",)
+
+
+class BatchNamesRequest(BaseModel):
+    names: list[str]
+
+
+class CacheControlStaticFiles(StaticFiles):
+    """StaticFiles that adds a Cache-Control header based on the asset's path."""
+
+    def file_response(
+        self, full_path, stat_result, scope: Scope, status_code: int = 200
+    ):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        # full_path is the absolute filesystem path of the matched file; check it
+        # (rather than scope["path"]) since the latter is mount-relative and its
+        # exact shape depends on how the StaticFiles app was mounted.
+        rel_path = Path(full_path).relative_to(self.directory).as_posix()
+        if rel_path.startswith(_IMMUTABLE_STATIC_DIRS):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=60"
+        return response
 
 
 class SimViewServer:
@@ -44,11 +81,28 @@ class SimViewServer:
         self.model_data = None
 
         self.app = FastAPI()
+        # Instance-scoped state (self.model_data, self.model_bytes, ...) lives on this
+        # object rather than in module-level globals, so multiple SimViewServer
+        # instances (e.g. in tests) never share or clobber each other's data. It is
+        # also mirrored onto app.state for the FastAPI-idiomatic access pattern.
+        self.app.state.server = self
+
+        # Local viewer only: restrict cross-origin requests to localhost/127.0.0.1.
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origin_regex=_ALLOWED_ORIGIN_REGEX,
+            allow_credentials=True,
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
 
         # Mount static files and setup templates. StaticFiles adds ETag/Last-Modified
         # headers so unchanged assets (vendored libs, textures) are served from cache;
-        # our own JS is cache-busted via the ?v= query param in index.html.
-        self.app.mount("/static", StaticFiles(directory=STATIC), name="static")
+        # our own JS is cache-busted via the ?v= query param in index.html. The
+        # Cache-Control subclass additionally marks vendored libs as immutable.
+        self.app.mount(
+            "/static", CacheControlStaticFiles(directory=STATIC), name="static"
+        )
         self.templates = Jinja2Templates(directory=TEMPLATES)
 
         # Pre-serialized, gzipped payloads for HTTP serving. The parsed dicts are
@@ -183,21 +237,16 @@ class SimViewServer:
             return Response(status_code=404)
 
         @self.app.post("/batch-names")
-        async def set_batch_names(request: Request):
+        async def set_batch_names(body: BatchNamesRequest):
             if self.model_data is None:
                 return Response(
                     content=b'{"message":"Model data not available"}',
                     media_type="application/json",
                     status_code=404,
                 )
-            body = await request.json()
-            names = body.get("names")
+            names = body.names
             sim_batches = int(self.model_data.get("simBatches", 1))
-            if (
-                not isinstance(names, list)
-                or len(names) != sim_batches
-                or not all(isinstance(n, str) for n in names)
-            ):
+            if len(names) != sim_batches:
                 return Response(
                     content=b'{"message":"Expected {\\"names\\": [str, ...]} matching simBatches"}',
                     media_type="application/json",
@@ -222,13 +271,28 @@ class SimViewServer:
 
     def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
         print(f"SimView server running on http://{host}:{port}")
+        # uvloop/httptools are faster than the stdlib fallbacks but aren't available
+        # everywhere (uvloop doesn't support Windows). Use them opportunistically and
+        # fall back to uvicorn's "auto" detection rather than crashing at startup.
+        try:
+            import uvloop  # noqa: F401
+
+            loop = "uvloop"
+        except ImportError:
+            loop = "auto"
+        try:
+            import httptools  # noqa: F401
+
+            http = "httptools"
+        except ImportError:
+            http = "auto"
         uvicorn.run(
             self.app,
             host=host,
             port=port,
             log_level="debug" if debug else "info",
-            loop="uvloop",
-            http="httptools",
+            loop=loop,
+            http=http,
         )
 
     @staticmethod

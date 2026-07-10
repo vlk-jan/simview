@@ -117,3 +117,68 @@ def test_serves_gzipped_scene_file(tmp_path):
     model = client.get("/model").json()
     assert model["simBatches"] == 2
     assert len(client.get("/states").json()) == 3
+
+
+# --- Server hardening (gameplan item 10 / bug B7) ----------------------------
+
+
+def test_batch_names_endpoint_rejects_malformed_body(tmp_path):
+    # Pydantic model validation: "names" must be a list of strings, not e.g. ints
+    # or a missing field entirely. Both should fail request validation (422),
+    # distinct from the semantic "wrong length" case which stays a 400.
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+
+    resp = client.post("/batch-names", json={"names": [1, 2]})
+    assert resp.status_code == 422
+
+    resp = client.post("/batch-names", json={})
+    assert resp.status_code == 422
+
+    resp = client.post("/batch-names", json={"names": "not-a-list"})
+    assert resp.status_code == 422
+
+
+def test_cors_header_present_for_allowed_origin(client):
+    resp = client.get("/model", headers={"Origin": "http://localhost:3000"})
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_cors_header_absent_for_disallowed_origin(client):
+    resp = client.get("/model", headers={"Origin": "http://evil.example.com"})
+    assert "access-control-allow-origin" not in resp.headers
+
+
+def test_static_assets_carry_cache_control_header(client):
+    resp = client.get("/static/js/main.js")
+    assert resp.status_code == 200
+    assert "max-age" in resp.headers["cache-control"]
+
+
+def test_vendored_static_libs_are_marked_immutable(client):
+    resp = client.get("/static/lib/gif.js")
+    assert resp.status_code == 200
+    assert "immutable" in resp.headers["cache-control"]
+
+
+def test_cached_scene_bytes_correct_after_batch_names_mutation(tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+
+    before = client.get("/model").json()
+    assert "batchNames" not in before or before.get("batchNames") != ["a", "b"]
+
+    resp = client.post("/batch-names", json={"names": ["a", "b"]})
+    assert resp.status_code == 200
+
+    after = client.get("/model").json()
+    assert after["batchNames"] == ["a", "b"]
+    # simBatches and other fields must still be intact after the cached bytes
+    # were re-serialized in place.
+    assert after["simBatches"] == 2
