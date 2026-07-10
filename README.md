@@ -85,6 +85,9 @@ To visualize a simulation defined in a JSON file, run the following command, rep
 simview [path_to_json_file]
 ```
 
+Gzip-compressed files (e.g. `scene.json.gz`) are detected automatically and decompressed
+transparently — no separate flag needed.
+
 ### Comparing multiple runs (e.g. real-world vs. simulated)
 
 Pass multiple JSON files to merge them into a single scene, each file's batches appended
@@ -274,6 +277,10 @@ scene.save("scene.json")
 ```
 
 Pass `binary=False` to emit plain JSON lists instead.
+
+For large simulations, pass `compress=True` to `save()` (or use a `.gz` filepath) to
+gzip the output — `SimulationScene.load()`, the CLI, and the server all detect and
+decompress it transparently regardless of extension.
 
 ### Example (2 batches, one box, flat terrain)
 

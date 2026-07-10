@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from simview.utils import find_free_port
+from simview.utils import find_free_port, read_maybe_gzipped_bytes
 
 TEMPLATES = str(files("simview").joinpath("templates"))
 STATIC = str(files("simview").joinpath("static"))
@@ -80,12 +80,8 @@ class SimViewServer:
             self._preloaded_data = None  # allow it to be garbage-collected
         else:
             print(f"Loading simulation data from {self.sim_path}...")
-            if orjson:
-                with open(self.sim_path, "rb") as f:
-                    data = orjson.loads(f.read())
-            else:
-                with open(self.sim_path, "r") as f:
-                    data = json.load(f)
+            raw = read_maybe_gzipped_bytes(self.sim_path)
+            data = orjson.loads(raw) if orjson else json.loads(raw)
 
         model_data = data.get("model")
         states_data = data.get("states")

@@ -255,6 +255,28 @@ def test_merge_mixed_binary_and_plain_state_fields(tmp_path):
             assert isinstance(row, list) and len(row) == 7
 
 
+def test_merge_gzipped_and_plain_file(tmp_path):
+    """Gameplan item 16: merge.py must transparently decompress a gzip-compressed
+    input alongside a plain-JSON one."""
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=2)
+    path_a = tmp_path / "a.json.gz"
+    path_b = tmp_path / "b.json"
+    scene_a.save(path_a, compress=True)
+    scene_b.save(path_b)
+
+    with open(path_a, "rb") as f:
+        assert f.read(2) == b"\x1f\x8b"  # sanity check: actually gzipped
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    assert merged["model"]["simBatches"] == 3
+    assert len(merged["states"]) == 3
+    for state in merged["states"]:
+        box = state["bodies"][0]
+        assert len(box["bodyTransform"]) == 3
+
+
 def test_merge_mixed_binary_and_plain_terrain_data(tmp_path):
     """B5 (terrain variant): one file's terrain heightData/normals are
     __b64__-encoded, the other's are plain JSON lists. Use batch_size=1 so

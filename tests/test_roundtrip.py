@@ -1,3 +1,4 @@
+import gzip
 import json
 
 import pytest
@@ -197,6 +198,70 @@ def test_scene_save_load_save_equivalence_with_binary_trajectory(tmp_path):
     body0 = data1["states"][0]["bodies"][0]
     assert isinstance(body0["bodyTransform"], str)
     assert body0["bodyTransform"].startswith("__b64__")
+
+
+# --- Gzip support (gameplan item 16) ----------------------------------------
+
+
+def test_save_compress_true_writes_gzip_and_appends_suffix(tmp_path):
+    scene = build_scene(batch_size=2)
+    out = tmp_path / "sim.json"
+    scene.save(out, compress=True)
+
+    gz_path = tmp_path / "sim.json.gz"
+    assert gz_path.is_file()
+    assert not out.exists()
+    with gzip.open(gz_path, "rt") as f:
+        data = json.load(f)
+    assert data["model"]["simBatches"] == 2
+
+
+def test_save_compress_true_respects_existing_gz_suffix(tmp_path):
+    scene = build_scene(batch_size=1)
+    out = tmp_path / "sim.json.gz"
+    scene.save(out, compress=True)
+
+    assert out.is_file()
+    with gzip.open(out, "rt") as f:
+        data = json.load(f)
+    assert data["model"]["simBatches"] == 1
+
+
+def test_save_gz_suffix_compresses_without_compress_flag(tmp_path):
+    scene = build_scene(batch_size=1)
+    out = tmp_path / "sim.json.gz"
+    scene.save(out)
+
+    raw = out.read_bytes()
+    assert raw[:2] == b"\x1f\x8b"  # gzip magic bytes
+
+
+def test_load_reads_gzip_transparently(tmp_path):
+    scene = build_scene(batch_size=2)
+    plain = tmp_path / "plain.json"
+    gz = tmp_path / "compressed.json.gz"
+    scene.save(plain)
+    scene.save(gz, compress=True)
+
+    loaded_plain = SimulationScene.load(plain)
+    loaded_gz = SimulationScene.load(gz)
+    assert loaded_plain.model.to_json() == loaded_gz.model.to_json()
+    assert loaded_plain.states == loaded_gz.states
+
+
+def test_save_compress_load_save_equivalence(tmp_path):
+    scene = build_scene(batch_size=2)
+    gz1 = tmp_path / "sim1.json.gz"
+    out2 = tmp_path / "sim2.json"
+    scene.save(gz1, compress=True)
+
+    loaded = SimulationScene.load(gz1)
+    loaded.save(out2)
+
+    with gzip.open(gz1, "rt") as f:
+        data1 = json.load(f)
+    data2 = json.loads(out2.read_text())
+    assert data1 == data2
 
 
 def test_scene_from_dict_matches_original_model():

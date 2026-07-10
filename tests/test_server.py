@@ -101,3 +101,19 @@ def test_batch_names_endpoint_rejects_wrong_length(tmp_path):
     client = TestClient(server.app)
     resp = client.post("/batch-names", json={"names": ["only-one"]})
     assert resp.status_code == 400
+
+
+# --- Gzip support (gameplan item 16) -----------------------------------------
+
+
+def test_serves_gzipped_scene_file(tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json.gz"
+    scene.save(sim_file, compress=True)
+
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+
+    model = client.get("/model").json()
+    assert model["simBatches"] == 2
+    assert len(client.get("/states").json()) == 3

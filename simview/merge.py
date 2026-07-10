@@ -23,6 +23,8 @@ try:
 except ImportError:
     orjson = None
 
+from .utils import read_maybe_gzipped_bytes
+
 _OPTIONAL_VECTOR_ATTRS = ["velocity", "angularVelocity", "force", "torque"]
 
 # Trailing width of each binary per-body state field, used to reshape a decoded
@@ -65,11 +67,8 @@ def _decode_per_batch(value: list | str, batch_size: int) -> list:
 
 
 def _load_json(path: Path) -> dict:
-    if orjson:
-        with open(path, "rb") as f:
-            return orjson.loads(f.read())
-    with open(path, "r") as f:
-        return json.load(f)
+    raw = read_maybe_gzipped_bytes(path)
+    return orjson.loads(raw) if orjson else json.loads(raw)
 
 
 def _require(doc, key: str, expected_type: type | tuple[type, ...], label: str):

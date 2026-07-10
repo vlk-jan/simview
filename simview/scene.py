@@ -1,3 +1,4 @@
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from .model import (
     _encode_blob,
 )
 from .state import TRAJECTORY_VECTOR_FIELDS, BodyTrajectory, SimViewBodyState
+from .utils import read_maybe_gzipped_bytes
 
 
 def _to_f4(value) -> np.ndarray:
@@ -136,11 +138,11 @@ class SimulationScene:
     def load(cls, path: str | Path) -> "SimulationScene":
         """Load a SimulationScene previously written by `save`.
 
-        Enables round-tripping from Python: ``SimulationScene.load(p).save(p2)``.
+        Transparently reads gzip-compressed files (detected by magic bytes,
+        regardless of extension) as well as plain JSON. Enables round-tripping
+        from Python: ``SimulationScene.load(p).save(p2)``.
         """
-        input_path = Path(path)
-        with open(input_path, "r") as f:
-            data = json.load(f)
+        data = json.loads(read_maybe_gzipped_bytes(path))
         return cls.from_dict(data)
 
     def add_state(
@@ -302,10 +304,18 @@ class SimulationScene:
                 state[name] = arr[t].tolist()
             self.states.append(state)
 
-    def save(self, filepath: str | Path) -> None:
+    def save(self, filepath: str | Path, compress: bool = False) -> None:
         """
         Exports the complete simulation data (model and states) to a JSON file.
         Uses a streaming approach to reduce memory spikes for large simulations.
+
+        Args:
+            filepath: Destination path. If it ends in ``.gz`` the output is
+                gzip-compressed regardless of `compress`.
+            compress: If True, gzip-compress the output (useful for large
+                simulations, which can reach 100+ MB as plain JSON). If
+                `filepath` doesn't already end in ``.gz``, the suffix is
+                appended so the extension reflects the actual file contents.
         """
         if not self.model.is_complete:
             raise ValueError(
@@ -313,11 +323,17 @@ class SimulationScene:
             )
 
         output_path = Path(filepath)
+        if compress and output_path.suffix != ".gz":
+            output_path = output_path.with_name(output_path.name + ".gz")
+        compress = compress or output_path.suffix == ".gz"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             print(f"Saving simulation data to {output_path}...")
-            with open(output_path, "w") as f:
+            open_fn = (
+                (lambda p: gzip.open(p, "wt")) if compress else (lambda p: open(p, "w"))
+            )
+            with open_fn(output_path) as f:
                 f.write("{\n")
                 f.write('  "model": ')
                 json.dump(self.model.to_json(), f, indent=2)
