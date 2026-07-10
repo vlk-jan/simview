@@ -136,14 +136,16 @@ def _validate_doc(doc: dict, label: str) -> None:
 def _expand_batched(
     values: list | str, is_singleton: bool, batch_size: int, field: str, label: str
 ) -> list | str:
-    # Singleton data is nominally a single shared entry, but some producers (e.g.
-    # SimViewModel.create_terrain's auto-broadcast) already write it out fully
-    # replicated to batch_size while still marking isSingleton=true. Accept both.
+    # A __b64__ blob's decoded length is always taken to span batch_size rows
+    # (see _decode_per_batch, and Terrain.js's identical convention on the
+    # viewer side) regardless of isSingleton. Singleton data is nominally a
+    # single shared entry, but the only producer that ever sets isSingleton on
+    # terrain (SimViewModel.create_terrain) already broadcasts it out to
+    # batch_size rows before encoding, so the blob is never a lone unbroadcast
+    # row that needs expanding here -- doing so would double it to
+    # batch_size^2 rows. Leave b64 blobs untouched; only plain lists (where the
+    # row count is directly observable) may need broadcasting below.
     if isinstance(values, str) and values.startswith("__b64__"):
-        if is_singleton and batch_size > 1:
-            raw = base64.b64decode(values[7:])
-            expanded = raw * batch_size
-            return "__b64__" + base64.b64encode(expanded).decode("utf-8")
         return values
 
     if len(values) == batch_size:

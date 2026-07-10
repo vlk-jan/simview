@@ -317,3 +317,58 @@ def test_merge_mixed_binary_and_plain_terrain_data(tmp_path):
     # identically -- this is the crash/corruption this test guards against.
     assert height[0] == pytest.approx(expected_row)
     assert height[1] == pytest.approx(expected_row)
+
+
+def test_merge_terrain_already_broadcast_singleton(tmp_path):
+    """SimViewModel.create_terrain, when batch_size > 1 and every terrain field
+    is shared (batch dim 1), sets isSingleton=True but still broadcasts the
+    encoded data out to batch_size rows (the viewer always splits terrain into
+    batch_size chunks). `_expand_batched`'s b64 singleton branch used to assume
+    isSingleton=True + batch_size>1 always means "one row, needs broadcasting",
+    and blindly repeated the blob batch_size times -- corrupting this
+    already-fully-replicated case into batch_size^2 rows crammed into
+    batch_size rows of double width. Cover both b64 (the default) and
+    plain-list encoding of this same already-broadcast-but-singleton shape."""
+    resolution = 4
+    row_width = resolution * resolution
+
+    scene_a = build_scene(batch_size=1)
+    path_a = tmp_path / "a.json"
+    scene_a.save(path_a)
+    expected_row = _decode_blob_per_batch(
+        json.loads(path_a.read_text())["model"]["terrain"]["heightData"], 1
+    )[0]
+
+    # build_scene(batch_size=2) shares terrain across both batches, so
+    # create_terrain marks it isSingleton=True but broadcasts heightData/
+    # normals to 2 rows before encoding -- exactly the trigger case.
+    scene_b = build_scene(batch_size=2)
+    path_b_bin = tmp_path / "b_bin.json"
+    scene_b.save(path_b_bin)
+    data_b_bin = json.loads(path_b_bin.read_text())
+    terrain_b_bin = data_b_bin["model"]["terrain"]
+    assert terrain_b_bin["isSingleton"] is True
+    assert isinstance(terrain_b_bin["heightData"], str)
+    flat = _decode_blob(terrain_b_bin["heightData"])
+    assert len(flat) == 2 * row_width  # already broadcast to both batches
+
+    # Same shape, but re-saved with plain-list encoding instead of b64.
+    data_b_plain = json.loads(json.dumps(data_b_bin))
+    terrain_b_plain = data_b_plain["model"]["terrain"]
+    terrain_b_plain["heightData"] = _decode_blob_per_batch(
+        terrain_b_plain["heightData"], 2
+    )
+    terrain_b_plain["normals"] = _decode_blob_per_batch(terrain_b_plain["normals"], 2)
+    path_b_plain = tmp_path / "b_plain.json"
+    path_b_plain.write_text(json.dumps(data_b_plain))
+
+    for path_b in (path_b_bin, path_b_plain):
+        merged = merge_simulation_files([path_a, path_b])
+        assert merged["model"]["simBatches"] == 3
+        height = merged["model"]["terrain"]["heightData"]
+        assert len(height) == 3
+        for row in height:
+            assert len(row) == row_width
+        assert height[0] == pytest.approx(expected_row)
+        assert height[1] == pytest.approx(expected_row)
+        assert height[2] == pytest.approx(expected_row)
