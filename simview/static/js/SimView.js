@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { Scene } from "./components/Scene.js";
 import { UIControls } from "./ui/Controls.js";
 import { BodyStateWindow } from "./ui/BodyStateWindow.js";
@@ -384,16 +385,37 @@ export class SimView {
                     if (body.positions && body.positions[activeBatch]) {
                         const pos = body.positions[activeBatch];
                         const offset = this.batchManager.getBatchOffset(activeBatch);
-                        const targetPos = new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z);
+                        const currentBodyPos = new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z);
                         
-                        const oldTarget = this.scene.controls.target.clone();
-                        const delta = targetPos.clone().sub(oldTarget);
+                        try {
+                            if (this._lastTrackedBody !== this.uiState.trackBody) {
+                                // On first tracking or switch, center the target on the body, preserving the viewing angle
+                                const delta = currentBodyPos.clone().sub(this.scene.controls.target);
+                                this.scene.camera.position.add(delta);
+                                this.scene.controls.target.copy(currentBodyPos);
+                                this.scene.controls.update();
+                                console.log("Started tracking", this.uiState.trackBody);
+                            } else if (this._lastTrackedPosition) {
+                                // On subsequent frames, shift camera and target by the exact movement delta of the body
+                                const delta = currentBodyPos.clone().sub(this._lastTrackedPosition);
+                                // Only update if it actually moved
+                                if (delta.lengthSq() > 0) {
+                                    this.scene.camera.position.add(delta);
+                                    this.scene.controls.target.add(delta);
+                                    this.scene.controls.update();
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Error in tracking logic:", e);
+                        }
                         
-                        this.scene.camera.position.add(delta);
-                        this.scene.controls.target.copy(targetPos);
-                        this.scene.controls.update();
+                        this._lastTrackedBody = this.uiState.trackBody;
+                        this._lastTrackedPosition = currentBodyPos.clone();
                     }
                 }
+            } else {
+                this._lastTrackedBody = null;
+                this._lastTrackedPosition = null;
             }
             this.scene.animate(now);
         }
