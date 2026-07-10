@@ -14,19 +14,6 @@ export class Body {
         this.name = bodyData.name;
         this.simBatches = app.batchManager.simBatches;
 
-        // Data Normalization: Handle numeric shape types
-        if (bodyData.shape && typeof bodyData.shape.type === "number") {
-            const typeMap = { 0: "custom", 1: "box", 2: "sphere", 3: "cylinder" };
-            if (typeMap[bodyData.shape.type]) {
-                console.debug(`Normalizing shape type ${bodyData.shape.type} to ${typeMap[bodyData.shape.type]}`);
-                bodyData.shape.type = typeMap[bodyData.shape.type];
-            } else {
-                console.warn(`Unknown numeric shape type: ${bodyData.shape.type}`);
-            }
-        } else {
-            console.debug(`Shape type is: ${bodyData.shape ? bodyData.shape.type : 'undefined'}`);
-        }
-
         // Data Normalization: Handle root-level bodyPoints
         if (bodyData.bodyPoints && !bodyData.shape.points) {
             bodyData.shape.points = bodyData.bodyPoints;

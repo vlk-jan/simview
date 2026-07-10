@@ -13,7 +13,6 @@ except ImportError:
 
 from importlib.resources import files
 
-import socketio
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -23,22 +22,6 @@ from simview.utils import find_free_port
 
 TEMPLATES = str(files("simview").joinpath("templates"))
 STATIC = str(files("simview").joinpath("static"))
-
-
-class OrjsonWrapper:
-    """Wrapper to make orjson compatible with socketio's json argument (expects dumps to return str)."""
-
-    @staticmethod
-    def dumps(obj, **kwargs):
-        if orjson:
-            return orjson.dumps(obj).decode("utf-8")
-        return json.dumps(obj, **kwargs)
-
-    @staticmethod
-    def loads(s, **kwargs):
-        if orjson:
-            return orjson.loads(s)
-        return json.loads(s, **kwargs)
 
 
 class SimViewServer:
@@ -60,15 +43,6 @@ class SimViewServer:
         self._preloaded_data = data
         self.model_data = None
 
-        # Initialize Socket.IO AsyncServer
-        self.sio = socketio.AsyncServer(
-            async_mode="asgi",
-            cors_allowed_origins="*",
-            # Buffer size for smaller real-time updates (kept generous at 100MB)
-            max_http_buffer_size=100 * 1024 * 1024,
-            json=OrjsonWrapper,
-        )
-
         self.app = FastAPI()
 
         # Mount static files and setup templates. StaticFiles adds ETag/Last-Modified
@@ -77,9 +51,6 @@ class SimViewServer:
         self.app.mount("/static", StaticFiles(directory=STATIC), name="static")
         self.templates = Jinja2Templates(directory=TEMPLATES)
 
-        # Combine SIO and FastAPI into one ASGI application
-        self.socket_app = socketio.ASGIApp(self.sio, self.app)
-
         # Pre-serialized, gzipped payloads for HTTP serving. The parsed dicts are
         # discarded after compression to avoid holding the simulation twice in memory.
         self.model_bytes = None
@@ -87,7 +58,6 @@ class SimViewServer:
         self._load_data()
 
         self.setup_routes()
-        self.setup_socket_handlers()
 
     def _names_sidecar_path(self) -> Path | None:
         """Where custom batch names get persisted, so they survive a server restart.
@@ -151,7 +121,6 @@ class SimViewServer:
                         extract_blobs(v)
 
         self.model_data = model_data
-        self.states_data = states_data
 
         if self.model_data is not None:
             extract_blobs(self.model_data)
@@ -255,33 +224,10 @@ class SimViewServer:
 
             return {"ok": True}
 
-    def setup_socket_handlers(self):
-        @self.sio.on("connect")
-        async def handle_connect(sid, environ):
-            print(f"Client connected: {sid}")
-
-        @self.sio.on("disconnect")
-        async def handle_disconnect(sid):
-            print(f"Client disconnected: {sid}")
-
-        @self.sio.on("request_states")
-        async def handle_request_states(sid):
-            if not getattr(self, "states_data", None):
-                return
-            chunk_size = 500
-            for i in range(0, len(self.states_data), chunk_size):
-                chunk = self.states_data[i : i + chunk_size]
-                # Send the chunk as bytes of JSON to avoid socketio json parser overhead
-                chunk_bytes = self._dumps(chunk)
-                await self.sio.emit("states_chunk", chunk_bytes, to=sid)
-                await self.sio.sleep(
-                    0.05
-                )  # Yield control to event loop and pace chunks
-
     def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
         print(f"SimView server running on http://{host}:{port}")
         uvicorn.run(
-            self.socket_app,
+            self.app,
             host=host,
             port=port,
             log_level="debug" if debug else "info",

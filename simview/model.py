@@ -367,35 +367,40 @@ class SimViewModel:
         if stiffness_map is not None and stiffness_map.ndim == 2:
             stiffness_map = stiffness_map.unsqueeze(0)
 
-        B_h = heightmap.shape[0]
-        B_n = normals.shape[0]
+        # Each field's batch dim must be either 1 (shared across all batches) or
+        # exactly batch_size (per-batch). Anything else is a mistake, and the old
+        # code silently mishandled the mixed case (e.g. shared height + per-batch
+        # normals), producing an inconsistent isSingleton flag.
+        provided = {
+            "heightmap": heightmap,
+            "normals": normals,
+            "friction_map": friction_map,
+            "stiffness_map": stiffness_map,
+        }
+        for name, tensor in provided.items():
+            if tensor is not None and tensor.shape[0] not in (1, self.batch_size):
+                raise ValueError(
+                    f"Terrain '{name}' batch dim ({tensor.shape[0]}) must be 1 "
+                    f"(shared) or {self.batch_size} (per-batch)."
+                )
 
-        is_singleton = (B_h == 1 and self.batch_size > 1) or (
-            B_n == 1 and self.batch_size > 1
+        # Singleton only when every provided field is shared and there is more than
+        # one batch to share it across.
+        is_singleton = self.batch_size > 1 and all(
+            tensor.shape[0] == 1 for tensor in provided.values() if tensor is not None
         )
 
-        if is_singleton:
-            if B_h == 1:
+        # The viewer always splits terrain data into batch_size chunks, so broadcast
+        # any shared field up to the full batch size before encoding.
+        if self.batch_size > 1:
+            if heightmap.shape[0] == 1:
                 heightmap = heightmap.repeat(self.batch_size, 1, 1)
-            if B_n == 1:
+            if normals.shape[0] == 1:
                 normals = normals.repeat(self.batch_size, 1, 1, 1)
             if friction_map is not None and friction_map.shape[0] == 1:
                 friction_map = friction_map.repeat(self.batch_size, 1, 1)
             if stiffness_map is not None and stiffness_map.shape[0] == 1:
                 stiffness_map = stiffness_map.repeat(self.batch_size, 1, 1)
-        else:
-            if B_h != self.batch_size or B_n != self.batch_size:
-                raise ValueError(
-                    f"Non-singleton terrain dimensions ({B_h}, {B_n}) must match batch size ({self.batch_size})"
-                )
-            if friction_map is not None and friction_map.shape[0] != self.batch_size:
-                raise ValueError(
-                    f"Friction map batch size ({friction_map.shape[0]}) must match batch size ({self.batch_size})"
-                )
-            if stiffness_map is not None and stiffness_map.shape[0] != self.batch_size:
-                raise ValueError(
-                    f"Stiffness map batch size ({stiffness_map.shape[0]}) must match batch size ({self.batch_size})"
-                )
 
         self.terrain = SimViewTerrain.create(
             heightmap=heightmap,

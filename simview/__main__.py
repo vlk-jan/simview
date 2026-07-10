@@ -1,6 +1,7 @@
 import argparse
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 from simview import CACHE_DIR
@@ -8,10 +9,23 @@ from simview.server import SimViewServer
 
 
 def clear_cache():
+    # Legacy cache directories (kept for cleanup of older installs).
     for cache_dir in (Path("/tmp") / CACHE_DIR, Path.home() / ".cache" / CACHE_DIR):
         if cache_dir.exists():
             print(f"Removing {cache_dir}")
             shutil.rmtree(cache_dir, ignore_errors=True)
+
+    # Temp scenes written by SimViewLauncher (tempfile.mkstemp with this prefix);
+    # these leak if a launched viewer is killed before cleanup runs.
+    removed = 0
+    for leftover in Path(tempfile.gettempdir()).glob("simview_viz_*.json"):
+        try:
+            leftover.unlink()
+            removed += 1
+        except OSError as e:
+            print(f"Warning: could not remove {leftover}: {e}")
+    if removed:
+        print(f"Removed {removed} leftover temporary scene file(s).")
 
     print("Cache cleared.")
 

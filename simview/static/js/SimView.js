@@ -18,7 +18,6 @@ import { InteractionController } from "./components/InteractionController.js";
 export class SimView {
     constructor() {
         this.scene = null;
-        this.socket = null;
         this.uiControls = null;
         this.bodyStateWindow = null;
         this.animationController = null;
@@ -33,7 +32,6 @@ export class SimView {
         this.bodies = null;
         this.staticObjects = null;
         this.uiState = structuredClone(UI_DEFAULT_CONFIG);
-        this.canReceiveStates = true; // Flag to control states reception
         this.animate = this.animate.bind(this);
     }
 
@@ -42,100 +40,52 @@ export class SimView {
         simView.initAndAnimate();
     }
 
-    initializeSocket() {
-        const socket = io();
-        this.socket = socket;
+    // Fetch the model and states over HTTP (both served pre-gzipped by the server,
+    // transparently decompressed by the browser) and build the scene from them.
+    async loadData() {
+        const splash = document.getElementById("loading-splash");
+        try {
+            if (splash) splash.innerHTML = "<h1>Loading Model (HTTP)...</h1>";
+            console.time("fetch_model");
+            const modelResponse = await fetch("/model");
+            console.timeEnd("fetch_model");
+            if (!modelResponse.ok)
+                throw new Error(`Failed to fetch model: ${modelResponse.status} ${modelResponse.statusText}`);
 
-        // Remove any existing listeners to prevent duplicates
-        socket.off("connect");
-        socket.off("disconnect");
-        socket.off("error");
-        socket.off("model");
-        socket.off("states");
+            if (splash) splash.innerHTML = "<h1>Parsing Model JSON...</h1>";
+            console.time("parse_model");
+            const model = await modelResponse.json();
+            console.timeEnd("parse_model");
 
-        socket.on("disconnect", () => console.log("Disconnected from server"));
-        socket.on("error", (error) => {
-            console.error("WebSocket Error:", error);
-            const splash = document.getElementById("loading-splash");
+            console.time("fetch_blobs");
+            await this.fetchModelBlobs(model);
+            console.timeEnd("fetch_blobs");
+
+            console.log("Model received, initializing components...");
+            this.initFromModel(model);
+
+            if (splash) splash.innerHTML = "<h1>Loading States (HTTP)...</h1>";
+            console.time("fetch_states");
+            const statesResponse = await fetch("/states");
+            console.timeEnd("fetch_states");
+            if (!statesResponse.ok)
+                throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
+
+            console.time("parse_states");
+            const states = await statesResponse.json();
+            console.timeEnd("parse_states");
+            console.debug(`Received ${states.length} states`);
+            this.processStates(states);
+
+            if (splash) splash.remove();
+            console.log("Initialization complete!");
+        } catch (error) {
+            console.error("Critical error during initial data fetch:", error);
             if (splash) {
-                splash.innerHTML = `<h1 style="color: red;">WebSocket Error</h1><p>${error.message || "Unknown error"}</p>`;
+                splash.innerHTML = `<h1 style="color: red;">Load Error</h1><p>${error.message}</p><p>Check browser console for details.</p>`;
             }
-        });
-
-        // Define the states handler
-        const statesHandler = (statesData) => {
-            if (this.canReceiveStates) {
-                console.debug(`Received ${statesData.length} states`);
-                this.canReceiveStates = false; // Block further states until new model
-                this.processStates(statesData);
-            } else {
-                console.debug("States received but blocked until new model arrives");
-            }
-        };
-
-        return new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error("Timeout waiting for model from server after 120s"));
-            }, 120000);
-
-            const doFetch = async () => {
-                console.log("Connected to server, starting data fetch...");
-                const splash = document.getElementById("loading-splash");
-                
-                try {
-                    if (splash) splash.innerHTML = "<h1>Loading Model (HTTP)...</h1>";
-                    console.time("fetch_model");
-                    const modelResponse = await fetch("/model");
-                    console.timeEnd("fetch_model");
-                    
-                    if (!modelResponse.ok) throw new Error(`Failed to fetch model: ${modelResponse.status} ${modelResponse.statusText}`);
-                    
-                    if (splash) splash.innerHTML = "<h1>Parsing Model JSON...</h1>";
-                    console.time("parse_model");
-                    const model = await modelResponse.json();
-                    console.timeEnd("parse_model");
-
-                    console.time("fetch_blobs");
-                    await this.fetchModelBlobs(model);
-                    console.timeEnd("fetch_blobs");
-
-                    console.log("Model received, initializing components...");
-                    this.initFromModel(model);
-                    this.canReceiveStates = true;
-
-                    // Request states via WebSocket chunking
-                    socket.emit("request_states");
-
-                    socket.off("states_chunk");
-                    socket.on("states_chunk", (chunkBytes) => {
-                        const jsonStr = new TextDecoder().decode(chunkBytes);
-                        const chunk = JSON.parse(jsonStr);
-                        if (this.canReceiveStates) {
-                            console.debug(`Received chunk of ${chunk.length} states`);
-                            const splash = document.getElementById("loading-splash");
-                            if (splash) splash.remove();
-                            this.processStatesChunk(chunk);
-                        }
-                    });
-
-                    console.log("Initialization complete!");
-                    clearTimeout(timeout);
-                    resolve();
-                } catch (error) {
-                    console.error("Critical error during initial data fetch:", error);
-                    if (splash) {
-                        splash.innerHTML = `<h1 style="color: red;">Load Error</h1><p>${error.message}</p><p>Check browser console for details.</p>`;
-                    }
-                    reject(error);
-                }
-            };
-
-            if (socket.connected) {
-                doFetch();
-            } else {
-                socket.once("connect", doFetch);
-            }
-        });
+            throw error;
+        }
     }
 
     async fetchModelBlobs(obj) {
@@ -268,14 +218,12 @@ export class SimView {
             this.batchManager = new BatchManager(this, model);
             this.bodies = new Map();
 
-            // Auto-detect visualization mode based on first body
+            // Auto-detect visualization mode based on first body: anything with a
+            // real surface (box/sphere/cylinder/mesh) defaults to mesh; pointclouds
+            // keep the default points mode.
             if (Array.isArray(model.bodies) && model.bodies.length > 0) {
                 const firstShape = model.bodies[0].shape;
-                // Check for numeric type 1 (Box) or string "box"/"mesh"/"sphere"/"cylinder"
-                const isMeshType = (typeof firstShape.type === 'number' && firstShape.type !== 5) ||
-                    (typeof firstShape.type === 'string' && firstShape.type !== 'pointcloud');
-
-                if (isMeshType) {
+                if (firstShape && firstShape.type !== "pointcloud") {
                     console.log("Auto-switching visualization mode to 'mesh' based on body type");
                     this.uiState.bodyVisualizationMode = "mesh";
                 }
@@ -340,7 +288,7 @@ export class SimView {
     async initAndAnimate() {
         try {
             this.scene = new Scene(this);
-            await this.initializeSocket();
+            await this.loadData();
             this.animate();
             const splash = document.getElementById("loading-splash");
             if (splash) splash.remove();
