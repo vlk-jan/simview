@@ -48,12 +48,87 @@ def _decode_state_field(value, width: int):
     return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
 
 
+def _decode_per_batch(value: list | str, batch_size: int) -> list:
+    """Normalize a terrain data field (heightData/normals/frictionData/
+    stiffnessData) to a plain list of length `batch_size`, one entry per
+    batch, regardless of whether it's a binary ``__b64__`` blob (one flat
+    buffer covering all batches) or an already-batched plain list. Used so
+    that inputs mixing binary and plain-list encoding can still be
+    concatenated -- each file's field is decoded independently rather than
+    branching on a single file's encoding."""
+    if not (isinstance(value, str) and value.startswith("__b64__")):
+        return value
+    raw = base64.b64decode(value[7:])
+    flat = struct.unpack(f"<{len(raw) // 4}f", raw)
+    width = len(flat) // batch_size
+    return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
+
+
 def _load_json(path: Path) -> dict:
     if orjson:
         with open(path, "rb") as f:
             return orjson.loads(f.read())
     with open(path, "r") as f:
         return json.load(f)
+
+
+def _require(doc, key: str, expected_type: type | tuple[type, ...], label: str):
+    """Look up a dotted `key` (e.g. "model.terrain.bounds") in `doc`, raising a
+    clear ValueError naming `label` and the offending key if it's missing or
+    has the wrong type. Returns the value on success."""
+    node = doc
+    parts = key.split(".")
+    for i, part in enumerate(parts):
+        if not isinstance(node, dict) or part not in node:
+            raise ValueError(
+                f"File '{label}' is missing '{key}' -- is it a valid SimView scene?"
+            )
+        node = node[part]
+        is_last = i == len(parts) - 1
+        if is_last and not isinstance(node, expected_type):
+            type_names = (
+                expected_type.__name__
+                if isinstance(expected_type, type)
+                else " or ".join(t.__name__ for t in expected_type)
+            )
+            raise ValueError(
+                f"File '{label}' has '{key}' of type {type(node).__name__}; "
+                f"expected {type_names} -- is it a valid SimView scene?"
+            )
+    return node
+
+
+def _validate_doc(doc: dict, label: str) -> None:
+    """Lightweight upfront structural check for a loaded SimView JSON document,
+    so malformed input fails fast with a clear message instead of a deep
+    KeyError once the merge logic starts walking nested fields."""
+    if not isinstance(doc, dict):
+        raise ValueError(
+            f"File '{label}' does not contain a JSON object at the top level "
+            "-- is it a valid SimView scene?"
+        )
+    _require(doc, "model", dict, label)
+    _require(doc, "model.bodies", list, label)
+    for idx, body in enumerate(doc["model"]["bodies"]):
+        if not isinstance(body, dict) or "name" not in body:
+            raise ValueError(
+                f"File '{label}' has 'model.bodies[{idx}]' missing 'name' -- "
+                "is it a valid SimView scene?"
+            )
+    _require(doc, "model.terrain", dict, label)
+    _require(doc, "model.terrain.dimensions", dict, label)
+    _require(doc, "model.terrain.bounds", dict, label)
+    _require(doc, "model.terrain.heightData", (list, str), label)
+    _require(doc, "model.terrain.normals", (list, str), label)
+    _require(doc, "states", list, label)
+    if not doc["states"]:
+        raise ValueError(f"'{label}' has no states")
+    for idx, state in enumerate(doc["states"]):
+        if not isinstance(state, dict) or "time" not in state:
+            raise ValueError(
+                f"File '{label}' has 'states[{idx}]' missing 'time' -- is it "
+                "a valid SimView scene?"
+            )
 
 
 def _expand_batched(
@@ -203,19 +278,17 @@ def _merge_terrain(
             "stiffnessData from the merged terrain."
         )
 
-    def _concat_lists_or_b64(items: list) -> list | str | None:
+    def _concat_lists_or_b64(items: list[tuple]) -> list | None:
+        # Each item is decoded independently, keyed by its own batch_size (not
+        # branched on items[0]'s encoding), so a mix of binary and plain-list
+        # inputs merges correctly instead of crashing -- or silently
+        # corrupting shapes -- on a differently-encoded item.
         if not items:
             return None
-        if isinstance(items[0], str) and items[0].startswith("__b64__"):
-            merged = bytearray()
-            for item in items:
-                merged.extend(base64.b64decode(item[7:]))
-            return "__b64__" + base64.b64encode(merged).decode("utf-8")
-        else:
-            merged = []
-            for item in items:
-                merged.extend(item)
-            return merged
+        merged = []
+        for value, batch_size in items:
+            merged.extend(_decode_per_batch(value, batch_size))
+        return merged
 
     height_data, normals, friction_data, stiffness_data = [], [], [], []
     min_z = max_z = None
@@ -224,12 +297,20 @@ def _merge_terrain(
         terrain = model["terrain"]
         singleton = terrain.get("isSingleton", False)
         height_data.append(
-            _expand_batched(
-                terrain["heightData"], singleton, batch_size, "heightData", label
+            (
+                _expand_batched(
+                    terrain["heightData"], singleton, batch_size, "heightData", label
+                ),
+                batch_size,
             )
         )
         normals.append(
-            _expand_batched(terrain["normals"], singleton, batch_size, "normals", label)
+            (
+                _expand_batched(
+                    terrain["normals"], singleton, batch_size, "normals", label
+                ),
+                batch_size,
+            )
         )
 
         bounds = terrain["bounds"]
@@ -237,12 +318,15 @@ def _merge_terrain(
         max_z = bounds["maxZ"] if max_z is None else max(max_z, bounds["maxZ"])
         if has_friction:
             friction_data.append(
-                _expand_batched(
-                    terrain["frictionData"],
-                    singleton,
+                (
+                    _expand_batched(
+                        terrain["frictionData"],
+                        singleton,
+                        batch_size,
+                        "frictionData",
+                        label,
+                    ),
                     batch_size,
-                    "frictionData",
-                    label,
                 )
             )
             min_friction = (
@@ -257,12 +341,15 @@ def _merge_terrain(
             )
         if has_stiffness:
             stiffness_data.append(
-                _expand_batched(
-                    terrain["stiffnessData"],
-                    singleton,
+                (
+                    _expand_batched(
+                        terrain["stiffnessData"],
+                        singleton,
+                        batch_size,
+                        "stiffnessData",
+                        label,
+                    ),
                     batch_size,
-                    "stiffnessData",
-                    label,
                 )
             )
             min_stiffness = (
@@ -396,7 +483,13 @@ def _merge_states(
                         )
                     contacts.extend(body_state["contacts"])
 
-            assert len(transform) == total_batches
+            if len(transform) != total_batches:
+                raise ValueError(
+                    f"Merged 'bodyTransform' for body '{name}' has {len(transform)} "
+                    f"rows; expected {total_batches} (sum of simBatches across "
+                    f"{', '.join(repr(label) for label in labels)}). Check that "
+                    "each file's per-body state rows match its declared simBatches."
+                )
             merged_body = {"name": name, "bodyTransform": transform, **attr_values}
             if contacts is not None:
                 merged_body["contacts"] = contacts
@@ -431,13 +524,11 @@ def merge_simulation_files(paths: list[str | Path]) -> dict:
     paths = [Path(p) for p in paths]
     labels = [p.name for p in paths]
     docs = [_load_json(p) for p in paths]
+    for doc, label in zip(docs, labels):
+        _validate_doc(doc, label)
     models = [doc["model"] for doc in docs]
     states_list = [doc["states"] for doc in docs]
     batch_sizes = [int(m.get("simBatches", 1)) for m in models]
-
-    for states, label in zip(states_list, labels):
-        if not states:
-            raise ValueError(f"'{label}' has no states")
 
     bodies = _merge_bodies(models, labels)
     scalar_names = _merge_scalar_names(models, labels)
