@@ -12,6 +12,7 @@ timestamp (zero-order hold, no interpolation). Put the recording you care most
 about matching frame-for-frame first.
 """
 
+import base64
 import bisect
 import json
 from pathlib import Path
@@ -39,8 +40,6 @@ def _expand_batched(
     # SimViewModel.create_terrain's auto-broadcast) already write it out fully
     # replicated to batch_size while still marking isSingleton=true. Accept both.
     if isinstance(values, str) and values.startswith("__b64__"):
-        import base64
-
         if is_singleton and batch_size > 1:
             raw = base64.b64decode(values[7:])
             expanded = raw * batch_size
@@ -185,8 +184,6 @@ def _merge_terrain(
         if not items:
             return None
         if isinstance(items[0], str) and items[0].startswith("__b64__"):
-            import base64
-
             merged = bytearray()
             for item in items:
                 merged.extend(base64.b64decode(item[7:]))

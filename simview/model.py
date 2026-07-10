@@ -1,9 +1,21 @@
+import base64
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
 import torch
 from einops import rearrange
+
+BLOB_PREFIX = "__b64__"
+
+
+def _encode_blob(array) -> str:
+    """Encode a numpy array as a little-endian float32 base64 blob string.
+
+    The `__b64__` prefix marks the value so the server (and merge) can round-trip
+    it as an opaque binary blob instead of verbose JSON.
+    """
+    return BLOB_PREFIX + base64.b64encode(array.astype("<f4").tobytes()).decode("utf-8")
 
 
 class BodyShapeType(StrEnum):
@@ -26,8 +38,8 @@ class OptionalBodyStateAttribute(StrEnum):
 class SimViewTerrain:
     extent_x: float
     extent_y: float
-    shape_x: float
-    shape_y: float
+    shape_x: int
+    shape_y: int
     min_x: float
     min_y: float
     max_x: float
@@ -96,32 +108,20 @@ class SimViewTerrain:
         max_z = heightmap.max().item()
         extent_x = max_x - min_x
         extent_y = max_y - min_y
-        height_data_list = "__b64__" + __import__("base64").b64encode(
-            rearrange(heightmap, "b d1 d2 -> b (d1 d2)")
-            .cpu()
-            .numpy()
-            .astype("<f4")
-            .tobytes()
-        ).decode("utf-8")
-        normals_list = "__b64__" + __import__("base64").b64encode(
-            rearrange(normals, "b c d1 d2 -> b (d1 d2) c")
-            .cpu()
-            .numpy()
-            .astype("<f4")
-            .tobytes()
-        ).decode("utf-8")
+        height_data_list = _encode_blob(
+            rearrange(heightmap, "b d1 d2 -> b (d1 d2)").cpu().numpy()
+        )
+        normals_list = _encode_blob(
+            rearrange(normals, "b c d1 d2 -> b (d1 d2) c").cpu().numpy()
+        )
 
         friction_data_list = None
         min_friction = max_friction = None
         if friction_map is not None:
             assert friction_map.ndim == 3
-            friction_data_list = "__b64__" + __import__("base64").b64encode(
-                rearrange(friction_map, "b d1 d2 -> b (d1 d2)")
-                .cpu()
-                .numpy()
-                .astype("<f4")
-                .tobytes()
-            ).decode("utf-8")
+            friction_data_list = _encode_blob(
+                rearrange(friction_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
+            )
             min_friction = friction_map.min().item()
             max_friction = friction_map.max().item()
 
@@ -129,13 +129,9 @@ class SimViewTerrain:
         min_stiffness = max_stiffness = None
         if stiffness_map is not None:
             assert stiffness_map.ndim == 3
-            stiffness_data_list = "__b64__" + __import__("base64").b64encode(
-                rearrange(stiffness_map, "b d1 d2 -> b (d1 d2)")
-                .cpu()
-                .numpy()
-                .astype("<f4")
-                .tobytes()
-            ).decode("utf-8")
+            stiffness_data_list = _encode_blob(
+                rearrange(stiffness_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
+            )
             min_stiffness = stiffness_map.min().item()
             max_stiffness = stiffness_map.max().item()
 
@@ -172,7 +168,7 @@ class SimViewBody:
         self, available_attributes: list[str | OptionalBodyStateAttribute]
     ) -> None:
         if self.available_attributes is not None:
-            raise UserWarning("Available attributes already set")
+            raise ValueError("Available attributes already set")
         self.available_attributes = [
             v
             if isinstance(v, OptionalBodyStateAttribute)
@@ -187,9 +183,7 @@ class SimViewBody:
         for key, value in kwargs.items():
             if isinstance(value, torch.Tensor):
                 if value.numel() > 1:
-                    shape_dict[key] = "__b64__" + __import__("base64").b64encode(
-                        value.cpu().numpy().astype("<f4").tobytes()
-                    ).decode("utf-8")
+                    shape_dict[key] = _encode_blob(value.cpu().numpy())
                 else:
                     shape_dict[key] = value.item()
             else:

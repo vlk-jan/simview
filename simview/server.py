@@ -1,3 +1,4 @@
+import base64
 import gzip
 import hashlib
 import json
@@ -136,8 +137,6 @@ class SimViewServer:
                 for k, v in obj.items():
                     if isinstance(v, str) and v.startswith("__b64__"):
                         blob_id = len(self.blobs)
-                        import base64
-
                         self.blobs.append(base64.b64decode(v[7:]))
                         obj[k] = f"/blob/{blob_id}"
                     else:
@@ -146,8 +145,6 @@ class SimViewServer:
                 for i, v in enumerate(obj):
                     if isinstance(v, str) and v.startswith("__b64__"):
                         blob_id = len(self.blobs)
-                        import base64
-
                         self.blobs.append(base64.b64decode(v[7:]))
                         obj[i] = f"/blob/{blob_id}"
                     else:
