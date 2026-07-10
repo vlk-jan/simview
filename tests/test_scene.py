@@ -1,10 +1,10 @@
 """Tests for body-name validation, numpy authoring, contacts in add_trajectory,
 and _clear_internal_data."""
 
-import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
+np = pytest.importorskip("numpy")
 
 from conftest import build_scene
 
