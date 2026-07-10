@@ -21,6 +21,16 @@ export class InteractionController {
         // Reusable Vector3 for screen-projection in selection box
         this._projPoint = new THREE.Vector3();
 
+        // Create the probe sphere
+        const sphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
+        const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: false });
+        this.probeSphere = new THREE.Mesh(sphereGeo, sphereMat);
+        this.probeSphere.renderOrder = 999; // Draw on top
+        this.probeSphere.visible = false;
+        if (this.app.scene) {
+            this.app.scene.addObject3D(this.probeSphere);
+        }
+
         // Bind methods to preserve context
         this.onMouseMove = this.onMouseMove.bind(this);
         this.onClick = this.onClick.bind(this);
@@ -71,6 +81,13 @@ export class InteractionController {
         }
 
         this.clearSelectionBox();
+
+        if (this.probeSphere && this.app.scene) {
+            this.app.scene.removeObject3D(this.probeSphere);
+            this.probeSphere.geometry.dispose();
+            this.probeSphere.material.dispose();
+            this.probeSphere = null;
+        }
     }
 
     getSelectionMode(event) {
@@ -90,6 +107,17 @@ export class InteractionController {
 
     onClick(e) {
         if (!this.app.scene || !this.app.scene.camera) return;
+        
+        // Prevent click if mouse was dragged (e.g. rotating camera)
+        if (this.lastMouseDown) {
+            const dx = e.clientX - this.lastMouseDown.x;
+            const dy = e.clientY - this.lastMouseDown.y;
+            this.lastMouseDown = null; // Consume the mousedown
+            if (dx * dx + dy * dy > 25) {
+                return; // 5px movement threshold
+            }
+        }
+
         this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
         const intersects = this.raycaster.intersectObjects(
             Object.values(this.app.bodies).flatMap((body) =>
@@ -105,7 +133,7 @@ export class InteractionController {
         }
 
         // Raycast against terrain
-        if (this.app.terrain && this.app.terrain.group) {
+        if (this.app.uiState && this.app.uiState.terrainProbe && this.app.terrain && this.app.terrain.group) {
             const terrainIntersects = this.raycaster.intersectObject(this.app.terrain.group, true);
             const surfaceIntersect = terrainIntersects.find(i => i.object.name === "surface");
             if (surfaceIntersect) {
@@ -160,6 +188,11 @@ export class InteractionController {
         if (props.stiffness !== undefined) text += `\nStiffness: ${props.stiffness.toExponential(2)}`;
         
         tooltip.innerText = text;
+
+        if (this.probeSphere) {
+            this.probeSphere.position.copy(point);
+            this.probeSphere.visible = true;
+        }
     }
 
     hideTerrainTooltip() {
@@ -167,9 +200,14 @@ export class InteractionController {
         if (tooltip) {
             tooltip.style.display = "none";
         }
+        if (this.probeSphere) {
+            this.probeSphere.visible = false;
+        }
     }
 
     onMouseDown(e) {
+        this.lastMouseDown = { x: e.clientX, y: e.clientY };
+        
         this.currentSelectionMode = this.getSelectionMode(e);
         if (!this.currentSelectionMode) return;
 

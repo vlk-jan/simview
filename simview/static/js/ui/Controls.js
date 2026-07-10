@@ -192,6 +192,7 @@ export class UIControls {
             showNormals: this.app.uiState.terrainVisualizationModes?.normals ?? false,
             colorMap: this.app.uiState?.terrainColorMap || "viridis",
             colorMode: currentColorMode,
+            terrainProbe: this.app.uiState?.terrainProbe ?? false,
         };
 
         this.terrainFolder
@@ -228,6 +229,25 @@ export class UIControls {
             .onChange((value) => {
                 this.updateTerrainColorMode(value);
             });
+
+        const terrainProbeCtrl = this.terrainFolder
+            .add(terrainControls, "terrainProbe")
+            .name("Data Probe (P)")
+            .onChange((value) => {
+                this.app.uiState.terrainProbe = value;
+                if (!value && this.app.interactionController) {
+                    this.app.interactionController.hideTerrainTooltip();
+                }
+            });
+
+        this.handleKeydown = (e) => {
+            if (e.key.toLowerCase() === "p" && 
+                !e.ctrlKey && !e.metaKey && !e.altKey && 
+                document.activeElement.tagName !== "INPUT") {
+                terrainProbeCtrl.setValue(!terrainProbeCtrl.getValue());
+            }
+        };
+        window.addEventListener("keydown", this.handleKeydown);
 
         this.terrainFolder.open();
 
@@ -418,6 +438,9 @@ export class UIControls {
     }
 
     dispose() {
+        if (this.handleKeydown) {
+            window.removeEventListener("keydown", this.handleKeydown);
+        }
         this.gui.destroy();
         this.gui = null;
         if (this.keyboardControlsListener) {

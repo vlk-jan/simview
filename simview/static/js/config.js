@@ -16,6 +16,7 @@ export const UI_DEFAULT_CONFIG = {
     },
     terrainColorMap: "magma", // Default colormap
     terrainColorMode: "height", // height, friction, or stiffness
+    terrainProbe: false, // interactive terrain probe on click
 };
 
 export const FREQ_CONFIG = {
