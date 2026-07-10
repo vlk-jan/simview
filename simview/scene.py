@@ -92,6 +92,47 @@ class SimulationScene:
         )
         self.states: list[dict] = []
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimulationScene":
+        """Reconstruct a SimulationScene from the dict produced by `save`/`to_json`
+        (i.e. the parsed `{"model": ..., "states": ...}` document).
+
+        Binary `__b64__`-encoded fields inside `states` (e.g. from
+        ``add_trajectory(binary=True)``) are left as-is, matching the on-disk
+        wire format, so a subsequent `save()` reproduces the same bytes for
+        those fields without a decode/re-encode round trip.
+        """
+        try:
+            model_dict = d["model"]
+            states = d["states"]
+        except KeyError as e:
+            raise ValueError(f"Scene dict is missing required key: {e}") from e
+
+        model = SimViewModel.from_dict(model_dict)
+        scene = cls(
+            batch_size=model.batch_size,
+            scalar_names=model.scalar_names,
+            dt=model.dt,
+            collapse=model.collapse,
+            terrain=model.terrain,
+            bodies=model.bodies,
+            static_objects=model.static_objects,
+            batch_names=model.batch_names,
+        )
+        scene.states = list(states)
+        return scene
+
+    @classmethod
+    def load(cls, path: str | Path) -> "SimulationScene":
+        """Load a SimulationScene previously written by `save`.
+
+        Enables round-tripping from Python: ``SimulationScene.load(p).save(p2)``.
+        """
+        input_path = Path(path)
+        with open(input_path, "r") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
+
     def add_state(
         self,
         time: float,

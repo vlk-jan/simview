@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+import numpy as np
 import torch
 from einops import rearrange
 
@@ -16,6 +17,17 @@ def _encode_blob(array) -> str:
     it as an opaque binary blob instead of verbose JSON.
     """
     return BLOB_PREFIX + base64.b64encode(array.astype("<f4").tobytes()).decode("utf-8")
+
+
+def _decode_blob(value):
+    """Decode a `__b64__`-prefixed base64 blob string back into a flat list of
+    little-endian float32 values. Values that aren't blob strings (already plain
+    JSON lists, or None) pass through unchanged, so callers can use this
+    unconditionally on fields that may or may not be binary-encoded."""
+    if not (isinstance(value, str) and value.startswith(BLOB_PREFIX)):
+        return value
+    raw = base64.b64decode(value[len(BLOB_PREFIX) :])
+    return np.frombuffer(raw, dtype="<f4").tolist()
 
 
 class BodyShapeType(StrEnum):
@@ -46,11 +58,15 @@ class SimViewTerrain:
     max_y: float
     min_z: float
     max_z: float
-    height_data: list[list[float]]
-    normals: list[list[list[float]]]
+    # These are plain nested lists when constructed directly, but `create()` (and
+    # deserialization from JSON) may instead store an opaque `__b64__`-prefixed
+    # base64 blob string for compactness; `to_json`/`from_dict` pass them through
+    # as-is either way.
+    height_data: list[list[float]] | str
+    normals: list[list[list[float]]] | str
     is_singleton: bool
-    friction_data: list[list[float]] | None = None
-    stiffness_data: list[list[float]] | None = None
+    friction_data: list[list[float]] | str | None = None
+    stiffness_data: list[list[float]] | str | None = None
     # Value ranges used by the viewer to normalize the color map (analogous to
     # min_z/max_z for height). None when the corresponding data is absent.
     min_friction: float | None = None
@@ -88,6 +104,46 @@ class SimViewTerrain:
             "stiffnessData": self.stiffness_data,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimViewTerrain":
+        """Reconstruct a SimViewTerrain from the dict produced by `to_json`.
+
+        `heightData`/`normals`/`frictionData`/`stiffnessData` are kept in
+        whatever form they were serialized in (plain nested lists or a
+        `__b64__` blob string) -- decode with `simview.model._decode_blob` if
+        you need the flat float values back out.
+        """
+        try:
+            dimensions = d["dimensions"]
+            bounds = d["bounds"]
+            height_data = d["heightData"]
+            normals = d["normals"]
+            is_singleton = d["isSingleton"]
+        except KeyError as e:
+            raise ValueError(f"Terrain dict is missing required key: {e}") from e
+
+        return cls(
+            extent_x=dimensions["sizeX"],
+            extent_y=dimensions["sizeY"],
+            shape_x=dimensions["resolutionX"],
+            shape_y=dimensions["resolutionY"],
+            min_x=bounds["minX"],
+            min_y=bounds["minY"],
+            max_x=bounds["maxX"],
+            max_y=bounds["maxY"],
+            min_z=bounds["minZ"],
+            max_z=bounds["maxZ"],
+            height_data=height_data,
+            normals=normals,
+            is_singleton=is_singleton,
+            friction_data=d.get("frictionData"),
+            stiffness_data=d.get("stiffnessData"),
+            min_friction=bounds.get("minFriction"),
+            max_friction=bounds.get("maxFriction"),
+            min_stiffness=bounds.get("minStiffness"),
+            max_stiffness=bounds.get("maxStiffness"),
+        )
+
     @staticmethod
     def create(
         heightmap: torch.Tensor,  # ! remember the x,y indexing is assumed to follow torch's "xy" convention, so increasing column index is increasing x coordinate
@@ -98,9 +154,18 @@ class SimViewTerrain:
         friction_map: torch.Tensor | None = None,
         stiffness_map: torch.Tensor | None = None,
     ) -> "SimViewTerrain":
-        assert heightmap.ndim == 3, "Heightmap must include a batch dimension"
-        assert normals.ndim == 4, "Normals must include a batch dimension"
-        assert normals.shape[1] == 3, "Normals must have 3 channels"
+        if heightmap.ndim != 3:
+            raise ValueError(
+                f"Heightmap must include a batch dimension (ndim=3); got ndim={heightmap.ndim}."
+            )
+        if normals.ndim != 4:
+            raise ValueError(
+                f"Normals must include a batch dimension (ndim=4); got ndim={normals.ndim}."
+            )
+        if normals.shape[1] != 3:
+            raise ValueError(
+                f"Normals must have 3 channels (shape[1] == 3); got shape={tuple(normals.shape)}."
+            )
         B, Dy, Dx = heightmap.shape
         min_x, max_x = x_lim
         min_y, max_y = y_lim
@@ -118,7 +183,10 @@ class SimViewTerrain:
         friction_data_list = None
         min_friction = max_friction = None
         if friction_map is not None:
-            assert friction_map.ndim == 3
+            if friction_map.ndim != 3:
+                raise ValueError(
+                    f"Friction map must include a batch dimension (ndim=3); got ndim={friction_map.ndim}."
+                )
             friction_data_list = _encode_blob(
                 rearrange(friction_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
             )
@@ -128,7 +196,10 @@ class SimViewTerrain:
         stiffness_data_list = None
         min_stiffness = max_stiffness = None
         if stiffness_map is not None:
-            assert stiffness_map.ndim == 3
+            if stiffness_map.ndim != 3:
+                raise ValueError(
+                    f"Stiffness map must include a batch dimension (ndim=3); got ndim={stiffness_map.ndim}."
+                )
             stiffness_data_list = _encode_blob(
                 rearrange(stiffness_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
             )
@@ -243,6 +314,25 @@ class SimViewBody:
             r["availableAttributes"] = [v.value for v in self.available_attributes]
         return r
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimViewBody":
+        """Reconstruct a SimViewBody from the dict produced by `to_json`."""
+        try:
+            name = d["name"]
+            shape = d["shape"]
+        except KeyError as e:
+            raise ValueError(f"Body dict is missing required key: {e}") from e
+        available_attributes = d.get("availableAttributes")
+        return cls(
+            name=name,
+            shape=shape,
+            available_attributes=[
+                OptionalBodyStateAttribute(v) for v in available_attributes
+            ]
+            if available_attributes is not None
+            else None,
+        )
+
 
 @dataclass
 class SimViewStaticObject:
@@ -308,6 +398,21 @@ class SimViewStaticObject:
         else:
             r["shapes"] = self.shapes
         return r
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimViewStaticObject":
+        """Reconstruct a SimViewStaticObject from the dict produced by `to_json`."""
+        try:
+            name = d["name"]
+            is_singleton = d["isSingleton"]
+        except KeyError as e:
+            raise ValueError(f"Static object dict is missing required key: {e}") from e
+        return cls(
+            name=name,
+            is_singleton=is_singleton,
+            shape=d.get("shape"),
+            shapes=d.get("shapes"),
+        )
 
 
 @dataclass
@@ -462,6 +567,46 @@ class SimViewModel:
         if self.batch_names is not None:
             r["batchNames"] = self.batch_names
         return r
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimViewModel":
+        """Reconstruct a SimViewModel from the dict produced by `to_json`.
+
+        Centralizes parsing of the wire format: terrain, bodies and static
+        objects are all rebuilt via their own `from_dict`, keyed by name so
+        `add_body`/`add_static_object`'s uniqueness checks stay meaningful.
+        """
+        try:
+            batch_size = d["simBatches"]
+            scalar_names = d["scalarNames"]
+            dt = d["dt"]
+            collapse = d["collapse"]
+            terrain_dict = d["terrain"]
+            body_dicts = d["bodies"]
+            static_object_dicts = d["staticObjects"]
+        except KeyError as e:
+            raise ValueError(f"Model dict is missing required key: {e}") from e
+
+        bodies = {}
+        for body_dict in body_dicts:
+            body = SimViewBody.from_dict(body_dict)
+            bodies[body.name] = body
+
+        static_objects = {}
+        for static_object_dict in static_object_dicts:
+            static_object = SimViewStaticObject.from_dict(static_object_dict)
+            static_objects[static_object.name] = static_object
+
+        return cls(
+            batch_size=batch_size,
+            scalar_names=scalar_names,
+            dt=dt,
+            collapse=collapse,
+            terrain=SimViewTerrain.from_dict(terrain_dict),
+            bodies=bodies,
+            static_objects=static_objects,
+            batch_names=d.get("batchNames"),
+        )
 
     @property
     def is_complete(self) -> bool:
