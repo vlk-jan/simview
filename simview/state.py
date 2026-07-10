@@ -1,8 +1,13 @@
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 
 from simview.model import OptionalBodyStateAttribute
+
+# Accepted array-like input types for authoring calls: torch tensors and numpy
+# arrays are both supported so callers don't need torch just to build a scene.
+ArrayLike = torch.Tensor | np.ndarray
 
 # Maps a BodyTrajectory field name to the wire key used in each state's body dict.
 # These are the numeric per-body fields that add_trajectory can pack as binary
@@ -27,20 +32,26 @@ class BodyTrajectory:
     """
 
     name: str
-    positions: torch.Tensor  # (T, B, 3) or (T, 3)
-    orientations: torch.Tensor  # (T, B, 4) or (T, 4), [w, x, y, z]
-    velocity: torch.Tensor | None = None  # (T, B, 3) or (T, 3)
-    angular_velocity: torch.Tensor | None = None
-    force: torch.Tensor | None = None
-    torque: torch.Tensor | None = None
+    positions: ArrayLike  # (T, B, 3) or (T, 3)
+    orientations: ArrayLike  # (T, B, 4) or (T, 4), [w, x, y, z]
+    velocity: ArrayLike | None = None  # (T, B, 3) or (T, 3)
+    angular_velocity: ArrayLike | None = None
+    force: ArrayLike | None = None
+    torque: ArrayLike | None = None
+    # Optional per-timestep contacts: a sequence of length T, where each entry is
+    # anything SimViewBodyState._process_contacts accepts for one frame (a (B, N)
+    # boolean/float mask, a (B, N) integer index tensor/array, or a list of
+    # per-batch index lists). Kept separate from the numeric vector fields above
+    # since contacts are ragged and always shipped as plain JSON, never binary.
+    contacts: list | None = None
 
 
 class SimViewBodyState:
     def __init__(
         self,
         body_name: str,
-        position: torch.Tensor,
-        orientation: torch.Tensor,
+        position: ArrayLike,
+        orientation: ArrayLike,
         optional_attributes: dict | None = None,
     ):
         self.body_name = body_name
@@ -60,10 +71,10 @@ class SimViewBodyState:
                 raise ValueError(f"Unknown optional attribute: {key}")
             if key == OptionalBodyStateAttribute.CONTACTS:
                 value = self._process_contacts(value)
-            elif isinstance(value, torch.Tensor):
+            elif isinstance(value, (torch.Tensor, np.ndarray)):
                 value = value.tolist()
             elif isinstance(value, list):
-                if all(isinstance(v, torch.Tensor) for v in value):
+                if all(isinstance(v, (torch.Tensor, np.ndarray)) for v in value):
                     value = [v.tolist() for v in value]
                 elif all(isinstance(v, list) for v in value):
                     pass
@@ -74,19 +85,35 @@ class SimViewBodyState:
             self.optional_attrs[key.value] = value
 
     @staticmethod
-    def _process_contacts(contacts: torch.Tensor | list):
-        if isinstance(contacts, torch.Tensor):  # tensor
+    def _process_contacts(contacts: ArrayLike | list):
+        if isinstance(contacts, (torch.Tensor, np.ndarray)):  # tensor / array
+            is_torch = isinstance(contacts, torch.Tensor)
             dtype = contacts.dtype
-            if dtype == torch.bool or dtype.is_floating_point:
+            is_bool = dtype == torch.bool if is_torch else dtype == np.bool_
+            is_float = (
+                dtype.is_floating_point
+                if is_torch
+                else np.issubdtype(dtype, np.floating)
+            )
+            is_complex = (
+                dtype.is_complex
+                if is_torch
+                else np.issubdtype(dtype, np.complexfloating)
+            )
+            if is_bool or is_float:
                 # Boolean mask (floats treated as a mask of non-zero entries)
-                return [torch.nonzero(c, as_tuple=True)[0].tolist() for c in contacts]
-            elif not dtype.is_complex:  # integer dtype: assume indices
+                if is_torch:
+                    return [
+                        torch.nonzero(c, as_tuple=True)[0].tolist() for c in contacts
+                    ]
+                return [np.nonzero(c)[0].tolist() for c in contacts]
+            elif not is_complex:  # integer dtype: assume indices
                 return contacts.tolist()
             else:
                 raise ValueError(f"Unsupported contact tensor dtype: {dtype}")
-        else:  # list of tensors or list of lists
+        else:  # list of tensors/arrays or list of lists
             first = contacts[0]
-            if isinstance(first, torch.Tensor):
+            if isinstance(first, (torch.Tensor, np.ndarray)):
                 return [SimViewBodyState._process_contacts(c) for c in contacts]
             elif isinstance(first, list):
                 return contacts

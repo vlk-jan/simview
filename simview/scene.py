@@ -24,6 +24,16 @@ def _to_f4(value) -> np.ndarray:
     return np.ascontiguousarray(np.asarray(value, dtype="<f4"))
 
 
+def _validate_body_name(name: str, model: SimViewModel) -> None:
+    """Raise ValueError if `name` isn't a body defined in `model`."""
+    if name not in model.bodies:
+        valid = sorted(model.bodies)
+        raise ValueError(
+            f"Unknown body '{name}'; not defined in the model. "
+            f"Valid body names: {valid}."
+        )
+
+
 def _as_tbk(value, T: int, B: int, k: int, field: str, body: str) -> np.ndarray:
     """Normalize a per-body trajectory field to shape (T, B, k), float32.
 
@@ -137,11 +147,14 @@ class SimulationScene:
         self,
         time: float,
         body_states: list[SimViewBodyState],
-        scalar_values: dict[str, torch.Tensor | list] | None = None,
+        scalar_values: dict[str, torch.Tensor | np.ndarray | list] | None = None,
     ) -> None:
         """
         Adds a new state (snapshot in time) to the simulation data.
         """
+        for state in body_states:
+            _validate_body_name(state.body_name, self.model)
+
         if self.model.scalar_names:
             if scalar_values is None:
                 raise ValueError(
@@ -154,13 +167,14 @@ class SimulationScene:
 
             processed_scalars = {}
             for k, v in scalar_values.items():
-                if isinstance(v, torch.Tensor):
+                if isinstance(v, (torch.Tensor, np.ndarray)):
                     processed_scalars[k] = v.tolist()
                 elif isinstance(v, list):
                     processed_scalars[k] = v
                 else:
                     raise TypeError(
-                        f"Scalar value for '{k}' must be a torch.Tensor or a list."
+                        f"Scalar value for '{k}' must be a torch.Tensor, "
+                        "numpy.ndarray, or a list."
                     )
         else:
             processed_scalars = {}
@@ -181,7 +195,7 @@ class SimulationScene:
         self,
         times,
         trajectories: list[BodyTrajectory],
-        scalar_values: dict[str, torch.Tensor | list] | None = None,
+        scalar_values: dict[str, torch.Tensor | np.ndarray | list] | None = None,
         binary: bool = True,
     ) -> None:
         """Append an entire time-series in one call.
@@ -192,7 +206,10 @@ class SimulationScene:
         numeric per-body fields (``bodyTransform`` and any provided vectors) are
         packed as float32 ``__b64__`` blobs, shrinking the output file and the
         parse cost; the viewer and :func:`merge_simulation_files` decode these
-        transparently. Set ``binary=False`` to emit plain JSON lists.
+        transparently. Set ``binary=False`` to emit plain JSON lists. A body's
+        ``contacts`` (if provided on its :class:`BodyTrajectory`) are ragged and
+        always emitted as plain JSON per frame, using the same encoding as
+        ``SimViewBodyState`` / ``add_state``.
 
         Args:
             times: sequence of length ``T`` of snapshot times (seconds).
@@ -203,7 +220,11 @@ class SimulationScene:
         """
         times = [
             float(t)
-            for t in (times.tolist() if isinstance(times, torch.Tensor) else times)
+            for t in (
+                times.tolist()
+                if isinstance(times, (torch.Tensor, np.ndarray))
+                else times
+            )
         ]
         T = len(times)
         B = self.model.batch_size
@@ -227,14 +248,12 @@ class SimulationScene:
             scalars = {}
 
         # Pre-normalize every field to (T, B, k) float32 up front so the per-frame
-        # loop below only slices and encodes.
+        # loop below only slices and encodes. Contacts are ragged (ints per body
+        # per batch), so they're normalized separately into a plain length-T list.
         prepared: list[tuple[str, dict[str, np.ndarray]]] = []
+        prepared_contacts: list[tuple[str, list]] = []
         for traj in trajectories:
-            if traj.name not in self.model.bodies:
-                raise ValueError(
-                    f"Unknown body '{traj.name}'; create it in the model before "
-                    "adding its trajectory."
-                )
+            _validate_body_name(traj.name, self.model)
             fields = {
                 "bodyTransform": np.concatenate(
                     [
@@ -250,12 +269,32 @@ class SimulationScene:
                     fields[wire_key] = _as_tbk(value, T, B, 3, attr, traj.name)
             prepared.append((traj.name, fields))
 
+            if traj.contacts is not None:
+                if len(traj.contacts) != T:
+                    raise ValueError(
+                        f"{traj.name}.contacts has {len(traj.contacts)} timesteps; "
+                        f"expected {T} (from times)."
+                    )
+                contacts_per_t = [
+                    SimViewBodyState._process_contacts(frame) for frame in traj.contacts
+                ]
+                prepared_contacts.append((traj.name, contacts_per_t))
+
         def encode(slice_: np.ndarray):
             return _encode_blob(slice_) if binary else slice_.tolist()
 
+        contacts_by_name = dict(prepared_contacts)
         for t in range(T):
             bodies = [
-                {"name": name, **{key: encode(arr[t]) for key, arr in fields.items()}}
+                {
+                    "name": name,
+                    **{key: encode(arr[t]) for key, arr in fields.items()},
+                    **(
+                        {"contacts": contacts_by_name[name][t]}
+                        if name in contacts_by_name
+                        else {}
+                    ),
+                }
                 for name, fields in prepared
             ]
             state = {"time": times[t], "bodies": bodies}
@@ -359,4 +398,6 @@ class SimulationScene:
         if self.model and self.model.terrain:
             self.model.terrain.height_data = []
             self.model.terrain.normals = []
+            self.model.terrain.friction_data = None
+            self.model.terrain.stiffness_data = None
         print("SimulationScene: Internal data cleared.")
