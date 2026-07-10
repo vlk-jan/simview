@@ -88,6 +88,14 @@ simview [path_to_json_file]
 Gzip-compressed files (e.g. `scene.json.gz`) are detected automatically and decompressed
 transparently — no separate flag needed.
 
+Useful flags:
+
+```bash
+simview scene.json --host 0.0.0.0 --port 8080  # bind to a specific host/port
+simview scene.json --no-browser                # don't auto-open a browser tab
+simview --version                               # print the installed version
+```
+
 ### Comparing multiple runs (e.g. real-world vs. simulated)
 
 Pass multiple JSON files to merge them into a single scene, each file's batches appended
@@ -111,6 +119,15 @@ next time you open the same file(s). You can also set initial batch names yourse
 including a `batchNames` array directly in the JSON's `model` object (see
 [JSON Format Specification](#json-format-specification)); renames from the UI take
 precedence over this once saved.
+
+To merge files without launching the viewer, e.g. to inspect or re-share the merged
+scene, pass `--save-merged`:
+
+```bash
+simview real_world.json simulated.json --save-merged combined.json.gz
+```
+
+The output is gzipped if the path ends in `.gz`.
 
 ---
 

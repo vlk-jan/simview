@@ -269,8 +269,27 @@ class SimViewServer:
 
             return {"ok": True}
 
-    def run(self, debug: bool = False, host: str = "127.0.0.1", port: int = 5420):
+    def run(
+        self,
+        debug: bool = False,
+        host: str = "127.0.0.1",
+        port: int = 5420,
+        open_browser: bool = False,
+    ):
         print(f"SimView server running on http://{host}:{port}")
+        if open_browser:
+            import threading
+            import webbrowser
+
+            # uvicorn.run() below blocks until the server stops, so the browser is
+            # opened from a background timer instead of a startup hook (FastAPI's
+            # on_event/lifespan hooks are more ceremony than this one-shot needs).
+            # The short delay gives uvicorn a head start on binding the socket.
+            bind_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+            threading.Timer(
+                0.5, webbrowser.open, args=(f"http://{bind_host}:{port}",)
+            ).start()
+
         # uvloop/httptools are faster than the stdlib fallbacks but aren't available
         # everywhere (uvloop doesn't support Windows). Use them opportunistically and
         # fall back to uvicorn's "auto" detection rather than crashing at startup.
@@ -300,6 +319,7 @@ class SimViewServer:
         sim_path: str | Path | Sequence[str | Path],
         host: str = "127.0.0.1",
         preferred_port: int = 5420,
+        open_browser: bool = False,
     ):
         paths = (
             [Path(p) for p in sim_path]
@@ -321,7 +341,7 @@ class SimViewServer:
             print(
                 f"Preferred port {preferred_port} is not available. Using port {port} instead."
             )
-        server.run(host=host, port=port)
+        server.run(host=host, port=port, open_browser=open_browser)
 
 
 if __name__ == "__main__":
