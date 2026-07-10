@@ -234,7 +234,10 @@ export class UIControls {
         const cameraFolder = this.gui.addFolder("Camera Options");
         const cameraControls = {
             fov: this.app.scene.camera.fov,
-            trackBody: "None"
+            trackBody: "None",
+            splitScreen: false,
+            splitBatchA: 0,
+            splitBatchB: 1
         };
         cameraFolder
             .add(cameraControls, "fov", 20, 120)
@@ -243,7 +246,6 @@ export class UIControls {
                 this.app.scene.camera.fov = value;
                 this.app.scene.camera.updateProjectionMatrix();
             });
-            
         if (this.app.bodies && this.app.bodies.size > 0) {
             const bodyNames = ["None", ...Array.from(this.app.bodies.keys())];
             cameraFolder
@@ -252,6 +254,32 @@ export class UIControls {
                 .onChange((value) => {
                     this.app.uiState.trackBody = value;
                 });
+        }
+            
+        if (this.app.batchManager && this.app.batchManager.simBatches >= 2) {
+            const batches = Array.from({length: this.app.batchManager.simBatches}, (_, i) => i);
+            const splitScreenCtrl = cameraFolder.add(cameraControls, "splitScreen").name("Split Screen");
+            const splitBatchACtrl = cameraFolder.add(cameraControls, "splitBatchA", batches).name("Split Batch A").onChange(v => this.app.uiState.splitBatchA = parseInt(v));
+            const splitBatchBCtrl = cameraFolder.add(cameraControls, "splitBatchB", batches).name("Split Batch B").onChange(v => this.app.uiState.splitBatchB = parseInt(v));
+            
+            // Hide the batch selectors initially if splitScreen is off
+            splitBatchACtrl.hide();
+            splitBatchBCtrl.hide();
+            
+            splitScreenCtrl.onChange(v => {
+                this.app.uiState.splitScreen = v;
+                if (v) {
+                    splitBatchACtrl.show();
+                    splitBatchBCtrl.show();
+                } else {
+                    splitBatchACtrl.hide();
+                    splitBatchBCtrl.hide();
+                }
+            });
+
+            this.app.uiState.splitScreen = cameraControls.splitScreen;
+            this.app.uiState.splitBatchA = cameraControls.splitBatchA;
+            this.app.uiState.splitBatchB = cameraControls.splitBatchB;
         }
         
         this.cameraControls = cameraControls;

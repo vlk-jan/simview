@@ -112,7 +112,56 @@ export class Scene {
 
     animate(now) {
         if (now - this.lastRenderTime < this.minRenderDelay) return;
-        this.renderer.render(this.scene, this.camera);
+        
+        if (this.app.uiState && this.app.uiState.splitScreen && this.app.batchManager && this.app.batchManager.simBatches >= 2) {
+            const batchA = this.app.uiState.splitBatchA !== undefined ? this.app.uiState.splitBatchA : 0;
+            const batchB = this.app.uiState.splitBatchB !== undefined ? this.app.uiState.splitBatchB : 1;
+            
+            const activeBatch = this.app.batchManager.currentlyActiveBatch;
+            const activeOffset = this.app.batchManager.getBatchOffset(activeBatch);
+            const offsetA = this.app.batchManager.getBatchOffset(batchA);
+            const offsetB = this.app.batchManager.getBatchOffset(batchB);
+
+            const deltaA = new THREE.Vector3(offsetA.x - activeOffset.x, offsetA.y - activeOffset.y, offsetA.z - activeOffset.z);
+            const deltaB = new THREE.Vector3(offsetB.x - activeOffset.x, offsetB.y - activeOffset.y, offsetB.z - activeOffset.z);
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const aspectFull = width / height;
+            const aspectSplit = (width / 2) / height;
+
+            this.renderer.setScissorTest(true);
+            this.camera.aspect = aspectSplit;
+            this.camera.updateProjectionMatrix();
+
+            // Render Left (Batch A)
+            this.renderer.setViewport(0, 0, width / 2, height);
+            this.renderer.setScissor(0, 0, width / 2, height);
+            this.camera.position.add(deltaA);
+            this.camera.updateMatrixWorld();
+            this.renderer.render(this.scene, this.camera);
+            this.camera.position.sub(deltaA);
+
+            // Render Right (Batch B)
+            this.renderer.setViewport(width / 2, 0, width / 2, height);
+            this.renderer.setScissor(width / 2, 0, width / 2, height);
+            this.camera.position.add(deltaB);
+            this.camera.updateMatrixWorld();
+            this.renderer.render(this.scene, this.camera);
+            this.camera.position.sub(deltaB);
+
+            // Restore
+            this.camera.aspect = aspectFull;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setScissorTest(false);
+            this.renderer.setViewport(0, 0, width, height);
+            this.renderer.setScissor(0, 0, width, height);
+        } else {
+            this.renderer.setScissorTest(false);
+            this.renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+            this.renderer.render(this.scene, this.camera);
+        }
+        
         this.lastRenderTime = now;
     }
 }

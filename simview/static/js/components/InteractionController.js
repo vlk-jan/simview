@@ -41,7 +41,14 @@ export class InteractionController {
         window.addEventListener("click", this.onClick);
         window.addEventListener("keyup", this.onKeyUp);
 
-        const canvas = this.app.renderer.domElement;
+        const renderer = this.app.scene && this.app.scene.renderer;
+        if (!renderer) {
+            console.warn("InteractionController: renderer not found during initialization.");
+            return;
+        }
+        const canvas = renderer.domElement;
+        if (!canvas) return;
+        
         canvas.addEventListener("mousemove", this.handleHover, passiveOptions);
         canvas.addEventListener("mousedown", this.onMouseDown);
         canvas.addEventListener("mousemove", this.onMouseDrag, passiveOptions);
@@ -54,11 +61,14 @@ export class InteractionController {
         window.removeEventListener("click", this.onClick);
         window.removeEventListener("keyup", this.onKeyUp);
 
-        const canvas = this.app.renderer.domElement;
-        canvas.removeEventListener("mousemove", this.handleHover);
-        canvas.removeEventListener("mousedown", this.onMouseDown);
-        canvas.removeEventListener("mousemove", this.onMouseDrag);
-        canvas.removeEventListener("mouseup", this.onMouseUp);
+        const renderer = this.app.scene && this.app.scene.renderer;
+        const canvas = renderer ? renderer.domElement : null;
+        if (canvas) {
+            canvas.removeEventListener("mousemove", this.handleHover);
+            canvas.removeEventListener("mousedown", this.onMouseDown);
+            canvas.removeEventListener("mousemove", this.onMouseDrag);
+            canvas.removeEventListener("mouseup", this.onMouseUp);
+        }
 
         this.clearSelectionBox();
     }
@@ -79,7 +89,8 @@ export class InteractionController {
     }
 
     onClick(e) {
-        this.raycaster.setFromCamera(this.mouse, this.app.camera);
+        if (!this.app.scene || !this.app.scene.camera) return;
+        this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
         const intersects = this.raycaster.intersectObjects(
             Object.values(this.app.bodies).flatMap((body) =>
                 body.children.filter((child) => child.isMesh)
@@ -250,7 +261,8 @@ export class InteractionController {
     }
 
     handleHover() {
-        this.raycaster.setFromCamera(this.mouse, this.app.camera);
+        if (!this.app.scene || !this.app.scene.camera) return;
+        this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
         const intersectables = this.getIntersectableObjects();
         const intersects = this.raycaster.intersectObjects(intersectables, true);
 
@@ -305,8 +317,10 @@ export class InteractionController {
     selectObjectsInBox() {
         if (!this.currentSelectionMode || !this.selectionBox) return;
 
-        const camera = this.app.camera;
-        const renderer = this.app.renderer;
+        const camera = this.app.scene && this.app.scene.camera;
+        const renderer = this.app.scene && this.app.scene.renderer;
+        if (!camera || !renderer || !renderer.domElement) return;
+        
         const rect = renderer.domElement.getBoundingClientRect();
 
         // Get the selection box coordinates
@@ -358,7 +372,6 @@ export class InteractionController {
             }
         });
 
-        this.app.selectionWindow.update();
         console.log(
             `Selected ${selectionSet.size} ${this.currentSelectionMode.objects}`
         );
@@ -374,6 +387,5 @@ export class InteractionController {
             });
             selectionSet.clear();
         }
-        this.app.selectionWindow.update();
     }
 }
