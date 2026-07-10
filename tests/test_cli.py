@@ -5,6 +5,9 @@ import gzip
 import json
 
 import pytest
+
+pytest.importorskip("torch")
+
 from conftest import build_scene
 
 import simview.__main__ as cli

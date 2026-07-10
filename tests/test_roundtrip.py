@@ -2,7 +2,9 @@ import gzip
 import json
 
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
+
 from conftest import build_scene
 
 from simview.model import (
@@ -300,6 +302,50 @@ def test_invalid_normals_shape_raises_value_error():
             y_lim=(-5, 5),
             is_singleton=False,
         )
+
+
+# --- Edge cases: zero bodies, empty states ------------------------------------
+
+
+def test_to_json_warns_when_no_dynamic_bodies(caplog):
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    resolution = 4
+    heights = torch.zeros(resolution, resolution)
+    normals = torch.zeros(3, resolution, resolution)
+    normals[2] = 1.0
+    scene.create_terrain(
+        heightmap=heights, normals=normals, x_lim=(-5, 5), y_lim=(-5, 5)
+    )
+
+    with caplog.at_level("WARNING", logger="simview.model"):
+        data = scene.model.to_json()
+
+    assert data["bodies"] == []
+    assert "No dynamic bodies" in caplog.text
+
+
+def test_save_with_zero_bodies_and_empty_states_round_trips(tmp_path):
+    # No create_body call and no add_state call: the model is still "complete"
+    # (terrain present) so save() should succeed with bodies=[] and states=[].
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    resolution = 4
+    heights = torch.zeros(resolution, resolution)
+    normals = torch.zeros(3, resolution, resolution)
+    normals[2] = 1.0
+    scene.create_terrain(
+        heightmap=heights, normals=normals, x_lim=(-5, 5), y_lim=(-5, 5)
+    )
+
+    out = tmp_path / "sim.json"
+    scene.save(out)
+
+    data = json.loads(out.read_text())
+    assert data["model"]["bodies"] == []
+    assert data["states"] == []
+
+    loaded = SimulationScene.load(out)
+    assert loaded.model.bodies == {}
+    assert loaded.states == []
 
 
 def test_invalid_friction_map_ndim_raises_value_error():

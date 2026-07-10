@@ -3,7 +3,9 @@ and _clear_internal_data."""
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
+
 from conftest import build_scene
 
 from simview.scene import BodyShapeType, SimulationScene

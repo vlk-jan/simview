@@ -56,5 +56,12 @@ line-length = 88
 [tool.ruff.lint]
 extend-select = ["I"]  # import sorting
 
+[tool.ruff.lint.per-file-ignores]
+# Test modules put `pytest.importorskip("torch")` before the imports that
+# depend on it (so a torch-free environment skips cleanly instead of
+# crashing collection), which necessarily puts those imports after a
+# statement.
+"tests/*.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

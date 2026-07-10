@@ -4,7 +4,8 @@ import base64
 import struct
 
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from simview.merge import merge_simulation_files
 from simview.scene import BodyShapeType, SimulationScene

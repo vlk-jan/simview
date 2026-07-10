@@ -3,7 +3,9 @@ import json
 import struct
 
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
+
 from conftest import build_scene
 
 from simview.merge import merge_simulation_files
@@ -67,6 +69,39 @@ def test_merge_concatenates_batches(tmp_path):
         assert len(box["bodyTransform"]) == 3
         assert len(box["velocity"]) == 3
         assert len(state["energy"]) == 3
+
+
+def test_merge_three_files_concatenates_batches_in_order(tmp_path):
+    """3+ input files: batches must be concatenated in input order, with each
+    file's rows landing at the correct offset (sum of preceding batch sizes)."""
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=2)
+    scene_c = build_scene(batch_size=3)
+    path_a, path_b, path_c = (tmp_path / f"{n}.json" for n in "abc")
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    scene_c.save(path_c)
+
+    merged = merge_simulation_files([path_a, path_b, path_c])
+
+    assert merged["model"]["simBatches"] == 6
+    assert merged["model"]["batchNames"] == [
+        "a",
+        "b[0]",
+        "b[1]",
+        "c[0]",
+        "c[1]",
+        "c[2]",
+    ]
+    assert len(merged["states"]) == 3  # matches file a's (reference) timeline
+    for state in merged["states"]:
+        box = state["bodies"][0]
+        assert len(box["bodyTransform"]) == 6
+        assert len(box["velocity"]) == 6
+        assert len(state["energy"]) == 6
+    # Terrain batches are concatenated in the same file order/offsets as bodies.
+    height = merged["model"]["terrain"]["heightData"]
+    assert len(height) == 6
 
 
 def test_merge_resamples_onto_first_file_timeline(tmp_path):

@@ -1,10 +1,15 @@
-import torch
+try:
+    import torch
 
-from simview.scene import BodyShapeType, SimulationScene
-from simview.state import SimViewBodyState
+    from simview.scene import BodyShapeType, SimulationScene
+    from simview.state import SimViewBodyState
+
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 
-def build_scene(batch_size: int = 2) -> SimulationScene:
+def build_scene(batch_size: int = 2) -> "SimulationScene":
     """A small but representative scene: shared terrain, one box, a few states."""
     scene = SimulationScene(batch_size=batch_size, scalar_names=["energy"], dt=0.1)
 

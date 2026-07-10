@@ -1,4 +1,7 @@
 import pytest
+
+pytest.importorskip("torch")
+
 from conftest import build_scene
 from fastapi.testclient import TestClient
 
@@ -54,6 +57,19 @@ def test_server_accepts_preloaded_data():
     client = TestClient(server.app)
     resp = client.get("/model")
     assert resp.json()["simBatches"] == 1
+
+
+def test_server_serves_empty_states_list(tmp_path):
+    scene = build_scene(batch_size=1)
+    scene.states = []  # simulate a scene saved before any add_state call
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+    resp = client.get("/states")
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 def test_server_requires_at_least_one_of_sim_path_or_data():
