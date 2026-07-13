@@ -303,7 +303,9 @@ class SimViewBody:
             name=name,
             shape=shape_dict,
             parent=parent,
-            local_transform=list(local_transform) if local_transform is not None else None,
+            local_transform=list(local_transform)
+            if local_transform is not None
+            else None,
         )
         if available_attributes is not None:
             body.set_available_attributes(available_attributes)

@@ -283,9 +283,7 @@ def test_add_trajectory_grouped_names_unknown_body_raises():
     quat[..., 0] = 1.0
     scene = _two_body_scene(batch_size=B)
     with pytest.raises(ValueError, match="Unknown body 'Nope'"):
-        scene.add_trajectory(
-            [0.0, 0.1], [BodyTrajectory(["Box", "Nope"], pos, quat)]
-        )
+        scene.add_trajectory([0.0, 0.1], [BodyTrajectory(["Box", "Nope"], pos, quat)])
 
 
 def test_add_trajectory_grouped_names_with_contacts():
@@ -394,7 +392,12 @@ def test_articulated_child_add_state_unaffected():
     plumbing doesn't need to know about parent-relative semantics."""
     scene = _base_scene(batch_size=1)
     scene.create_body(
-        body_name="arm", shape_type=BodyShapeType.BOX, hx=0.1, hy=0.1, hz=0.1, parent="Box"
+        body_name="arm",
+        shape_type=BodyShapeType.BOX,
+        hx=0.1,
+        hy=0.1,
+        hz=0.1,
+        parent="Box",
     )
     pos = torch.zeros(1, 3)
     quat = torch.zeros(1, 4)
