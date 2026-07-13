@@ -40,6 +40,18 @@ export class InteractionController {
         this.onMouseUp = this.onMouseUp.bind(this);
         this.onKeyUp = this.onKeyUp.bind(this);
 
+        // handleHover does a full raycast; mousemove can fire far more often
+        // than the display refreshes, so coalesce to at most one raycast per
+        // animation frame instead of one per event.
+        this._hoverRafId = null;
+        this._queueHoverUpdate = () => {
+            if (this._hoverRafId !== null) return;
+            this._hoverRafId = requestAnimationFrame(() => {
+                this._hoverRafId = null;
+                this.handleHover();
+            });
+        };
+
         this.initializeEventListeners();
     }
 
@@ -59,7 +71,7 @@ export class InteractionController {
         const canvas = renderer.domElement;
         if (!canvas) return;
         
-        canvas.addEventListener("mousemove", this.handleHover, passiveOptions);
+        canvas.addEventListener("mousemove", this._queueHoverUpdate, passiveOptions);
         canvas.addEventListener("mousedown", this.onMouseDown);
         canvas.addEventListener("mousemove", this.onMouseDrag, passiveOptions);
         canvas.addEventListener("mouseup", this.onMouseUp);
@@ -74,10 +86,15 @@ export class InteractionController {
         const renderer = this.app.scene && this.app.scene.renderer;
         const canvas = renderer ? renderer.domElement : null;
         if (canvas) {
-            canvas.removeEventListener("mousemove", this.handleHover);
+            canvas.removeEventListener("mousemove", this._queueHoverUpdate);
             canvas.removeEventListener("mousedown", this.onMouseDown);
             canvas.removeEventListener("mousemove", this.onMouseDrag);
             canvas.removeEventListener("mouseup", this.onMouseUp);
+        }
+
+        if (this._hoverRafId !== null) {
+            cancelAnimationFrame(this._hoverRafId);
+            this._hoverRafId = null;
         }
 
         this.clearSelectionBox();

@@ -9,100 +9,73 @@ export class Terrain {
         this.dimensions = terrainData.dimensions;
         this.group = null;
 
-        // Data normalization: Ensure heightData is array of arrays (batches)
-        if (terrainData.heightData instanceof Float32Array) {
-            const batchSize = this.app.batchManager.simBatches;
-            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
-            const batches = [];
-            for (let i = 0; i < batchSize; i++) {
-                batches.push(terrainData.heightData.subarray(i * resolution, (i + 1) * resolution));
-            }
-            terrainData.heightData = batches;
-        } else if (
-            Array.isArray(terrainData.heightData) &&
-            terrainData.heightData.length > 0 &&
-            typeof terrainData.heightData[0] === "number"
-        ) {
-            console.debug("Normalizing flat heightData to single batch");
-            terrainData.heightData = [terrainData.heightData];
-        }
-        this.heightData = terrainData.heightData;
-
-        // Normalize frictionData
-        if (terrainData.frictionData instanceof Float32Array) {
-            const batchSize = this.app.batchManager.simBatches;
-            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
-            const batches = [];
-            for (let i = 0; i < batchSize; i++) {
-                batches.push(terrainData.frictionData.subarray(i * resolution, (i + 1) * resolution));
-            }
-            terrainData.frictionData = batches;
-        } else if (
-            Array.isArray(terrainData.frictionData) &&
-            terrainData.frictionData.length > 0 &&
-            typeof terrainData.frictionData[0] === "number"
-        ) {
-            terrainData.frictionData = [terrainData.frictionData];
-        }
-        this.frictionData = terrainData.frictionData;
-
-        // Normalize stiffnessData
-        if (terrainData.stiffnessData instanceof Float32Array) {
-            const batchSize = this.app.batchManager.simBatches;
-            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
-            const batches = [];
-            for (let i = 0; i < batchSize; i++) {
-                batches.push(terrainData.stiffnessData.subarray(i * resolution, (i + 1) * resolution));
-            }
-            terrainData.stiffnessData = batches;
-        } else if (
-            Array.isArray(terrainData.stiffnessData) &&
-            terrainData.stiffnessData.length > 0 &&
-            typeof terrainData.stiffnessData[0] === "number"
-        ) {
-            terrainData.stiffnessData = [terrainData.stiffnessData];
-        }
-        this.stiffnessData = terrainData.stiffnessData;
+        this.heightData = this.#normalizeScalarField(terrainData.heightData, true);
+        this.frictionData = this.#normalizeScalarField(terrainData.frictionData);
+        this.stiffnessData = this.#normalizeScalarField(terrainData.stiffnessData);
         this.isSingleton = terrainData.isSingleton;
 
-        // Data normalization: Ensure normals is array of arrays of vectors
-        if (terrainData.normals instanceof Float32Array) {
-            const batchSize = this.app.batchManager.simBatches;
-            const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
-            const batches = [];
-            const normalsPerBatch = resolution * 3;
-            for (let i = 0; i < batchSize; i++) {
-                batches.push(terrainData.normals.subarray(i * normalsPerBatch, (i + 1) * normalsPerBatch));
+        const normals = this.#normalizeNormals(terrainData.normals);
+
+        this.#createVisualRepresentations(this.heightData, normals);
+    }
+
+    // Reshapes a flat Float32Array of `batchSize` concatenated per-vertex
+    // records (`width` floats each) into one subarray view per batch.
+    #splitIntoBatches(flatArray, width) {
+        const batchSize = this.app.batchManager.simBatches;
+        const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
+        const perBatch = resolution * width;
+        const batches = [];
+        for (let i = 0; i < batchSize; i++) {
+            batches.push(flatArray.subarray(i * perBatch, (i + 1) * perBatch));
+        }
+        return batches;
+    }
+
+    // Normalizes a per-vertex scalar terrain field (heightData/frictionData/
+    // stiffnessData) to an array of one entry per batch. Passes through
+    // unchanged if already batched, or if absent (friction/stiffness are
+    // optional).
+    #normalizeScalarField(data, logNormalization = false) {
+        if (data instanceof Float32Array) {
+            return this.#splitIntoBatches(data, 1);
+        }
+        if (Array.isArray(data) && data.length > 0 && typeof data[0] === "number") {
+            if (logNormalization) {
+                console.debug("Normalizing flat heightData to single batch");
             }
-            terrainData.normals = batches;
-        } else if (
-            Array.isArray(terrainData.normals) &&
-            terrainData.normals.length > 0
-        ) {
-            if (typeof terrainData.normals[0] === "number") {
+            return [data];
+        }
+        return data;
+    }
+
+    // Normalizes terrain normals (per-vertex 3-vectors) to an array of one
+    // batch of vectors.
+    #normalizeNormals(data) {
+        if (data instanceof Float32Array) {
+            return this.#splitIntoBatches(data, 3);
+        }
+        if (Array.isArray(data) && data.length > 0) {
+            if (typeof data[0] === "number") {
                 // Case: Flat array [x, y, z, x, y, z...]
                 console.debug("Normalizing flat normals array to single batch of vectors");
-                const flat = terrainData.normals;
                 const vectors = [];
-                for (let i = 0; i < flat.length; i += 3) {
-                    vectors.push([flat[i], flat[i + 1], flat[i + 2]]);
+                for (let i = 0; i < data.length; i += 3) {
+                    vectors.push([data[i], data[i + 1], data[i + 2]]);
                 }
-                terrainData.normals = [vectors];
-            } else if (
-                Array.isArray(terrainData.normals[0]) &&
-                terrainData.normals[0].length > 0 &&
-                typeof terrainData.normals[0][0] === "number"
+                return [vectors];
+            }
+            if (
+                Array.isArray(data[0]) &&
+                data[0].length > 0 &&
+                typeof data[0][0] === "number"
             ) {
                 // Case: Array of vectors [[x,y,z], ...] -> Wrap in batch
                 console.debug("Normalizing list of normal vectors to single batch");
-                terrainData.normals = [terrainData.normals];
+                return [data];
             }
         }
-
-        this.#createVisualRepresentations(
-            this.heightData,
-            terrainData.normals
-        );
+        return data;
     }
 
     #createMaterials() {
