@@ -411,7 +411,14 @@ def _state_body_lookup(
     key = (file_idx, state_idx)
     lookup = cache.get(key)
     if lookup is None:
-        lookup = {b["name"]: b for b in states[state_idx].get("bodies", [])}
+        lookup = {}
+        for b in states[state_idx].get("bodies", []):
+            name = b["name"]
+            # `name` may be a list of body names sharing one transform (see
+            # SimulationScene.add_state/add_trajectory); index each under its
+            # own key so per-body lookups below don't need to know about it.
+            for n in name if isinstance(name, list) else [name]:
+                lookup[n] = b
         cache[key] = lookup
     return lookup
 

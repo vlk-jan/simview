@@ -29,14 +29,29 @@ def _to_f4(value) -> np.ndarray:
     return np.ascontiguousarray(np.asarray(value, dtype="<f4"))
 
 
-def _validate_body_name(name: str, model: SimViewModel) -> None:
-    """Raise ValueError if `name` isn't a body defined in `model`."""
-    if name not in model.bodies:
-        valid = sorted(model.bodies)
-        raise ValueError(
-            f"Unknown body '{name}'; not defined in the model. "
-            f"Valid body names: {valid}."
-        )
+def _iter_names(name: str | list[str]):
+    """Yield each individual body name, whether `name` is a single string or
+    a list of names sharing one transform."""
+    return name if isinstance(name, list) else [name]
+
+
+def _name_label(name: str | list[str]) -> str:
+    """Human-readable label for `name` in error messages."""
+    return ", ".join(name) if isinstance(name, list) else name
+
+
+def _validate_body_name(name: str | list[str], model: SimViewModel) -> None:
+    """Raise ValueError if `name` (or any name in it, when a list) isn't a
+    body defined in `model`."""
+    if isinstance(name, list) and not name:
+        raise ValueError("Body name list must not be empty.")
+    for n in _iter_names(name):
+        if n not in model.bodies:
+            valid = sorted(model.bodies)
+            raise ValueError(
+                f"Unknown body '{n}'; not defined in the model. "
+                f"Valid body names: {valid}."
+            )
 
 
 def _as_tbk(value, T: int, B: int, k: int, field: str, body: str) -> np.ndarray:
@@ -260,11 +275,12 @@ class SimulationScene:
         prepared_contacts: list[tuple[str, list]] = []
         for traj in trajectories:
             _validate_body_name(traj.name, self.model)
+            label = _name_label(traj.name)
             fields = {
                 "bodyTransform": np.concatenate(
                     [
-                        _as_tbk(traj.positions, T, B, 3, "positions", traj.name),
-                        _as_tbk(traj.orientations, T, B, 4, "orientations", traj.name),
+                        _as_tbk(traj.positions, T, B, 3, "positions", label),
+                        _as_tbk(traj.orientations, T, B, 4, "orientations", label),
                     ],
                     axis=-1,
                 )
@@ -272,13 +288,13 @@ class SimulationScene:
             for attr, wire_key in TRAJECTORY_VECTOR_FIELDS.items():
                 value = getattr(traj, attr)
                 if value is not None:
-                    fields[wire_key] = _as_tbk(value, T, B, 3, attr, traj.name)
+                    fields[wire_key] = _as_tbk(value, T, B, 3, attr, label)
             prepared.append((traj.name, fields))
 
             if traj.contacts is not None:
                 if len(traj.contacts) != T:
                     raise ValueError(
-                        f"{traj.name}.contacts has {len(traj.contacts)} timesteps; "
+                        f"{label}.contacts has {len(traj.contacts)} timesteps; "
                         f"expected {T} (from times)."
                     )
                 contacts_per_t = [
@@ -289,15 +305,21 @@ class SimulationScene:
         def encode(slice_: np.ndarray):
             return _encode_blob(slice_) if binary else slice_.tolist()
 
-        contacts_by_name = dict(prepared_contacts)
+        # dict keys must be hashable, so group names (lists) are keyed by tuple.
+        def _name_key(name):
+            return tuple(name) if isinstance(name, list) else name
+
+        contacts_by_name = {
+            _name_key(name): contacts for name, contacts in prepared_contacts
+        }
         for t in range(T):
             bodies = [
                 {
                     "name": name,
                     **{key: encode(arr[t]) for key, arr in fields.items()},
                     **(
-                        {"contacts": contacts_by_name[name][t]}
-                        if name in contacts_by_name
+                        {"contacts": contacts_by_name[_name_key(name)][t]}
+                        if _name_key(name) in contacts_by_name
                         else {}
                     ),
                 }
@@ -335,7 +357,8 @@ class SimulationScene:
                 if name:
                     # Everything in the body's dict other than name and bodyTransform is an optional attribute
                     provided = set(body_data.keys()) - {"name", "bodyTransform"}
-                    provided_attrs_by_body[name] = provided
+                    for n in _iter_names(name):
+                        provided_attrs_by_body[n] = provided
 
             for name, body in self.model.bodies.items():
                 if name in provided_attrs_by_body:

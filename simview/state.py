@@ -29,9 +29,15 @@ class BodyTrajectory:
     matching the rest of SimView. Pass a list of these to
     :meth:`SimulationScene.add_trajectory` to append an entire time-series in one
     call instead of building a ``SimViewBodyState`` per frame.
+
+    ``name`` may be a list of body names instead of a single string, to cover
+    several bodies that move rigidly together (e.g. links welded to the same
+    parent). All named bodies must already exist in the model, and the
+    transform/vectors here are applied identically to each of them, avoiding
+    the need to duplicate the same data per body.
     """
 
-    name: str
+    name: str | list[str]
     positions: ArrayLike  # (T, B, 3) or (T, 3)
     orientations: ArrayLike  # (T, B, 4) or (T, 4), [w, x, y, z]
     velocity: ArrayLike | None = None  # (T, B, 3) or (T, 3)
@@ -49,11 +55,15 @@ class BodyTrajectory:
 class SimViewBodyState:
     def __init__(
         self,
-        body_name: str,
+        body_name: str | list[str],
         position: ArrayLike,
         orientation: ArrayLike,
         optional_attributes: dict | None = None,
     ):
+        """``body_name`` may be a list of body names sharing this exact
+        transform (and any optional attributes), for bodies that move
+        rigidly together — see :class:`BodyTrajectory` for the same idea
+        applied to whole trajectories."""
         self.body_name = body_name
         self.position = position.tolist()
         self.orientation = orientation.tolist()

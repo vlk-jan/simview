@@ -125,6 +125,56 @@ def test_merge_resamples_onto_first_file_timeline(tmp_path):
     assert z_other == [10.0, 12.0, 14.0]
 
 
+def build_grouped_name_scene(
+    times: list[float], zs: list[float], dt: float = 0.1
+) -> SimulationScene:
+    """A single-batch scene with two bodies ("Box", "Box2") that move rigidly
+    together, authored with one grouped-name state per frame instead of one
+    state per body."""
+    scene = SimulationScene(batch_size=1, scalar_names=["energy"], dt=dt)
+
+    resolution = 4
+    heights = torch.zeros(resolution, resolution)
+    normals = torch.zeros(3, resolution, resolution)
+    normals[2] = 1.0
+    scene.create_terrain(
+        heightmap=heights, normals=normals, x_lim=(-5, 5), y_lim=(-5, 5)
+    )
+    scene.create_body(
+        body_name="Box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+    )
+    scene.create_body(
+        body_name="Box2", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+    )
+
+    for t, z in zip(times, zs):
+        pos = torch.tensor([[0.0, 0.0, z]])
+        quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        state = SimViewBodyState(["Box", "Box2"], pos, quat)
+        scene.add_state(time=t, body_states=[state], scalar_values={"energy": [z]})
+
+    return scene
+
+
+def test_merge_resolves_grouped_body_names(tmp_path):
+    """Merge must be able to look up bodies whose state entries were authored
+    with a grouped (list) name, expanding back to one entry per model body."""
+    scene_a = build_grouped_name_scene(times=[0.0, 0.1], zs=[0.0, 1.0])
+    scene_b = build_grouped_name_scene(times=[0.0, 0.1], zs=[10.0, 11.0])
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    assert merged["model"]["simBatches"] == 2
+    for state in merged["states"]:
+        names = [b["name"] for b in state["bodies"]]
+        assert names == ["Box", "Box2"]
+        for body in state["bodies"]:
+            assert len(body["bodyTransform"]) == 2
+
+
 def test_merge_requires_at_least_two_files(tmp_path):
     scene = build_scene(batch_size=1)
     path = tmp_path / "a.json"

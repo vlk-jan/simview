@@ -259,7 +259,11 @@ produces.
 
 - **`time`** *(float)* — snapshot time in seconds.
 - **`bodies`** *(array)* — per body:
-  - **`name`** *(string)* — matches a `model.bodies[].name`.
+  - **`name`** *(string | array[string])* — matches a `model.bodies[].name`. May instead be
+    a list of names when several bodies move rigidly together (e.g. links welded to the same
+    parent): the single entry's `bodyTransform` and other fields below then apply identically
+    to every named body, instead of repeating identical data once per body. All named bodies
+    must exist in `model.bodies`.
   - **`bodyTransform`** — pose. Batched: `array[array[7]]`, one `[x, y, z, w, qx, qy, qz]`
     per batch; single: a flat `[x, y, z, w, qx, qy, qz]`.
   - **`contacts`** *(array[array[int]], optional)* — per batch, indices of contacting
@@ -301,6 +305,11 @@ scene.save("scene.json")
 ```
 
 Pass `binary=False` to emit plain JSON lists instead.
+
+Both `BodyTrajectory.name` and `SimViewBodyState`'s `body_name` accept a list of body names
+instead of a single string, for bodies that move rigidly together (e.g. `BodyTrajectory(["link_a", "link_b"], positions, orientations)`) — the same transform (and any optional
+attributes) is applied to every named body, so it only needs to be written once per frame
+instead of once per body.
 
 For large simulations, pass `compress=True` to `save()` (or use a `.gz` filepath) to
 gzip the output — `SimulationScene.load()`, the CLI, and the server all detect and

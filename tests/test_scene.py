@@ -204,3 +204,116 @@ def test_add_trajectory_contacts_wrong_length_raises():
             times=[0.0, 0.1, 0.2],
             trajectories=[BodyTrajectory("Box", pos, quat, contacts=contacts)],
         )
+
+
+# --- Grouped body names (name as a list) ------------------------------------
+
+
+def _two_body_scene(
+    batch_size: int = 1, available_attributes=("velocity",)
+) -> SimulationScene:
+    scene = _base_scene(
+        batch_size=batch_size, available_attributes=available_attributes
+    )
+    scene.create_body(
+        body_name="Box2",
+        shape_type=BodyShapeType.BOX,
+        available_attributes=list(available_attributes) or None,
+        hx=0.5,
+        hy=0.5,
+        hz=0.5,
+    )
+    return scene
+
+
+def test_add_state_grouped_names_shares_one_transform():
+    scene = _two_body_scene(batch_size=1)
+    pos = torch.zeros(1, 3)
+    quat = torch.zeros(1, 4)
+    quat[..., 0] = 1.0
+    state = SimViewBodyState(["Box", "Box2"], pos, quat)
+    scene.add_state(time=0.0, body_states=[state])
+
+    bodies = scene.states[0]["bodies"]
+    assert len(bodies) == 1
+    assert bodies[0]["name"] == ["Box", "Box2"]
+
+
+def test_add_state_grouped_names_unknown_body_raises():
+    scene = _two_body_scene(batch_size=1)
+    pos = torch.zeros(1, 3)
+    quat = torch.zeros(1, 4)
+    quat[..., 0] = 1.0
+    state = SimViewBodyState(["Box", "Nope"], pos, quat)
+    with pytest.raises(ValueError, match="Unknown body 'Nope'"):
+        scene.add_state(time=0.0, body_states=[state])
+
+
+def test_add_state_grouped_names_empty_list_raises():
+    scene = _two_body_scene(batch_size=1)
+    pos = torch.zeros(1, 3)
+    quat = torch.zeros(1, 4)
+    quat[..., 0] = 1.0
+    state = SimViewBodyState([], pos, quat)
+    with pytest.raises(ValueError, match="must not be empty"):
+        scene.add_state(time=0.0, body_states=[state])
+
+
+def test_add_trajectory_grouped_names_shares_one_transform():
+    T, B = 3, 1
+    pos = torch.randn(T, B, 3)
+    quat = torch.randn(T, B, 4)
+    quat = quat / quat.norm(dim=-1, keepdim=True)
+    scene = _two_body_scene(batch_size=B, available_attributes=())
+    scene.add_trajectory(
+        times=[0.0, 0.1, 0.2],
+        trajectories=[BodyTrajectory(["Box", "Box2"], pos, quat)],
+    )
+
+    for t, state in enumerate(scene.states):
+        bodies = state["bodies"]
+        assert len(bodies) == 1
+        assert bodies[0]["name"] == ["Box", "Box2"]
+
+
+def test_add_trajectory_grouped_names_unknown_body_raises():
+    T, B = 2, 1
+    pos = torch.zeros(T, B, 3)
+    quat = torch.zeros(T, B, 4)
+    quat[..., 0] = 1.0
+    scene = _two_body_scene(batch_size=B)
+    with pytest.raises(ValueError, match="Unknown body 'Nope'"):
+        scene.add_trajectory(
+            [0.0, 0.1], [BodyTrajectory(["Box", "Nope"], pos, quat)]
+        )
+
+
+def test_add_trajectory_grouped_names_with_contacts():
+    """Exercises the contacts-by-name lookup, which must stay hashable when
+    `name` is a list."""
+    T, B = 2, 1
+    pos = torch.zeros(T, B, 3)
+    quat = torch.zeros(T, B, 4)
+    quat[..., 0] = 1.0
+    contacts = [torch.tensor([[1, 0]]), torch.tensor([[0, 1]])]
+    scene = _two_body_scene(batch_size=B, available_attributes=("contacts",))
+    scene.add_trajectory(
+        times=[0.0, 0.1],
+        trajectories=[BodyTrajectory(["Box", "Box2"], pos, quat, contacts=contacts)],
+    )
+    assert scene.states[0]["bodies"][0]["contacts"] == [[1, 0]]
+    assert scene.states[1]["bodies"][0]["contacts"] == [[0, 1]]
+
+
+def test_save_reconciles_available_attributes_for_grouped_names(tmp_path):
+    scene = _two_body_scene(batch_size=1, available_attributes=())
+    pos = torch.zeros(1, 3)
+    quat = torch.zeros(1, 4)
+    quat[..., 0] = 1.0
+    vel = torch.zeros(1, 3)
+    state = SimViewBodyState(["Box", "Box2"], pos, quat, {"velocity": vel})
+    scene.add_state(time=0.0, body_states=[state])
+    scene.save(tmp_path / "scene.json")
+
+    assert scene.model.bodies["Box"].available_attributes == ["velocity"]
+    assert scene.model.bodies["Box2"].available_attributes == ["velocity"]
