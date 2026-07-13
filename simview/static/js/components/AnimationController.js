@@ -1,5 +1,6 @@
 import { PlaybackControls } from "../ui/PlaybackControls.js";
 import { resolveStateBodies } from "../utils/bodyTransforms.js";
+import { loadRecordingLibs } from "../utils/loadRecordingLibs.js";
 
 export class AnimationController {
     constructor(app, simulationTimestep) {
@@ -9,6 +10,7 @@ export class AnimationController {
         this.isPlaying = false;
         this.playbackSpeed = 1;
         this.isRecording = false;
+        this.isLoadingRecorder = false;
         this.capturer = null;
         this.startTime = null;
         this.recordingFormat = "webm"; // Default recording format
@@ -138,7 +140,14 @@ export class AnimationController {
         }
     }
 
-    startRecording() {
+    async startRecording() {
+        if (this.isRecording || this.isLoadingRecorder) return;
+        this.isLoadingRecorder = true;
+        try {
+            await loadRecordingLibs();
+        } finally {
+            this.isLoadingRecorder = false;
+        }
         if (this.isRecording) return;
         // Reset animation to start
         this.seekToIndex(0);

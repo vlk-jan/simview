@@ -1,3 +1,5 @@
+import { injectStyles } from "../utils/injectStyles.js";
+
 // Shared top-center panel hosting the Scalars plots and the Error Metrics
 // comparison. Owns the collapsible container and, when both are present, the
 // mode switcher between them; ScalarPlotter and ErrorMetrics just mount their
@@ -17,7 +19,6 @@ export class AnalysisPanel {
 
     _injectStyles() {
         const styleId = "analysis-panel-styles";
-        if (document.getElementById(styleId)) return;
         const containerWidthPercentage = 40;
         const contentMaxHeightPercentage = 30;
         const css = `
@@ -109,10 +110,7 @@ export class AnalysisPanel {
             display: block;
         }
         `;
-        const styleElement = document.createElement("style");
-        styleElement.id = styleId;
-        styleElement.textContent = css;
-        document.head.appendChild(styleElement);
+        injectStyles(styleId, css);
     }
 
     _setupHTML() {

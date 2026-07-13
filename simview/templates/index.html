@@ -38,12 +38,9 @@
       <h1>Loading...</h1>
     </div>
 
-    <!-- Add CCapture.js -->
-    <script src="{{ url_for('static', path='lib/CCapture.js') }}"></script>
-    <script src="{{ url_for('static', path='lib/webm-writer-0.2.0.js') }}"></script>
-    <script src="{{ url_for('static', path='lib/gif.js') }}"></script>
-    <script src="{{ url_for('static', path='lib/tar.js') }}"></script>
-    <script src="{{ url_for('static', path='lib/download.js') }}"></script>
+    <!-- CCapture.js and its format-specific dependencies (webm-writer, gif.js,
+         tar.js, download.js) are only loaded on demand, when the user starts
+         a recording -- see static/js/utils/loadRecordingLibs.js. -->
 
     <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are loaded
          from jsdelivr and pinned to exact versions. The "integrity" map below

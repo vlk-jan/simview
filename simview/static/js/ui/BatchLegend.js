@@ -1,9 +1,10 @@
+import { injectStyles } from "../utils/injectStyles.js";
+
 // Bottom-right, toggleable panel listing every batch's color swatch and name.
 // Doubles as a batch picker (click a row to focus it) and a renaming UI (click
 // the name to edit it in place); renames are persisted server-side via
 // BatchManager.setBatchName so they survive a reload.
 export class BatchLegend {
-    static cssInjected = false;
     static styleId = "batch-legend-styles";
 
     constructor(app) {
@@ -16,10 +17,6 @@ export class BatchLegend {
     }
 
     _injectStyles() {
-        if (BatchLegend.cssInjected || document.getElementById(BatchLegend.styleId)) {
-            BatchLegend.cssInjected = true;
-            return;
-        }
         const css = `
         .batch-legend-container {
             width: 220px;
@@ -109,11 +106,7 @@ export class BatchLegend {
             cursor: text;
         }
         `;
-        const styleElement = document.createElement("style");
-        styleElement.id = BatchLegend.styleId;
-        styleElement.textContent = css;
-        document.head.appendChild(styleElement);
-        BatchLegend.cssInjected = true;
+        injectStyles(BatchLegend.styleId, css);
     }
 
     _setupHTML() {

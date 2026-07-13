@@ -1,8 +1,8 @@
 import { FREQ_CONFIG } from "../config.js";
+import { injectStyles } from "../utils/injectStyles.js";
 
 export class BodyStateWindow {
-    static cssInjected = false;
-    static styleId = "body-state-window-styles"; // Unique ID for the style tag
+    static styleId = "body-state-window-styles";
     constructor(app) {
         this.app = app;
         this.selectedBodies = new Set();
@@ -22,18 +22,6 @@ export class BodyStateWindow {
     }
 
     injectCSS() {
-        // Only attempt injection if it hasn't been done successfully before
-        if (BodyStateWindow.cssInjected) {
-            return;
-        }
-
-        // Check if the style tag already exists in the document (e.g., from a previous session or manual insertion)
-        if (document.getElementById(BodyStateWindow.styleId)) {
-            BodyStateWindow.cssInjected = true; // Mark as injected if found
-            return;
-        }
-
-        // CSS rules as a string (using template literal for multiline)
         const css = `
       /* Base styles for the body state window */
       .body-state-window {
@@ -209,20 +197,7 @@ export class BodyStateWindow {
           color: #ccc;
       }
     `;
-
-        // Create the <style> element
-        const styleElement = document.createElement("style");
-        styleElement.id = BodyStateWindow.styleId; // Assign the ID
-        styleElement.textContent = css; // Add the CSS rules
-
-        // Append the <style> element to the document's <head>
-        try {
-            document.head.appendChild(styleElement);
-            BodyStateWindow.cssInjected = true; // Mark as successfully injected
-        } catch (error) {
-            console.error("Failed to inject BodyStateWindow CSS:", error);
-            // Optionally handle the error, e.g., by falling back to inline styles
-        }
+        injectStyles(BodyStateWindow.styleId, css);
     }
 
     initWindow() {

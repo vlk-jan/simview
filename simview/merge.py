@@ -41,15 +41,24 @@ _STATE_FIELD_WIDTHS = {
 }
 
 
+def _decode_b64_floats(value) -> tuple[float, ...] | None:
+    """Decode a binary ``__b64__`` blob to a flat tuple of floats, or return
+    None if `value` isn't such a blob (e.g. it's an already-batched plain
+    list). Kept dependency-free (no numpy/torch) so it works in
+    viewing-only installs."""
+    if not (isinstance(value, str) and value.startswith("__b64__")):
+        return None
+    raw = base64.b64decode(value[7:])
+    return struct.unpack(f"<{len(raw) // 4}f", raw)
+
+
 def _decode_state_field(value, width: int):
     """Expand a binary ``__b64__`` per-body state field to a list of per-batch
     rows. Plain lists pass through unchanged, so merged output is always JSON
-    lists regardless of whether inputs used binary encoding. Kept dependency-free
-    (no numpy/torch) so it works in viewing-only installs."""
-    if not (isinstance(value, str) and value.startswith("__b64__")):
+    lists regardless of whether inputs used binary encoding."""
+    flat = _decode_b64_floats(value)
+    if flat is None:
         return value
-    raw = base64.b64decode(value[7:])
-    flat = struct.unpack(f"<{len(raw) // 4}f", raw)
     return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
 
 
@@ -61,10 +70,9 @@ def _decode_per_batch(value: list | str, batch_size: int) -> list:
     that inputs mixing binary and plain-list encoding can still be
     concatenated -- each file's field is decoded independently rather than
     branching on a single file's encoding."""
-    if not (isinstance(value, str) and value.startswith("__b64__")):
+    flat = _decode_b64_floats(value)
+    if flat is None:
         return value
-    raw = base64.b64decode(value[7:])
-    flat = struct.unpack(f"<{len(raw) // 4}f", raw)
     width = len(flat) // batch_size
     return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
 

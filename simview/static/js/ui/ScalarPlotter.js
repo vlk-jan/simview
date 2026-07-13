@@ -1,5 +1,6 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
+import { injectStyles } from "../utils/injectStyles.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -34,8 +35,7 @@ export class ScalarPlotter {
     }
 
     _injectStyles() {
-        const styleId = `scalar-styles`;
-        if (document.getElementById(styleId)) return;
+        const styleId = "scalar-styles";
         const chartHeightPercentage = 15;
         const css = `
         /* Tab bar */
@@ -118,10 +118,7 @@ export class ScalarPlotter {
             display: none;
         }
     `;
-        const styleElement = document.createElement("style");
-        styleElement.id = styleId;
-        styleElement.textContent = css;
-        document.head.appendChild(styleElement);
+        injectStyles(styleId, css);
     }
 
     _setupHTML() {

@@ -1,11 +1,11 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
+import { injectStyles } from "../utils/injectStyles.js";
 
 // Compares two batches of the same body over the full timeline: Euclidean
 // position error and quaternion angle (orientation) error. Useful for e.g.
 // comparing a real-world recording batch against a simulated rerun batch.
 export class ErrorMetrics {
-    static cssInjected = false;
     static styleId = "error-metrics-styles";
 
     constructor(app) {
@@ -30,10 +30,6 @@ export class ErrorMetrics {
     }
 
     _injectStyles() {
-        if (ErrorMetrics.cssInjected || document.getElementById(ErrorMetrics.styleId)) {
-            ErrorMetrics.cssInjected = true;
-            return;
-        }
         const css = `
         .error-metrics-content {
             padding: 10px;
@@ -95,11 +91,7 @@ export class ErrorMetrics {
             display: none;
         }
         `;
-        const styleElement = document.createElement("style");
-        styleElement.id = ErrorMetrics.styleId;
-        styleElement.textContent = css;
-        document.head.appendChild(styleElement);
-        ErrorMetrics.cssInjected = true;
+        injectStyles(ErrorMetrics.styleId, css);
     }
 
     _setupHTML() {
@@ -118,16 +110,21 @@ export class ErrorMetrics {
 
         this.readout = document.createElement("div");
         this.readout.className = "error-metrics-readout";
-        this.posReadout = document.createElement("div");
-        this.posReadout.innerHTML = "<span>Position error:</span><span>-</span>";
-        this.axisReadoutX = document.createElement("div");
-        this.axisReadoutX.innerHTML = "<span>X error:</span><span>-</span>";
-        this.axisReadoutY = document.createElement("div");
-        this.axisReadoutY.innerHTML = "<span>Y error:</span><span>-</span>";
-        this.axisReadoutZ = document.createElement("div");
-        this.axisReadoutZ.innerHTML = "<span>Z error:</span><span>-</span>";
-        this.rotReadout = document.createElement("div");
-        this.rotReadout.innerHTML = "<span>Orientation error:</span><span>-</span>";
+        const posRow = this._makeReadoutRow("Position error:");
+        this.posReadout = posRow.row;
+        this.posReadoutValue = posRow.valueSpan;
+        const axisXRow = this._makeReadoutRow("X error:");
+        this.axisReadoutX = axisXRow.row;
+        this.axisReadoutXValue = axisXRow.valueSpan;
+        const axisYRow = this._makeReadoutRow("Y error:");
+        this.axisReadoutY = axisYRow.row;
+        this.axisReadoutYValue = axisYRow.valueSpan;
+        const axisZRow = this._makeReadoutRow("Z error:");
+        this.axisReadoutZ = axisZRow.row;
+        this.axisReadoutZValue = axisZRow.valueSpan;
+        const rotRow = this._makeReadoutRow("Orientation error:");
+        this.rotReadout = rotRow.row;
+        this.rotReadoutValue = rotRow.valueSpan;
         this.readout.appendChild(this.posReadout);
         this.readout.appendChild(this.axisReadoutX);
         this.readout.appendChild(this.axisReadoutY);
@@ -139,6 +136,17 @@ export class ErrorMetrics {
         this.plotDiv = document.createElement("div");
         this.plotDiv.className = "error-metrics-plot";
         this.content.appendChild(this.plotDiv);
+    }
+
+    _makeReadoutRow(labelText) {
+        const row = document.createElement("div");
+        const label = document.createElement("span");
+        label.textContent = labelText;
+        const valueSpan = document.createElement("span");
+        valueSpan.textContent = "-";
+        row.appendChild(label);
+        row.appendChild(valueSpan);
+        return { row, valueSpan };
     }
 
     _addSelectGroup(labelText, options, selected, isBatch = false) {
@@ -499,13 +507,13 @@ export class ErrorMetrics {
             const ax = this.axisSeries.x[idx];
             const ay = this.axisSeries.y[idx];
             const az = this.axisSeries.z[idx];
-            this.axisReadoutX.innerHTML = `<span>X error:</span><span>${ax ? ax.y.toFixed(3) + " m" : "-"}</span>`;
-            this.axisReadoutY.innerHTML = `<span>Y error:</span><span>${ay ? ay.y.toFixed(3) + " m" : "-"}</span>`;
-            this.axisReadoutZ.innerHTML = `<span>Z error:</span><span>${az ? az.y.toFixed(3) + " m" : "-"}</span>`;
+            this.axisReadoutXValue.textContent = ax ? ax.y.toFixed(3) + " m" : "-";
+            this.axisReadoutYValue.textContent = ay ? ay.y.toFixed(3) + " m" : "-";
+            this.axisReadoutZValue.textContent = az ? az.y.toFixed(3) + " m" : "-";
         } else {
-            this.posReadout.innerHTML = `<span>Position error:</span><span>${pos ? pos.y.toFixed(3) + " m" : "-"}</span>`;
+            this.posReadoutValue.textContent = pos ? pos.y.toFixed(3) + " m" : "-";
         }
-        this.rotReadout.innerHTML = `<span>Orientation error:</span><span>${rot ? rot.y.toFixed(2) + "°" : "-"}</span>`;
+        this.rotReadoutValue.textContent = rot ? rot.y.toFixed(2) + "°" : "-";
 
         if (this.chart && pos) {
             if (this.markerTime !== pos.x) {

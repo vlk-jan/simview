@@ -367,17 +367,18 @@ class SimulationScene:
                 "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
             )
 
-        # Reconcile available_attributes with actual data in the first state
+        # Reconcile available_attributes with actual data across all states
+        # (an attribute may be absent from earlier frames but present later)
         if self.states:
-            first_state = self.states[0]
             provided_attrs_by_body = {}
-            for body_data in first_state.get("bodies", []):
-                name = body_data.get("name")
-                if name:
-                    # Everything in the body's dict other than name and bodyTransform is an optional attribute
-                    provided = set(body_data.keys()) - {"name", "bodyTransform"}
-                    for n in _iter_names(name):
-                        provided_attrs_by_body[n] = provided
+            for state in self.states:
+                for body_data in state.get("bodies", []):
+                    name = body_data.get("name")
+                    if name:
+                        # Everything in the body's dict other than name and bodyTransform is an optional attribute
+                        provided = set(body_data.keys()) - {"name", "bodyTransform"}
+                        for n in _iter_names(name):
+                            provided_attrs_by_body.setdefault(n, set()).update(provided)
 
             for name, body in self.model.bodies.items():
                 if name in provided_attrs_by_body:
