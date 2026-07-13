@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from simview.model import OptionalBodyStateAttribute
+from simview.model import OptionalBodyStateAttribute, _encode_blob
 
 # Accepted array-like input types for authoring calls: torch tensors and numpy
 # arrays are both supported so callers don't need torch just to build a scene.
@@ -18,6 +18,11 @@ TRAJECTORY_VECTOR_FIELDS = {
     "force": OptionalBodyStateAttribute.FORCE.value,
     "torque": OptionalBodyStateAttribute.TORQUE.value,
 }
+
+# Wire keys SimViewBodyState.to_json() may pack as binary float32 blobs, same
+# set add_trajectory packs. Contacts are ragged (per-batch index lists) and
+# always stay plain JSON.
+_BINARY_ELIGIBLE_FIELDS = {"bodyTransform", *TRAJECTORY_VECTOR_FIELDS.values()}
 
 
 @dataclass
@@ -65,6 +70,7 @@ class SimViewBodyState:
         position: ArrayLike,
         orientation: ArrayLike,
         optional_attributes: dict | None = None,
+        binary: bool = True,
     ):
         """``body_name`` may be a list of body names sharing this exact
         transform (and any optional attributes), for bodies that move
@@ -74,10 +80,18 @@ class SimViewBodyState:
         If the named body has a ``parent`` set in the model, ``position``/
         ``orientation`` here are interpreted as local to that parent's
         current-frame pose instead of world space (see
-        ``SimulationScene.create_body``)."""
+        ``SimulationScene.create_body``).
+
+        With ``binary=True`` (the default, matching
+        ``SimulationScene.add_trajectory``), ``bodyTransform`` and any
+        provided vector attributes (velocity/angularVelocity/force/torque)
+        are packed as float32 ``__b64__`` blobs, shrinking the output file;
+        the viewer and :func:`merge_simulation_files` decode these
+        transparently. Set ``binary=False`` to emit plain JSON lists."""
         self.body_name = body_name
         self.position = position.tolist()
         self.orientation = orientation.tolist()
+        self.binary = binary
         self._set_optional_attributes(optional_attributes or {})
 
     def __repr__(self) -> str:
@@ -152,8 +166,14 @@ class SimViewBodyState:
             # Single
             body_transform = self.position + self.orientation
 
-        return {
-            "name": self.body_name,
-            "bodyTransform": body_transform,
-            **self.optional_attrs,
-        }
+        fields = {"bodyTransform": body_transform, **self.optional_attrs}
+        if self.binary:
+            fields = {
+                key: (
+                    _encode_blob(np.array(value, dtype=np.float32))
+                    if key in _BINARY_ELIGIBLE_FIELDS
+                    else value
+                )
+                for key, value in fields.items()
+            }
+        return {"name": self.body_name, **fields}

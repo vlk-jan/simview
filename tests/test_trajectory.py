@@ -94,7 +94,9 @@ def test_binary_matches_json_and_matches_add_state():
     )
     per_frame = _base_scene(batch_size=B)
     for t in range(T):
-        state = SimViewBodyState("Box", pos[t], quat[t], {"velocity": vel[t]})
+        state = SimViewBodyState(
+            "Box", pos[t], quat[t], {"velocity": vel[t]}, binary=False
+        )
         per_frame.add_state(time=times[t], body_states=[state])
 
     for t in range(T):

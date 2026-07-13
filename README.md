@@ -293,18 +293,21 @@ produces.
 > **Binary state fields.** The numeric per-body fields (`bodyTransform`, `velocity`,
 > `angularVelocity`, `force`, `torque`) may alternatively be a string of the form
 > `"__b64__<base64>"`, where the base64 payload is the little-endian float32 bytes of the
-> batched array in row-major order (`bodyTransform` is width 7, the vectors width 3). This
-> is what [`SimulationScene.add_trajectory`](#authoring-whole-trajectories) emits by
-> default; the viewer and the file-merge decode it transparently. `contacts`, scalars, and
-> `time` are always plain JSON.
+> batched array in row-major order (`bodyTransform` is width 7, the vectors width 3). Both
+> `SimViewBodyState` (used by `add_state`) and
+> [`SimulationScene.add_trajectory`](#authoring-whole-trajectories) emit this by default
+> (typically ~3-4× smaller than the equivalent plain JSON floats); pass `binary=False` to
+> either to emit plain JSON lists instead. The viewer and the file-merge decode binary
+> fields transparently. `contacts`, scalars, and `time` are always plain JSON.
 
 ### Authoring whole trajectories
 
 Building states one frame at a time (`add_state`) is fine for short scenes, but for long,
 dense trajectories prefer `SimulationScene.add_trajectory`, which appends an entire
-time-series in one call — converting each body's tensors once instead of per frame, and
-packing the numeric fields as the binary blobs described above (typically ~3× smaller
-files and noticeably faster save/load):
+time-series in one call, converting each body's tensors once instead of per frame —
+noticeably faster save/load than the same data built frame-by-frame. Both paths pack the
+numeric fields as the binary blobs described above by default, so file size is comparable
+either way:
 
 ```python
 from simview import SimulationScene, BodyShapeType, BodyTrajectory

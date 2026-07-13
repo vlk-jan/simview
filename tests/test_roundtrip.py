@@ -63,10 +63,10 @@ def test_states_shape(tmp_path):
     assert first["time"] == 0.0
     assert len(first["energy"]) == 2
     box = first["bodies"][0]
-    # bodyTransform is [x, y, z, w, qx, qy, qz] per batch.
-    assert len(box["bodyTransform"]) == 2
-    assert len(box["bodyTransform"][0]) == 7
-    assert len(box["velocity"]) == 2
+    # bodyTransform is [x, y, z, w, qx, qy, qz] per batch, binary-encoded by
+    # default (see SimViewBodyState(binary=...)).
+    assert len(_decode_blob(box["bodyTransform"])) == 2 * 7
+    assert len(_decode_blob(box["velocity"])) == 2 * 3
 
 
 def test_decode_blob_reverses_encode_blob():

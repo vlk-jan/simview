@@ -8,6 +8,7 @@ np = pytest.importorskip("numpy")
 
 from conftest import build_scene
 
+from simview.model import _decode_blob
 from simview.scene import BodyShapeType, SimulationScene
 from simview.state import BodyTrajectory, SimViewBodyState
 
@@ -121,10 +122,13 @@ def test_add_state_numpy_position_orientation_and_velocity():
     vel = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
     state = SimViewBodyState("Box", pos, quat, {"velocity": vel})
     body = state.to_json()
-    assert np.array(body["bodyTransform"]) == pytest.approx(
-        np.array([[1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0]])
+    # bodyTransform/velocity are binary-encoded by default (binary=True).
+    assert np.array(_decode_blob(body["bodyTransform"])) == pytest.approx(
+        np.array([1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0])
     )
-    assert np.array(body["velocity"]) == pytest.approx(np.array([[0.1, 0.2, 0.3]]))
+    assert np.array(_decode_blob(body["velocity"])) == pytest.approx(
+        np.array([0.1, 0.2, 0.3])
+    )
 
 
 # --- _clear_internal_data leak (bug B3) -------------------------------------
