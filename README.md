@@ -140,13 +140,17 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **Rotate**: Left-click + drag OR `Ctrl` (`CMD` on Mac) + Arrow keys
 - **Pan**: Right-click + drag OR Arrow keys
 - **Zoom**: Scroll wheel
+- **Track Body**: Automatically follow a specific body (via the "Camera Options" menu)
+- **Split Screen**: Compare two batches side-by-side (via the "Camera Options" menu, requires ≥2 batches)
+- **Field of View**: Adjust camera FOV (via the "Camera Options" menu)
 
 ### Timeline
 
 - **Step Forward/Backward**: `Alt` + Arrow Right / Arrow Left
 - **Seek (and Pause)**: Click on the timeline bar
 - **Play/Pause**: `Space` or Click the Play button
-- **Record**: `R` or Click the Record button
+- **Record**: `R` or Click the Record button (Select MP4/WEBM or PNG sequence via dropdown)
+- **Playback Speed**: Adjust speed (0.1x to 5x) via the dropdown next to the timeline
 
 ### Batch Selection
 
@@ -162,6 +166,9 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **`W`**: Toggle Angular Velocity
 - **`F`**: Toggle Linear Force
 - **`T`**: Toggle Torque
+- **`P`**: Toggle Terrain Data Probe (interactive tooltip on hover)
+
+You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.
 
 ### Trajectory Trails
 
