@@ -192,7 +192,9 @@ without the switcher.
   — and it computes, over the full timeline, the Euclidean position error and the
   quaternion angle (orientation) error between the two batches for that body. A live
   readout shows the current-frame values, and the chart plots both error curves over
-  time with a marker at the current playback position.
+  time with a marker at the current playback position. The "Per-axis" toggle swaps the
+  combined position error curve for the signed X/Y/Z error components (Batch A minus
+  Batch B), useful for spotting a directional bias instead of just overall magnitude.
 
 ### Batch Legend
 

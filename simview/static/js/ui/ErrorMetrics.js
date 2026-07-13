@@ -14,8 +14,10 @@ export class ErrorMetrics {
         this.selectedBody = app.bodies.keys().next().value || null;
         this.batchA = 0;
         this.batchB = Math.min(1, app.batchManager.simBatches - 1);
+        this.showAxes = false;
         this.posSeries = [];
         this.rotSeries = [];
+        this.axisSeries = { x: [], y: [], z: [] };
         this.minRenderDelay = 1000 / FREQ_CONFIG.errorMetrics;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
         this.chart = null;
@@ -40,6 +42,8 @@ export class ErrorMetrics {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
+            row-gap: 6px;
             gap: 10px;
             margin-top: 8px;
         }
@@ -61,6 +65,9 @@ export class ErrorMetrics {
             border-radius: 3px;
             font-size: 0.9em;
             max-width: 100px;
+        }
+        .error-metrics-control-group input[type="checkbox"] {
+            cursor: pointer;
         }
         .error-metrics-readout {
             margin-top: 10px;
@@ -107,16 +114,27 @@ export class ErrorMetrics {
         const batchOptions = [...Array(this.app.batchManager.simBatches).keys()];
         this.batchASelect = this._addSelectGroup("Batch A:", batchOptions, this.batchA, true);
         this.batchBSelect = this._addSelectGroup("Batch B:", batchOptions, this.batchB, true);
+        this.axesToggle = this._addCheckboxGroup("Per-axis:", this.showAxes);
 
         this.readout = document.createElement("div");
         this.readout.className = "error-metrics-readout";
         this.posReadout = document.createElement("div");
         this.posReadout.innerHTML = "<span>Position error:</span><span>-</span>";
+        this.axisReadoutX = document.createElement("div");
+        this.axisReadoutX.innerHTML = "<span>X error:</span><span>-</span>";
+        this.axisReadoutY = document.createElement("div");
+        this.axisReadoutY.innerHTML = "<span>Y error:</span><span>-</span>";
+        this.axisReadoutZ = document.createElement("div");
+        this.axisReadoutZ.innerHTML = "<span>Z error:</span><span>-</span>";
         this.rotReadout = document.createElement("div");
         this.rotReadout.innerHTML = "<span>Orientation error:</span><span>-</span>";
         this.readout.appendChild(this.posReadout);
+        this.readout.appendChild(this.axisReadoutX);
+        this.readout.appendChild(this.axisReadoutY);
+        this.readout.appendChild(this.axisReadoutZ);
         this.readout.appendChild(this.rotReadout);
         this.content.appendChild(this.readout);
+        this._applyAxesVisibility();
 
         this.plotDiv = document.createElement("div");
         this.plotDiv.className = "error-metrics-plot";
@@ -144,6 +162,29 @@ export class ErrorMetrics {
         return select;
     }
 
+    _addCheckboxGroup(labelText, checked) {
+        const group = document.createElement("div");
+        group.className = "error-metrics-control-group";
+        const label = document.createElement("label");
+        label.textContent = labelText;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = checked;
+        group.appendChild(label);
+        group.appendChild(checkbox);
+        this.controlsContainer.appendChild(group);
+        return checkbox;
+    }
+
+    // Shows the combined-magnitude readout row or the per-axis rows,
+    // whichever matches the current toggle state.
+    _applyAxesVisibility() {
+        this.posReadout.style.display = this.showAxes ? "none" : "";
+        this.axisReadoutX.style.display = this.showAxes ? "" : "none";
+        this.axisReadoutY.style.display = this.showAxes ? "" : "none";
+        this.axisReadoutZ.style.display = this.showAxes ? "" : "none";
+    }
+
     // Called after a batch is renamed elsewhere (e.g. the BatchLegend), so the
     // Batch A/B dropdowns don't keep showing a stale name.
     refreshBatchLabels() {
@@ -168,6 +209,11 @@ export class ErrorMetrics {
             this.batchB = parseInt(e.target.value);
             this._recompute();
         });
+        this.axesToggle.addEventListener("change", (e) => {
+            this.showAxes = e.target.checked;
+            this._applyAxesVisibility();
+            this._buildChart();
+        });
     }
 
     // Called by AnalysisPanel when this panel becomes/stops being the visible section.
@@ -190,12 +236,14 @@ export class ErrorMetrics {
         if (!body || !body.validStates) {
             this.posSeries = [];
             this.rotSeries = [];
+            this.axisSeries = { x: [], y: [], z: [] };
             return;
         }
         const states = this.app.animationController ? this.app.animationController.states : null;
         if (!states) {
             this.posSeries = [];
             this.rotSeries = [];
+            this.axisSeries = { x: [], y: [], z: [] };
             return;
         }
 
@@ -206,12 +254,16 @@ export class ErrorMetrics {
         if (!posA || !posB || !quatA || !quatB) {
             this.posSeries = [];
             this.rotSeries = [];
+            this.axisSeries = { x: [], y: [], z: [] };
             return;
         }
 
         const n = body.validStates;
         const posSeries = new Array(n);
         const rotSeries = new Array(n);
+        const axisXSeries = new Array(n);
+        const axisYSeries = new Array(n);
+        const axisZSeries = new Array(n);
         for (let s = 0; s < n; s++) {
             const pBase = s * 3;
             const dx = posA[pBase] - posB[pBase];
@@ -231,9 +283,13 @@ export class ErrorMetrics {
             const t = states[s] ? states[s].time : s;
             posSeries[s] = { x: t, y: posErr };
             rotSeries[s] = { x: t, y: rotErrDeg };
+            axisXSeries[s] = { x: t, y: dx };
+            axisYSeries[s] = { x: t, y: dy };
+            axisZSeries[s] = { x: t, y: dz };
         }
         this.posSeries = posSeries;
         this.rotSeries = rotSeries;
+        this.axisSeries = { x: axisXSeries, y: axisYSeries, z: axisZSeries };
     }
 
     _recompute() {
@@ -273,8 +329,39 @@ export class ErrorMetrics {
         }
 
         const xValues = this.posSeries.map((p) => p.x);
-        const posValues = this.posSeries.map((p) => p.y);
         const rotValues = this.rotSeries.map((p) => p.y);
+
+        const seriesConfigs = [{}];
+        const dataArrays = [xValues];
+        if (this.showAxes) {
+            seriesConfigs.push(
+                { label: "X error", stroke: "#ff6b6b", width: 1, points: { show: false }, scale: "pos" },
+                { label: "Y error", stroke: "#51cf66", width: 1, points: { show: false }, scale: "pos" },
+                { label: "Z error", stroke: "#4c9aff", width: 1, points: { show: false }, scale: "pos" }
+            );
+            dataArrays.push(
+                this.axisSeries.x.map((p) => p.y),
+                this.axisSeries.y.map((p) => p.y),
+                this.axisSeries.z.map((p) => p.y)
+            );
+        } else {
+            seriesConfigs.push({
+                label: "Position error",
+                stroke: "#4c9aff",
+                width: 1,
+                points: { show: false },
+                scale: "pos",
+            });
+            dataArrays.push(this.posSeries.map((p) => p.y));
+        }
+        seriesConfigs.push({
+            label: "Orientation error",
+            stroke: "#ff9f4c",
+            width: 1,
+            points: { show: false },
+            scale: "rot",
+        });
+        dataArrays.push(rotValues);
 
         const rect = this.plotDiv.getBoundingClientRect();
         this.chart = new uPlot(
@@ -282,26 +369,17 @@ export class ErrorMetrics {
                 width: Math.max(rect.width, 1),
                 height: Math.max(rect.height, 1),
                 padding: [8, 8, 0, 0],
-                series: [
-                    {},
-                    {
-                        label: "Position error",
-                        stroke: "#4c9aff",
-                        width: 1,
-                        points: { show: false },
-                        scale: "pos",
-                    },
-                    {
-                        label: "Orientation error",
-                        stroke: "#ff9f4c",
-                        width: 1,
-                        points: { show: false },
-                        scale: "rot",
-                    },
-                ],
+                series: seriesConfigs,
                 scales: {
                     x: { time: false },
-                    pos: { range: (u, min, max) => [0, max * 1.01 || 1] },
+                    pos: this.showAxes
+                        ? {
+                              range: (u, min, max) => {
+                                  const m = Math.max(Math.abs(min), Math.abs(max), 1e-6);
+                                  return [-m * 1.05, m * 1.05];
+                              },
+                          }
+                        : { range: (u, min, max) => [0, max * 1.01 || 1] },
                     rot: { range: (u, min, max) => [0, max * 1.01 || 1] },
                 },
                 axes: [
@@ -318,7 +396,7 @@ export class ErrorMetrics {
                         side: 3,
                         label: "Position (m)",
                         labelFont: "12px Arial",
-                        stroke: "#4c9aff",
+                        stroke: this.showAxes ? "rgba(255, 255, 255, 0.6)" : "#4c9aff",
                         grid: { stroke: "rgb(53, 53, 53)", width: 1 },
                         ticks: { stroke: "rgb(73, 73, 73)" },
                         font: "12px Arial",
@@ -345,7 +423,7 @@ export class ErrorMetrics {
                     setCursor: [(u) => this._updateTooltip(u)],
                 },
             },
-            [xValues, posValues, rotValues],
+            dataArrays,
             this.plotDiv
         );
 
@@ -388,12 +466,25 @@ export class ErrorMetrics {
             return;
         }
         const time = u.data[0][idx];
-        const pos = u.data[1][idx];
-        const rot = u.data[2][idx];
-        this._tooltip.innerHTML =
-            `Time: ${time.toFixed(3)}<br>` +
-            `<span style="color:#4c9aff;">Position: ${pos.toFixed(3)} m</span><br>` +
-            `<span style="color:#ff9f4c;">Orientation: ${rot.toFixed(2)}°</span>`;
+        let html = `Time: ${time.toFixed(3)}<br>`;
+        if (this.showAxes) {
+            const x = u.data[1][idx];
+            const y = u.data[2][idx];
+            const z = u.data[3][idx];
+            const rot = u.data[4][idx];
+            html +=
+                `<span style="color:#ff6b6b;">X: ${x.toFixed(3)} m</span><br>` +
+                `<span style="color:#51cf66;">Y: ${y.toFixed(3)} m</span><br>` +
+                `<span style="color:#4c9aff;">Z: ${z.toFixed(3)} m</span><br>` +
+                `<span style="color:#ff9f4c;">Orientation: ${rot.toFixed(2)}°</span>`;
+        } else {
+            const pos = u.data[1][idx];
+            const rot = u.data[2][idx];
+            html +=
+                `<span style="color:#4c9aff;">Position: ${pos.toFixed(3)} m</span><br>` +
+                `<span style="color:#ff9f4c;">Orientation: ${rot.toFixed(2)}°</span>`;
+        }
+        this._tooltip.innerHTML = html;
         this._tooltip.style.left = `${u.cursor.left + 12}px`;
         this._tooltip.style.top = `${u.cursor.top + 12}px`;
         this._tooltip.style.display = "block";
@@ -404,7 +495,16 @@ export class ErrorMetrics {
         const idx = this.app.animationController.getCurrentStateIndex();
         const pos = this.posSeries[idx];
         const rot = this.rotSeries[idx];
-        this.posReadout.innerHTML = `<span>Position error:</span><span>${pos ? pos.y.toFixed(3) + " m" : "-"}</span>`;
+        if (this.showAxes) {
+            const ax = this.axisSeries.x[idx];
+            const ay = this.axisSeries.y[idx];
+            const az = this.axisSeries.z[idx];
+            this.axisReadoutX.innerHTML = `<span>X error:</span><span>${ax ? ax.y.toFixed(3) + " m" : "-"}</span>`;
+            this.axisReadoutY.innerHTML = `<span>Y error:</span><span>${ay ? ay.y.toFixed(3) + " m" : "-"}</span>`;
+            this.axisReadoutZ.innerHTML = `<span>Z error:</span><span>${az ? az.y.toFixed(3) + " m" : "-"}</span>`;
+        } else {
+            this.posReadout.innerHTML = `<span>Position error:</span><span>${pos ? pos.y.toFixed(3) + " m" : "-"}</span>`;
+        }
         this.rotReadout.innerHTML = `<span>Orientation error:</span><span>${rot ? rot.y.toFixed(2) + "°" : "-"}</span>`;
 
         if (this.chart && pos) {
