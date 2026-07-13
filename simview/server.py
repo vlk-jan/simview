@@ -131,6 +131,17 @@ class SimViewServer:
             / f".{self.sim_paths[0].stem}.{key}.batchnames.json"
         )
 
+    def _source_fingerprint(self) -> dict[str, float] | None:
+        """mtime of every source file, keyed by resolved path.
+
+        Saved alongside custom batch names so a later load can tell whether the
+        source file(s) were regenerated since the names were saved - if so, the
+        names no longer necessarily describe the current batches and must not be
+        applied."""
+        if not self.sim_paths:
+            return None
+        return {str(p.resolve()): p.stat().st_mtime for p in self.sim_paths}
+
     def _load_data(self):
         if self._preloaded_data is not None:
             data = self._preloaded_data
@@ -146,9 +157,29 @@ class SimViewServer:
         names_path = self._names_sidecar_path()
         if model_data is not None and names_path and names_path.is_file():
             try:
-                saved_names = json.loads(names_path.read_text())
+                payload = json.loads(names_path.read_text())
+                # Legacy sidecars are a bare list with no fingerprint; trust them as
+                # before. Current sidecars wrap the names with the mtimes of the
+                # source file(s) at save time, so a stale sidecar left over from a
+                # since-regenerated file can be detected and ignored.
+                if isinstance(payload, list):
+                    saved_names, saved_fingerprint = payload, None
+                else:
+                    saved_names = payload.get("names")
+                    saved_fingerprint = payload.get("source_mtime")
+
                 sim_batches = int(model_data.get("simBatches", 1))
-                if isinstance(saved_names, list) and len(saved_names) == sim_batches:
+                stale = (
+                    saved_fingerprint is not None
+                    and saved_fingerprint != self._source_fingerprint()
+                )
+                if stale:
+                    logger.info(
+                        "Ignoring batch names in %s: source file(s) changed since "
+                        "they were saved.",
+                        names_path,
+                    )
+                elif isinstance(saved_names, list) and len(saved_names) == sim_batches:
                     model_data["batchNames"] = saved_names
             except (OSError, ValueError, json.JSONDecodeError) as e:
                 logger.warning("Failed to load batch names from %s: %s", names_path, e)
@@ -264,7 +295,11 @@ class SimViewServer:
             names_path = self._names_sidecar_path()
             if names_path:
                 try:
-                    names_path.write_text(json.dumps(names))
+                    payload = {
+                        "names": names,
+                        "source_mtime": self._source_fingerprint(),
+                    }
+                    names_path.write_text(json.dumps(payload))
                 except OSError as e:
                     logger.warning(
                         "Failed to persist batch names to %s: %s", names_path, e
