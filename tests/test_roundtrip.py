@@ -117,6 +117,30 @@ def test_body_to_json_from_dict_roundtrip():
     assert restored.name == body.name
     assert restored.shape == body.shape
     assert restored.available_attributes == [OptionalBodyStateAttribute.VELOCITY]
+    # A plain body has no parent/localTransform, and to_json omits both keys
+    # entirely (backward compatible with pre-parent-transform JSON files).
+    assert restored.parent is None
+    assert restored.local_transform is None
+    assert "parent" not in body.to_json()
+    assert "localTransform" not in body.to_json()
+
+
+def test_body_with_parent_to_json_from_dict_roundtrip():
+    # parent/local_transform pass through create_box's **kwargs by keyword
+    # name to SimViewBody.create's explicit params, same as create_body.
+    body = SimViewBody.create_box(
+        "wheel",
+        hx=0.15,
+        hy=0.15,
+        hz=0.05,
+        parent="chassis",
+        local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    )
+    restored = SimViewBody.from_dict(body.to_json())
+    assert restored.parent == "chassis"
+    assert restored.local_transform == [0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0]
+    assert body.to_json()["parent"] == "chassis"
+    assert body.to_json()["localTransform"] == [0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0]
 
 
 def test_static_object_to_json_from_dict_roundtrip():
@@ -140,6 +164,30 @@ def test_model_to_json_from_dict_roundtrip():
     model = scene.model
     restored = SimViewModel.from_dict(model.to_json())
     assert restored.to_json() == model.to_json()
+
+
+def test_model_with_parent_child_bodies_to_json_from_dict_roundtrip():
+    scene = build_scene(batch_size=1)
+    scene.create_body(
+        body_name="wheel",
+        shape_type=BodyShapeType.CYLINDER,
+        radius=0.1,
+        height=0.05,
+        parent="Box",
+        local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    )
+    restored = SimViewModel.from_dict(scene.model.to_json())
+    assert restored.to_json() == scene.model.to_json()
+    assert restored.bodies["wheel"].parent == "Box"
+    assert restored.bodies["wheel"].local_transform == [
+        0.4,
+        0.52,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
 
 
 def test_scene_save_load_save_equivalence(tmp_path):

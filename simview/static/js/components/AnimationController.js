@@ -1,4 +1,5 @@
 import { PlaybackControls } from "../ui/PlaybackControls.js";
+import { resolveStateBodies } from "../utils/bodyTransforms.js";
 
 export class AnimationController {
     constructor(app, simulationTimestep) {
@@ -215,12 +216,20 @@ export class AnimationController {
     updateScene() {
         if (!this.app.bodies || !this.states[this.currentStateIndex]) return;
         const state = this.states[this.currentStateIndex];
-        // Update all body states
-        state.bodies.forEach((bodyState) => {
-            const body = this.app.bodies.get(bodyState.name);
+        // Resolve parent-relative (rigid/articulated) transforms and expand
+        // grouped names into ordinary absolute-world transforms, then update
+        // each body exactly as before.
+        const resolved = resolveStateBodies(
+            this.app.bodyMeta,
+            this.app.bodyTopoOrder,
+            this.app.batchManager.simBatches,
+            state.bodies
+        );
+        resolved.forEach((resolvedBodyState, name) => {
+            const body = this.app.bodies.get(name);
             if (body) {
                 // Update the body state - this handles both batched and non-batched formats
-                body.updateState(bodyState);
+                body.updateState(resolvedBodyState);
             }
         });
         if (this.app.scalarPlotter) {

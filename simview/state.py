@@ -35,6 +35,12 @@ class BodyTrajectory:
     parent). All named bodies must already exist in the model, and the
     transform/vectors here are applied identically to each of them, avoiding
     the need to duplicate the same data per body.
+
+    If the named body has a ``parent`` set in the model (see
+    ``SimulationScene.create_body``), ``positions``/``orientations`` here are
+    interpreted as local to that parent's current-frame pose instead of world
+    space. A body with a constant ``local_transform`` on the model instead
+    must never appear in a ``BodyTrajectory`` at all.
     """
 
     name: str | list[str]
@@ -63,7 +69,12 @@ class SimViewBodyState:
         """``body_name`` may be a list of body names sharing this exact
         transform (and any optional attributes), for bodies that move
         rigidly together — see :class:`BodyTrajectory` for the same idea
-        applied to whole trajectories."""
+        applied to whole trajectories.
+
+        If the named body has a ``parent`` set in the model, ``position``/
+        ``orientation`` here are interpreted as local to that parent's
+        current-frame pose instead of world space (see
+        ``SimulationScene.create_body``)."""
         self.body_name = body_name
         self.position = position.tolist()
         self.orientation = orientation.tolist()

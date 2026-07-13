@@ -445,6 +445,12 @@ def _merge_states(
         merged_bodies = []
         for body in bodies:
             name = body["name"]
+            if body.get("localTransform") is not None:
+                # Rigidly-attached body: never appears in any state's `bodies[]`
+                # (its pose is derived by the viewer from its parent + this
+                # constant offset), so there's nothing to merge -- keep the
+                # merged output just as compact by skipping it here too.
+                continue
             available = set(body.get("availableAttributes") or [])
             transform = []
             attr_values = {

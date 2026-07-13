@@ -16,7 +16,7 @@ from .model import (
     SimViewTerrain,
     _encode_blob,
 )
-from .state import TRAJECTORY_VECTOR_FIELDS, BodyTrajectory, SimViewBodyState
+from .state import TRAJECTORY_VECTOR_FIELDS, ArrayLike, BodyTrajectory, SimViewBodyState
 from .utils import read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.scene")
@@ -51,6 +51,23 @@ def _validate_body_name(name: str | list[str], model: SimViewModel) -> None:
             raise ValueError(
                 f"Unknown body '{n}'; not defined in the model. "
                 f"Valid body names: {valid}."
+            )
+
+
+def _validate_not_rigid(name: str | list[str], model: SimViewModel) -> None:
+    """Raise ValueError if `name` (or any name in it, when a list) refers to a
+    rigidly-attached body (`local_transform` set on the model). Such bodies
+    never receive per-frame data -- their pose is derived by the viewer from
+    their parent's current pose plus the fixed offset -- so passing state data
+    for them here would be silently ignored on the wire, which is almost
+    certainly a mistake."""
+    for n in _iter_names(name):
+        body = model.bodies.get(n)
+        if body is not None and body.local_transform is not None:
+            raise ValueError(
+                f"Body '{n}' is rigidly attached (local_transform is set on the "
+                "model) and must not be given per-frame state data; its pose is "
+                "derived from its parent every frame."
             )
 
 
@@ -174,6 +191,7 @@ class SimulationScene:
         """
         for state in body_states:
             _validate_body_name(state.body_name, self.model)
+            _validate_not_rigid(state.body_name, self.model)
 
         if self.model.scalar_names:
             if scalar_values is None:
@@ -275,6 +293,7 @@ class SimulationScene:
         prepared_contacts: list[tuple[str, list]] = []
         for traj in trajectories:
             _validate_body_name(traj.name, self.model)
+            _validate_not_rigid(traj.name, self.model)
             label = _name_label(traj.name)
             fields = {
                 "bodyTransform": np.concatenate(
@@ -426,15 +445,37 @@ class SimulationScene:
         body_name: str,
         shape_type: BodyShapeType,
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
+        parent: str | None = None,
+        local_transform: ArrayLike | None = None,
         **kwargs,
     ) -> None:
-        """Creates and adds a dynamic body to the simulation model."""
+        """Creates and adds a dynamic body to the simulation model.
+
+        ``parent``/``local_transform`` attach this body to another body already
+        in the model, instead of it moving in world space:
+
+        - Rigid attachment (e.g. a wheel bolted to a chassis): pass both
+          ``parent`` and ``local_transform`` (a constant ``[x, y, z, w, qx, qy,
+          qz]`` offset). Never call ``add_state``/``add_trajectory`` for this
+          body afterwards -- its world pose is derived by the viewer every
+          frame from the parent's current pose plus this fixed offset.
+        - Articulated attachment (e.g. an arm joint): pass only ``parent``.
+          Keep supplying this body's pose every frame via ``add_state``/
+          ``add_trajectory`` as usual -- it's just interpreted as local to the
+          parent's current-frame pose instead of world space.
+        """
         self.model.create_body(
-            body_name, shape_type, available_attributes=available_attributes, **kwargs
+            body_name,
+            shape_type,
+            available_attributes=available_attributes,
+            parent=parent,
+            local_transform=local_transform,
+            **kwargs,
         )
 
     def add_body_object(self, body: SimViewBody) -> None:
-        """Adds a pre-configured SimViewBody object to the model."""
+        """Adds a pre-configured SimViewBody object to the model. See
+        `create_body` for the meaning of `body.parent`/`body.local_transform`."""
         self.model.add_body(body)
 
     def create_static_object_singleton(

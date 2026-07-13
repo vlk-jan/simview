@@ -237,6 +237,29 @@ class SimViewBody:
     name: str
     shape: dict
     available_attributes: list[OptionalBodyStateAttribute] | None = None
+    # `parent`/`local_transform` express this body's pose relative to another
+    # body instead of world space. `local_transform` (a constant [x,y,z,w,qx,qy,qz]
+    # offset) marks a *rigid* attachment (e.g. a wheel bolted to a chassis): this
+    # body never appears in any state's `bodies[]`, and its world pose is derived
+    # every frame from the parent's current pose plus this fixed offset. An
+    # *articulated* attachment (e.g. an arm joint) instead sets only `parent` and
+    # keeps supplying a per-frame `bodyTransform` in states as usual -- it's just
+    # interpreted as local to the parent's current-frame pose rather than world.
+    parent: str | None = None
+    local_transform: list[float] | None = None
+
+    def __post_init__(self):
+        if self.local_transform is not None:
+            if self.parent is None:
+                raise ValueError(
+                    f"Body '{self.name}' has local_transform but no parent; "
+                    "local_transform only makes sense relative to a parent body."
+                )
+            if len(self.local_transform) != 7:
+                raise ValueError(
+                    f"Body '{self.name}' local_transform must have 7 elements "
+                    f"([x, y, z, w, qx, qy, qz]); got {len(self.local_transform)}."
+                )
 
     def set_available_attributes(
         self, available_attributes: list[str | OptionalBodyStateAttribute]
@@ -269,10 +292,19 @@ class SimViewBody:
         name: str,
         body_type: BodyShapeType,
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
+        parent: str | None = None,
+        local_transform: Any | None = None,
         **kwargs,
     ) -> "SimViewBody":
         shape_dict = SimViewBody._create_shape_dict(body_type, **kwargs)
-        body = SimViewBody(name=name, shape=shape_dict)
+        if local_transform is not None and hasattr(local_transform, "tolist"):
+            local_transform = local_transform.tolist()
+        body = SimViewBody(
+            name=name,
+            shape=shape_dict,
+            parent=parent,
+            local_transform=list(local_transform) if local_transform is not None else None,
+        )
         if available_attributes is not None:
             body.set_available_attributes(available_attributes)
         return body
@@ -315,6 +347,10 @@ class SimViewBody:
         r = {"name": self.name, "shape": self.shape}
         if self.available_attributes is not None:
             r["availableAttributes"] = [v.value for v in self.available_attributes]
+        if self.parent is not None:
+            r["parent"] = self.parent
+        if self.local_transform is not None:
+            r["localTransform"] = self.local_transform
         return r
 
     @classmethod
@@ -334,6 +370,8 @@ class SimViewBody:
             ]
             if available_attributes is not None
             else None,
+            parent=d.get("parent"),
+            local_transform=d.get("localTransform"),
         )
 
 
@@ -418,6 +456,23 @@ class SimViewStaticObject:
         )
 
 
+def _validate_parent_ref(name: str, parent: str | None, known_bodies: dict) -> None:
+    """Raise ValueError if `parent` is self-referential or isn't already in
+    `known_bodies`. Requiring the parent to already be known (rather than doing
+    a full topological sort) structurally prevents cycles as each body is
+    added/parsed: a cycle would require some body to reference a not-yet-known
+    name, which this catches immediately."""
+    if parent is None:
+        return
+    if parent == name:
+        raise ValueError(f"Body '{name}' cannot be its own parent.")
+    if parent not in known_bodies:
+        raise ValueError(
+            f"Body '{name}' references unknown parent '{parent}'; the parent "
+            "must already be defined in the model (added/listed before its children)."
+        )
+
+
 @dataclass
 class SimViewModel:
     batch_size: int
@@ -443,6 +498,7 @@ class SimViewModel:
     def add_body(self, body: SimViewBody) -> None:
         if body.name in self.bodies:
             raise ValueError(f"Dynamic body {body.name} already exists")
+        _validate_parent_ref(body.name, body.parent, self.bodies)
         self.bodies[body.name] = body
 
     def add_static_object(self, static_object: SimViewStaticObject) -> None:
@@ -525,12 +581,19 @@ class SimViewModel:
         body_name: str,
         shape_type: BodyShapeType,
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
+        parent: str | None = None,
+        local_transform: Any | None = None,
         **kwargs,
     ) -> None:
         if body_name in self.bodies:
             raise ValueError(f"Dynamic body {body_name} already exists")
         body = SimViewBody.create(
-            body_name, shape_type, available_attributes=available_attributes, **kwargs
+            body_name,
+            shape_type,
+            available_attributes=available_attributes,
+            parent=parent,
+            local_transform=local_transform,
+            **kwargs,
         )
         self.add_body(body)
 
@@ -593,6 +656,9 @@ class SimViewModel:
         bodies = {}
         for body_dict in body_dicts:
             body = SimViewBody.from_dict(body_dict)
+            if body.name in bodies:
+                raise ValueError(f"Model dict has duplicate body name '{body.name}'")
+            _validate_parent_ref(body.name, body.parent, bodies)
             bodies[body.name] = body
 
         static_objects = {}

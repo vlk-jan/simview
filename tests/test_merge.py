@@ -175,6 +175,82 @@ def test_merge_resolves_grouped_body_names(tmp_path):
             assert len(body["bodyTransform"]) == 2
 
 
+def build_rigid_child_scene(
+    times: list[float], zs: list[float], dt: float = 0.1
+) -> SimulationScene:
+    """A single-batch scene with a "Box" chassis (moves per-frame, absolute)
+    plus a "wheel" rigidly attached to it (constant local_transform, never
+    given add_state data)."""
+    scene = SimulationScene(batch_size=1, scalar_names=["energy"], dt=dt)
+
+    resolution = 4
+    heights = torch.zeros(resolution, resolution)
+    normals = torch.zeros(3, resolution, resolution)
+    normals[2] = 1.0
+    scene.create_terrain(
+        heightmap=heights, normals=normals, x_lim=(-5, 5), y_lim=(-5, 5)
+    )
+    scene.create_body(
+        body_name="Box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+    )
+    scene.create_body(
+        body_name="wheel",
+        shape_type=BodyShapeType.CYLINDER,
+        radius=0.1,
+        height=0.05,
+        parent="Box",
+        local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    )
+
+    for t, z in zip(times, zs):
+        pos = torch.tensor([[0.0, 0.0, z]])
+        quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        state = SimViewBodyState("Box", pos, quat)
+        scene.add_state(time=t, body_states=[state], scalar_values={"energy": [z]})
+
+    return scene
+
+
+def test_merge_skips_purely_rigid_body_in_states(tmp_path):
+    scene_a = build_rigid_child_scene(times=[0.0, 0.1], zs=[0.0, 1.0])
+    scene_b = build_rigid_child_scene(times=[0.0, 0.1], zs=[10.0, 11.0])
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    # model.bodies still carries the rigid body's definition (parent/localTransform).
+    merged_bodies_by_name = {b["name"]: b for b in merged["model"]["bodies"]}
+    assert merged_bodies_by_name["wheel"]["parent"] == "Box"
+    assert merged_bodies_by_name["wheel"]["localTransform"] == [
+        0.4,
+        0.52,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
+    # ...but every merged state excludes it -- no "missing body" error, and
+    # the merged output stays just as compact as the inputs.
+    for state in merged["states"]:
+        names = [b["name"] for b in state["bodies"]]
+        assert names == ["Box"]
+
+
+def test_merge_mismatched_local_transform_raises(tmp_path):
+    scene_a = build_rigid_child_scene(times=[0.0], zs=[0.0])
+    scene_b = build_rigid_child_scene(times=[0.0], zs=[0.0])
+    scene_b.model.bodies["wheel"].local_transform = [0.4, 0.52, 0.0, 0.0, 1.0, 0.0, 0.0]
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    with pytest.raises(ValueError, match="defines different bodies"):
+        merge_simulation_files([path_a, path_b])
+
+
 def test_merge_requires_at_least_two_files(tmp_path):
     scene = build_scene(batch_size=1)
     path = tmp_path / "a.json"

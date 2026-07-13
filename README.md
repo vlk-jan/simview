@@ -236,6 +236,19 @@ produces.
   - **`availableAttributes`** *(array[string], optional)* — which optional per-state
     fields this body provides. Any of `"contacts"`, `"velocity"`, `"angularVelocity"`,
     `"force"`, `"torque"`.
+  - **`parent`** *(string, optional)* — name of another `model.bodies[]` entry this
+    body is attached to. When set, this body's pose is no longer absolute world
+    space; see `localTransform` below and the `bodyTransform` note under
+    [States](#states-dynamic-data).
+  - **`localTransform`** *(array[7], optional)* — `[x, y, z, w, qx, qy, qz]` constant
+    offset from `parent`, for bodies **rigidly** attached (e.g. a wheel bolted to a
+    chassis). Set only together with `parent`. A body with `localTransform` never
+    appears in any state's `bodies[]` — its world pose is derived every frame from
+    its parent's current pose plus this fixed offset, saving the cost of repeating
+    an unchanging transform every frame. For an **articulated** attachment (e.g. an
+    arm joint) instead, set only `parent` and keep providing a per-frame
+    `bodyTransform` in `states[].bodies[]` as usual — it's then interpreted as local
+    to the parent's current-frame pose rather than world space.
 - **`staticObjects`** *(array, optional)* — non-moving geometry. Each entry has `name`,
   `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
   *(array, one per batch)* using the same shape objects as bodies.
@@ -265,7 +278,10 @@ produces.
     to every named body, instead of repeating identical data once per body. All named bodies
     must exist in `model.bodies`.
   - **`bodyTransform`** — pose. Batched: `array[array[7]]`, one `[x, y, z, w, qx, qy, qz]`
-    per batch; single: a flat `[x, y, z, w, qx, qy, qz]`.
+    per batch; single: a flat `[x, y, z, w, qx, qy, qz]`. Absolute world-space, unless
+    the referenced body has a `parent` in `model.bodies` (see above), in which case
+    this is local to that parent's current-frame pose instead. A body with a constant
+    `localTransform` on the model never has a `bodyTransform` entry here at all.
   - **`contacts`** *(array[array[int]], optional)* — per batch, indices of contacting
     points (into the body's pointcloud `points`). Empty array means no contacts.
   - **`velocity`**, **`angularVelocity`**, **`force`**, **`torque`**
@@ -314,6 +330,32 @@ instead of once per body.
 For large simulations, pass `compress=True` to `save()` (or use a `.gz` filepath) to
 gzip the output — `SimulationScene.load()`, the CLI, and the server all detect and
 decompress it transparently regardless of extension.
+
+### Parent-relative bodies (rigid and articulated attachments)
+
+`create_body` accepts `parent`/`local_transform` to attach a body to another body
+already in the model, instead of it moving in world space:
+
+```python
+scene.create_body(body_name="chassis", shape_type=BodyShapeType.BOX, hx=0.6, hy=0.4, hz=0.2)
+
+# Rigid attachment (e.g. a wheel bolted to the chassis): a constant offset, defined
+# once, never repeated per frame. Never call add_state/add_trajectory for "left_wheel".
+scene.create_body(
+    body_name="left_wheel", shape_type=BodyShapeType.CYLINDER, radius=0.15, height=0.1,
+    parent="chassis", local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+)
+
+# Articulated attachment (e.g. an arm joint): only `parent` is set, so this body's
+# pose is still supplied every frame via add_state/add_trajectory as usual -- it's
+# just interpreted as local to the chassis's current-frame pose instead of world.
+scene.create_body(body_name="arm_joint", shape_type=BodyShapeType.BOX, hx=0.05, hy=0.05, hz=0.2, parent="chassis")
+```
+
+A body's `parent` must already exist in the model (added before its children), which
+also rules out cycles. Merging files containing rigid (constant-offset) bodies works
+the same way — `merge_simulation_files` carries the `parent`/`localTransform` through
+in `model.bodies` and doesn't require or emit per-frame data for them.
 
 ### Example (2 batches, one box, flat terrain)
 

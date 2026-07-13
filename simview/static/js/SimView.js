@@ -14,6 +14,7 @@ import { BatchLegend } from "./ui/BatchLegend.js";
 import { ErrorMetrics } from "./ui/ErrorMetrics.js";
 import { AnalysisPanel } from "./ui/AnalysisPanel.js";
 import { InteractionController } from "./components/InteractionController.js";
+import { buildBodyMeta, resolveStateBodies, topoSortBodies } from "./utils/bodyTransforms.js";
 
 export class SimView {
     constructor() {
@@ -185,16 +186,26 @@ export class SimView {
             const s = startIndex + i;
             const bodyStates = chunk[i].bodies;
             if (!bodyStates) continue;
-            for (const bodyState of bodyStates) {
-                const body = this.bodies.get(bodyState.name);
+            // Resolve off this historical state's own data (not any Body's
+            // current/live pose, which reflects whatever frame is currently
+            // displayed) -- a child's parent pose must come from the same
+            // state index `s` being appended here.
+            const resolved = resolveStateBodies(
+                this.bodyMeta,
+                this.bodyTopoOrder,
+                this.batchManager.simBatches,
+                bodyStates
+            );
+            resolved.forEach((resolvedBodyState, name) => {
+                const body = this.bodies.get(name);
                 if (body) {
                     if (body.appendHistoryPointAt) {
-                        body.appendHistoryPointAt(s, bodyState);
+                        body.appendHistoryPointAt(s, resolvedBodyState);
                     } else if (body.setHistoryPointAt) {
-                        body.setHistoryPointAt(s, bodyState);
+                        body.setHistoryPointAt(s, resolvedBodyState);
                     }
                 }
-            }
+            });
         }
         this.bodies.forEach((body) => {
             if (body.finalizeTrails) body.finalizeTrails();
@@ -236,6 +247,11 @@ export class SimView {
                     this.scene.addObject3D(body.getObject3D());
                 });
             }
+            // Parent-relative transforms (rigid/articulated attachments, see
+            // README.md): resolved once here so per-frame/per-state consumers
+            // below only ever deal with ordinary absolute-world transforms.
+            this.bodyMeta = buildBodyMeta(model.bodies);
+            this.bodyTopoOrder = topoSortBodies(this.bodyMeta);
             if (Array.isArray(model.staticObjects)) {
                 this.staticObjects = model.staticObjects.map((staticObjectData) => {
                     const staticObject = new StaticObject(staticObjectData, this);

@@ -317,3 +317,128 @@ def test_save_reconciles_available_attributes_for_grouped_names(tmp_path):
 
     assert scene.model.bodies["Box"].available_attributes == ["velocity"]
     assert scene.model.bodies["Box2"].available_attributes == ["velocity"]
+
+
+# --- Parent-relative body transforms -----------------------------------------
+
+
+def test_create_body_with_parent_and_local_transform_roundtrips(tmp_path):
+    scene = _base_scene(batch_size=1)
+    scene.create_body(
+        body_name="wheel",
+        shape_type=BodyShapeType.CYLINDER,
+        radius=0.15,
+        height=0.1,
+        parent="Box",
+        local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    )
+    scene.save(tmp_path / "scene.json")
+    loaded = SimulationScene.load(tmp_path / "scene.json")
+
+    assert loaded.model.bodies["wheel"].parent == "Box"
+    assert loaded.model.bodies["wheel"].local_transform == [
+        0.4,
+        0.52,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
+
+
+def test_create_body_unknown_parent_raises():
+    scene = _base_scene(batch_size=1)
+    with pytest.raises(ValueError, match="unknown parent 'nope'"):
+        scene.create_body(
+            body_name="wheel",
+            shape_type=BodyShapeType.BOX,
+            hx=0.1,
+            hy=0.1,
+            hz=0.1,
+            parent="nope",
+        )
+
+
+def test_create_body_self_parent_raises():
+    scene = _base_scene(batch_size=1)
+    with pytest.raises(ValueError, match="cannot be its own parent"):
+        scene.create_body(
+            body_name="wheel",
+            shape_type=BodyShapeType.BOX,
+            hx=0.1,
+            hy=0.1,
+            hz=0.1,
+            parent="wheel",
+        )
+
+
+def test_create_body_parent_must_precede_child():
+    """A body's parent must already exist in the model when it's added --
+    this is what structurally rules out cycles without a topological sort."""
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    with pytest.raises(ValueError, match="unknown parent 'chassis'"):
+        scene.create_body(
+            body_name="wheel",
+            shape_type=BodyShapeType.BOX,
+            hx=0.1,
+            hy=0.1,
+            hz=0.1,
+            parent="chassis",
+        )
+
+
+def test_articulated_child_add_state_unaffected():
+    """parent set, no local_transform: per-frame data still flows through
+    add_state/add_trajectory exactly like a plain body -- the numeric
+    plumbing doesn't need to know about parent-relative semantics."""
+    scene = _base_scene(batch_size=1)
+    scene.create_body(
+        body_name="arm", shape_type=BodyShapeType.BOX, hx=0.1, hy=0.1, hz=0.1, parent="Box"
+    )
+    pos = torch.zeros(1, 3)
+    quat = torch.zeros(1, 4)
+    quat[..., 0] = 1.0
+    scene.add_state(
+        time=0.0,
+        body_states=[
+            SimViewBodyState("Box", pos, quat, {"velocity": torch.zeros(1, 3)}),
+            SimViewBodyState("arm", pos, quat),
+        ],
+    )
+    names = {b["name"] for b in scene.states[0]["bodies"]}
+    assert names == {"Box", "arm"}
+
+
+def test_rigid_body_add_state_raises():
+    scene = _base_scene(batch_size=1)
+    scene.create_body(
+        body_name="wheel",
+        shape_type=BodyShapeType.CYLINDER,
+        radius=0.1,
+        height=0.05,
+        parent="Box",
+        local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    )
+    pos = torch.zeros(1, 3)
+    quat = torch.zeros(1, 4)
+    quat[..., 0] = 1.0
+    with pytest.raises(ValueError, match="rigidly attached"):
+        scene.add_state(time=0.0, body_states=[SimViewBodyState("wheel", pos, quat)])
+
+
+def test_rigid_body_add_trajectory_raises():
+    scene = _base_scene(batch_size=1)
+    scene.create_body(
+        body_name="wheel",
+        shape_type=BodyShapeType.CYLINDER,
+        radius=0.1,
+        height=0.05,
+        parent="Box",
+        local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    )
+    pos = torch.zeros(2, 1, 3)
+    quat = torch.zeros(2, 1, 4)
+    quat[..., 0] = 1.0
+    with pytest.raises(ValueError, match="rigidly attached"):
+        scene.add_trajectory([0.0, 0.1], [BodyTrajectory("wheel", pos, quat)])
