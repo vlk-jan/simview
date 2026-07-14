@@ -102,12 +102,26 @@ export class AnimationController {
         this.app.bodyStateWindow.forceRedraw();
     }
 
+    // Binary search over states[i].time (time-ordered, but not necessarily
+    // uniformly spaced -- adaptive-step simulations break the old
+    // targetTime/simulationTimestep shortcut) for the index whose time is
+    // nearest targetTime.
     getStateIndexForTime(targetTime) {
-        var q = targetTime / this.simulationTimestep;
-        q = Math.round(q);
-        if (q < 0) q = 0;
-        if (q >= this.states.length) q = this.states.length - 1;
-        return q;
+        const states = this.states;
+        let lo = 0;
+        let hi = states.length - 1;
+        if (targetTime <= states[lo].time) return lo;
+        if (targetTime >= states[hi].time) return hi;
+        while (lo < hi - 1) {
+            const mid = (lo + hi) >> 1;
+            if (states[mid].time <= targetTime) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        // lo and hi now straddle targetTime; pick whichever is closer.
+        return targetTime - states[lo].time <= states[hi].time - targetTime ? lo : hi;
     }
 
     seekToIndex(index) {
@@ -132,7 +146,7 @@ export class AnimationController {
     }
 
     goToTime(time) {
-        if (time < 0 || time > this.totalTime) return; // Ignore out-of-bounds time
+        time = Math.min(Math.max(time, 0), this.totalTime); // Clamp out-of-bounds time
         const index = this.getStateIndexForTime(time);
         this.seekToIndex(index);
         if (!this.isPlaying) {
@@ -196,7 +210,11 @@ export class AnimationController {
         const dt = (now - this.lastUpdateTime) / 1000;
         this.lastUpdateTime = now;
         this.currentTime += dt * this.playbackSpeed;
-        this.currentTime = this.currentTime % this.totalTime;
+        if (this.totalTime > 0) {
+            this.currentTime = this.currentTime % this.totalTime;
+        } else {
+            this.currentTime = 0; // Single-state scene: totalTime % would be NaN
+        }
         const newStateIndex = this.getStateIndexForTime(this.currentTime);
         // Update state if changed
         if (newStateIndex !== this.currentStateIndex) {

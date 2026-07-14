@@ -224,6 +224,28 @@ def test_vendored_static_libs_are_marked_immutable(client):
     assert "immutable" in resp.headers["cache-control"]
 
 
+def test_blob_response_carries_immutable_cache_control_header(client):
+    # Blob URLs are versioned by a per-load token (see _load_data), so once
+    # served for this instance's lifetime they never change and can be cached
+    # forever -- discover a real one from /model rather than hardcoding an id.
+    model = client.get("/model").json()
+    blob_ref = model["terrain"]["heightData"]
+    assert blob_ref.startswith("/blob/")
+
+    resp = client.get(blob_ref)
+    assert resp.status_code == 200
+    assert "immutable" in resp.headers["cache-control"]
+
+
+def test_blob_endpoint_404s_for_wrong_token(client):
+    model = client.get("/model").json()
+    blob_ref = model["terrain"]["heightData"]
+    _, _, token, blob_id = blob_ref.split("/")
+
+    resp = client.get(f"/blob/wrong{token}/{blob_id}")
+    assert resp.status_code == 404
+
+
 def test_cached_scene_bytes_correct_after_batch_names_mutation(tmp_path):
     scene = build_scene(batch_size=2)
     sim_file = tmp_path / "sim.json"

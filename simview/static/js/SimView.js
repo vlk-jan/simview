@@ -16,6 +16,15 @@ import { AnalysisPanel } from "./ui/AnalysisPanel.js";
 import { InteractionController } from "./components/InteractionController.js";
 import { buildBodyMeta, resolveStateBodies, topoSortBodies } from "./utils/bodyTransforms.js";
 
+// Detected once: true if the platform is little-endian, which lets blob decoding
+// skip the per-element DataView conversion (blobs are always little-endian
+// float32 by contract, matching Python's "<f4").
+const IS_LITTLE_ENDIAN = (() => {
+    const buf = new ArrayBuffer(2);
+    new Uint16Array(buf)[0] = 0x0102;
+    return new Uint8Array(buf)[0] === 0x02;
+})();
+
 export class SimView {
     constructor() {
         this.scene = null;
@@ -90,22 +99,46 @@ export class SimView {
     }
 
     async fetchModelBlobs(obj) {
-        if (!obj || typeof obj !== 'object') return;
-        for (const key of Object.keys(obj)) {
-            const val = obj[key];
-            if (typeof val === 'string' && val.startsWith('/blob/')) {
-                const res = await fetch(val);
-                const arrayBuffer = await res.arrayBuffer();
-                const dataView = new DataView(arrayBuffer);
-                const floatArray = new Float32Array(arrayBuffer.byteLength / 4);
-                for (let i = 0; i < floatArray.length; i++) {
-                    floatArray[i] = dataView.getFloat32(i * 4, true); // true = little-endian
+        // Walk the model first to collect every blob reference, then fetch them
+        // all in parallel -- sequential awaits here serialized what's otherwise
+        // an embarrassingly parallel set of independent HTTP requests.
+        const refs = [];
+        const collect = (node) => {
+            if (!node || typeof node !== 'object') return;
+            for (const key of Object.keys(node)) {
+                const val = node[key];
+                if (typeof val === 'string' && val.startsWith('/blob/')) {
+                    refs.push({ container: node, key, url: val });
+                } else if (typeof val === 'object') {
+                    collect(val);
                 }
-                obj[key] = floatArray;
-            } else if (typeof val === 'object') {
-                await this.fetchModelBlobs(val);
             }
+        };
+        collect(obj);
+
+        await Promise.all(
+            refs.map(async ({ container, key, url }) => {
+                const res = await fetch(url);
+                const arrayBuffer = await res.arrayBuffer();
+                container[key] = SimView.decodeFloat32Blob(arrayBuffer);
+            })
+        );
+    }
+
+    // Blobs are little-endian float32 by contract (Python "<f4"). On
+    // little-endian platforms (the overwhelming majority) the buffer can be
+    // reinterpreted directly with no per-element conversion; big-endian
+    // platforms fall back to a DataView-based byte swap.
+    static decodeFloat32Blob(arrayBuffer) {
+        if (IS_LITTLE_ENDIAN) {
+            return new Float32Array(arrayBuffer);
         }
+        const dataView = new DataView(arrayBuffer);
+        const floatArray = new Float32Array(arrayBuffer.byteLength / 4);
+        for (let i = 0; i < floatArray.length; i++) {
+            floatArray[i] = dataView.getFloat32(i * 4, true); // true = little-endian
+        }
+        return floatArray;
     }
 
     // Per-body state fields that add_trajectory(binary=True) packs as float32

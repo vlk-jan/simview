@@ -3,6 +3,7 @@ import gzip
 import hashlib
 import json
 import logging
+import secrets
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -185,6 +186,11 @@ class SimViewServer:
                 logger.warning("Failed to load batch names from %s: %s", names_path, e)
 
         self.blobs = []
+        # Random per-load token folded into every blob URL so it's safe to cache
+        # them forever: a later server restart serving a different scene on the
+        # same port gets a different token, so it can never collide with a
+        # stale cached response for blob id N from a previous load.
+        self._blob_token = secrets.token_hex(4)
 
         def extract_blobs(obj):
             if isinstance(obj, dict):
@@ -192,7 +198,7 @@ class SimViewServer:
                     if isinstance(v, str) and v.startswith("__b64__"):
                         blob_id = len(self.blobs)
                         self.blobs.append(base64.b64decode(v[7:]))
-                        obj[k] = f"/blob/{blob_id}"
+                        obj[k] = f"/blob/{self._blob_token}/{blob_id}"
                     else:
                         extract_blobs(v)
             elif isinstance(obj, list):
@@ -200,7 +206,7 @@ class SimViewServer:
                     if isinstance(v, str) and v.startswith("__b64__"):
                         blob_id = len(self.blobs)
                         self.blobs.append(base64.b64decode(v[7:]))
-                        obj[i] = f"/blob/{blob_id}"
+                        obj[i] = f"/blob/{self._blob_token}/{blob_id}"
                     else:
                         extract_blobs(v)
 
@@ -262,13 +268,15 @@ class SimViewServer:
                 status_code=404,
             )
 
-        @self.app.get("/blob/{blob_id}")
-        async def get_blob(blob_id: int):
-            if 0 <= blob_id < len(self.blobs):
-                return Response(
-                    content=self.blobs[blob_id], media_type="application/octet-stream"
-                )
-            return Response(status_code=404)
+        @self.app.get("/blob/{token}/{blob_id}")
+        async def get_blob(token: str, blob_id: int):
+            if token != self._blob_token or not (0 <= blob_id < len(self.blobs)):
+                return Response(status_code=404)
+            return Response(
+                content=self.blobs[blob_id],
+                media_type="application/octet-stream",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
 
         @self.app.post("/batch-names")
         async def set_batch_names(body: BatchNamesRequest):
