@@ -25,3 +25,29 @@ test("loads example_sim.json with no console/page errors and responds to a timel
     const viewport = page.viewportSize();
     await page.mouse.click(viewport.width / 2, viewport.height - 30);
 });
+
+// Recording tripwire: exercises the native MediaRecorder-based WEBM path
+// (see AnimationController.js#startRecording/captureFrame/stopRecording) end
+// to end -- click Record, let it auto-stop after one full loop, and confirm a
+// real browser download event fires with the expected filename. example_sim.json's
+// loop is 4.9s; the playback-speed dropdown is bumped to 5x first (a stable,
+// value-based selector -- see PlaybackControls.js's speedSelect) so the test
+// doesn't have to wait out the whole loop in realtime.
+test("recording a WEBM clip downloads a .webm file after one loop", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForSelector("#loading-splash", { state: "detached", timeout: 20_000 });
+
+    // formatSelect defaults to "webm" already; only the playback speed needs
+    // changing. Both dropdowns are page-wide <select> elements (the scene also
+    // has several lil-gui <select>s), so target by the option value that's
+    // unique to PlaybackControls' speed dropdown rather than DOM order.
+    const speedSelect = page.locator('select:has(option[value="5"])');
+    await speedSelect.selectOption("5");
+
+    const recordButton = page.getByRole("button", { name: /REC/ });
+    const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+    await recordButton.click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/\.webm$/);
+});

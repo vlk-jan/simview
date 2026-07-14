@@ -200,7 +200,9 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **Step Forward/Backward**: `Alt` + Arrow Right / Arrow Left
 - **Seek (and Pause)**: Click on the timeline bar
 - **Play/Pause**: `Space` or Click the Play button
-- **Record**: `R` or Click the Record button (Select MP4/WEBM or PNG sequence via dropdown)
+- **Record**: `R` or Click the Record button (select WEBM, MP4 -- if your browser supports
+  recording it -- or PNG sequence via the dropdown). Recording seeks to the start, plays
+  exactly one loop, then automatically stops and downloads the file.
 - **Playback Speed**: Adjust speed (0.1x to 5x) via the dropdown next to the timeline
 
 ### Batch Selection
@@ -507,7 +509,10 @@ in `model.bodies` and doesn't require or emit per-frame data for them.
 SimView is distributed under the [BSD 3-Clause License](LICENSE).
 
 The web interface uses [**uPlot**](https://github.com/leeoniya/uPlot) (MIT licensed) for
-scalar and error-metric plotting; it is vendored under `simview/static/lib/`. Three.js and
-chroma-js are loaded from the jsdelivr CDN, pinned to exact versions with Subresource
-Integrity (SRI) hashes. All third-party libraries used by SimView are permissively
-licensed (MIT/BSD), so there are no licensing restrictions on commercial use.
+scalar and error-metric plotting; it is vendored under `simview/static/lib/`.
+[**three.js**](https://github.com/mrdoob/three.js) (MIT licensed) and
+[**chroma-js**](https://github.com/gka/chroma.js) (MIT licensed) are likewise vendored
+under `simview/static/lib/` (in version-stamped directories, e.g. `lib/three-0.174.0/`)
+rather than loaded from a CDN, so the viewer works fully offline. All third-party
+libraries used by SimView are permissively licensed (MIT/BSD), so there are no licensing
+restrictions on commercial use.

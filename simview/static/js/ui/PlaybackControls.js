@@ -1,4 +1,5 @@
 import { FREQ_CONFIG } from "../config.js";
+import { isMp4RecordingSupported } from "../components/AnimationController.js";
 
 const buttonHeight = 25;
 export class PlaybackControls {
@@ -128,10 +129,16 @@ export class PlaybackControls {
         );
 
         this.formatSelect = document.createElement("select");
-        ["webm", "png"].forEach((format) => {
+        // "mp4" is only offered when this browser's MediaRecorder can
+        // actually produce it (see isMp4RecordingSupported) -- webm is
+        // always available wherever MediaRecorder is, so it's the
+        // unconditional default/fallback.
+        const formats = isMp4RecordingSupported() ? ["webm", "mp4", "png"] : ["webm", "png"];
+        const formatLabels = { webm: "WEBM", mp4: "MP4", png: "PNG" };
+        formats.forEach((format) => {
             const option = document.createElement("option");
             option.value = format;
-            option.text = format === "webm" ? "MP4 (WEBM)" : format.toUpperCase();
+            option.text = formatLabels[format];
             this.formatSelect.appendChild(option);
         });
         Object.assign(this.formatSelect.style, {
