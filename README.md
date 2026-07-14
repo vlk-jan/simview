@@ -212,6 +212,7 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **`B`**: Toggle Body Visualization Mode (Mesh / Wireframe / Points)
 - **`A`**: Toggle Axes Visibility
 - **`G`**: Toggle Trajectory Trails
+- **`I`**: Toggle Smooth Interpolation (on by default; interpolates position/orientation between recorded states during playback and scrubbing instead of snapping to the nearest frame)
 - **`C`**: Toggle Contact Points
 - **`V`**: Toggle Linear Velocity
 - **`W`**: Toggle Angular Velocity

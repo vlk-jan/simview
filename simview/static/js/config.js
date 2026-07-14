@@ -2,6 +2,7 @@ export const UI_DEFAULT_CONFIG = {
     bodyVisualizationMode: "points",
     axesVisible: false,
     trailsVisible: false,
+    smoothInterpolation: true,
     attributeVisible: {
         contacts: false,
         velocity: false,

@@ -107,6 +107,7 @@ export class UIControls {
                 bodyVisualizationMode: defaultVisualizationMode,
                 showAxes: this.app.uiState.axesVisible,
                 showTrails: this.app.uiState.trailsVisible,
+                smoothInterpolation: this.app.uiState.smoothInterpolation,
                 showContacts: this.app.uiState.attributeVisible.contacts,
                 showVelocity: this.app.uiState.attributeVisible.velocity,
                 showAngularVelocity: this.app.uiState.attributeVisible.angularVelocity,
@@ -135,6 +136,13 @@ export class UIControls {
                 .name("Show Trails (G)")
                 .onChange((value) => {
                     this.updateTrailsVisibility(value);
+                });
+
+            this.bodyFolder
+                .add(controls, "smoothInterpolation")
+                .name("Smooth Interpolation (I)")
+                .onChange((value) => {
+                    this.updateSmoothInterpolation(value);
                 });
 
             // Only create toggles for attributes actually present in the loaded data
@@ -328,6 +336,9 @@ export class UIControls {
                     case "g":
                         this.toggleControl("showTrails");
                         break;
+                    case "i":
+                        this.toggleControl("smoothInterpolation");
+                        break;
                     case "c":
                         if (this.attributeAvailability.contacts)
                             this.toggleControl("showContacts");
@@ -398,6 +409,10 @@ export class UIControls {
             body.toggleTrails(show);
         });
         this.app.uiState.trailsVisible = show;
+    }
+
+    updateSmoothInterpolation(enabled) {
+        this.app.uiState.smoothInterpolation = enabled;
     }
 
     updateAttributeVisibility(attrType, show) {
