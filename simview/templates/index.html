@@ -38,31 +38,27 @@
       <h1>Loading...</h1>
     </div>
 
-    <!-- CCapture.js and its format-specific dependencies (webm-writer, gif.js,
-         tar.js, download.js) are only loaded on demand, when the user starts
-         a recording -- see static/js/utils/loadRecordingLibs.js. -->
+    <!-- WEBM/MP4 recording uses native canvas.captureStream() + MediaRecorder
+         (no library needed). The PNG-sequence recording format still needs
+         tar.js + download.js, but only loads them on demand, when the user
+         starts a PNG recording -- see static/js/utils/loadRecordingLibs.js. -->
 
-    <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are loaded
-         from jsdelivr and pinned to exact versions. The "integrity" map below
-         provides Subresource Integrity (SRI) hashes for every URL these
-         specifiers can resolve to, so a compromised/MITM'd CDN response would
-         be rejected by browsers that support import-map integrity (e.g.
-         Chrome/Edge 127+). Older browsers ignore the unknown "integrity" key
-         and load normally, so this is purely an additive hardening measure.
-         If any of the pinned versions below change, regenerate the hashes with:
-           curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
+    <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are
+         vendored locally (same-origin) instead of loaded from a CDN, so the
+         viewer keeps working with no internet access. Each library lives in
+         a version-stamped directory (e.g. lib/three-0.174.0/) because
+         simview/static/lib/ is served with a long-lived, immutable
+         Cache-Control header (see _IMMUTABLE_STATIC_DIRS in
+         simview/server.py) -- bumping a pinned version must change the URL,
+         which a version-stamped directory name gives us for free. Since
+         these are now same-origin static files (not a third-party CDN
+         response), there is no SRI/integrity concern to guard against. -->
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@v0.174.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@v0.174.0/examples/jsm/",
-          "chroma": "https://cdn.jsdelivr.net/npm/chroma-js@3.1.2/index.min.js"
-        },
-        "integrity": {
-          "https://cdn.jsdelivr.net/npm/three@v0.174.0/build/three.module.js": "sha384-XYnXNAOuPDbehWj5Esz4dUjqxDbdgiQMzzHwBk3u+S8hIT06xorwCCqxT2/levx+",
-          "https://cdn.jsdelivr.net/npm/three@v0.174.0/examples/jsm/controls/OrbitControls.js": "sha384-c9YLmewZHOfGIW5NdQaKmSG/Usm1hVeJrvQBagK3ye/U76jh7/1HAse4iFmmi+HK",
-          "https://cdn.jsdelivr.net/npm/three@v0.174.0/examples/jsm/libs/lil-gui.module.min.js": "sha384-oY4zQcwn6I9JeaMxMO2kcoi8TrDiUl9+CsZMvfcw8yPs7l5U8coPfmOA+tU9Noq3",
-          "https://cdn.jsdelivr.net/npm/chroma-js@3.1.2/index.min.js": "sha384-/hWE+Lv1uJ9maja6P/BNyxjbfgatW3uSO0hab30xdNW8bbgUHRTfU4jLHpLFxA7h"
+          "three": "{{ url_for('static', path='lib/three-0.174.0/three.module.js') }}",
+          "three/addons/": "{{ url_for('static', path='lib/three-0.174.0/addons/') }}",
+          "chroma": "{{ url_for('static', path='lib/chroma-js-3.1.2/index.min.js') }}"
         }
       }
     </script>

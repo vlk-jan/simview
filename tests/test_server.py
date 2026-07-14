@@ -1,6 +1,8 @@
 import hashlib
 import json
 import os
+import re
+import urllib.parse
 
 import pytest
 
@@ -223,7 +225,7 @@ def test_static_assets_carry_cache_control_header(client):
 
 
 def test_vendored_static_libs_are_marked_immutable(client):
-    resp = client.get("/static/lib/gif.js")
+    resp = client.get("/static/lib/tar.js")
     assert resp.status_code == 200
     assert "immutable" in resp.headers["cache-control"]
 
@@ -248,6 +250,64 @@ def test_blob_endpoint_404s_for_wrong_token(client):
 
     resp = client.get(f"/blob/wrong{token}/{blob_id}")
     assert resp.status_code == 404
+
+
+def test_importmap_is_fully_vendored_offline(client):
+    # The viewer must work with no internet access: every specifier in the
+    # importmap on the served index page must resolve to a same-origin
+    # /static/... path (never a third-party CDN URL like
+    # https://cdn.jsdelivr.net/...), and each of those paths must actually be
+    # served (200) -- see README "License and Third-Party Notices" and the
+    # comment above the importmap in index.html.
+    resp = client.get("/")
+    assert resp.status_code == 200
+    match = re.search(r'<script type="importmap">(.*?)</script>', resp.text, re.S)
+    assert match, "index.html must contain an importmap <script> block"
+    importmap = json.loads(match.group(1))
+    imports = importmap["imports"]
+    assert imports, "importmap must declare at least one import specifier"
+
+    # url_for() always renders an absolute URL (http://testserver/... under
+    # TestClient), so "no CDN URL" is checked as "same origin as this
+    # request", not "no http(s) prefix at all".
+    origin = urllib.parse.urlsplit(str(resp.url))
+    same_origin_prefix = f"{origin.scheme}://{origin.netloc}"
+
+    prefix_urls = {}
+    for specifier, url in imports.items():
+        assert url.startswith(same_origin_prefix + "/static/"), (
+            f"importmap specifier {specifier!r} does not resolve to a local "
+            f"/static/ path (got {url!r}) -- third-party libraries must be "
+            "vendored, not CDN-loaded"
+        )
+        path = url[len(same_origin_prefix) :]
+        # Bare-prefix specifiers (e.g. "three/addons/") map to a directory,
+        # not a file -- there's nothing meaningful to fetch at the bare
+        # directory URL itself, so only check specifiers mapping to an
+        # actual file. Remember the prefix so the addon files actually
+        # imported by our JS (checked below) can be resolved against it.
+        if path.endswith("/"):
+            prefix_urls[specifier] = path
+            continue
+        follow_up = client.get(path)
+        assert follow_up.status_code == 200, (
+            f"importmap specifier {specifier!r} -> {path!r} did not resolve (got "
+            f"{follow_up.status_code})"
+        )
+
+    # The addon files our JS actually imports via the "three/addons/" prefix
+    # (OrbitControls in InteractionControls.js, lil-gui in Controls.js) must
+    # also resolve, not just the bare prefix.
+    addons_prefix = prefix_urls.get("three/addons/")
+    assert addons_prefix, "importmap must declare a 'three/addons/' prefix"
+    for addon_path in (
+        "controls/OrbitControls.js",
+        "libs/lil-gui.module.min.js",
+    ):
+        resp = client.get(addons_prefix + addon_path)
+        assert resp.status_code == 200, (
+            f"addon {addon_path!r} did not resolve under {addons_prefix!r}"
+        )
 
 
 def test_cached_scene_bytes_correct_after_batch_names_mutation(tmp_path):
