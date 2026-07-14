@@ -78,7 +78,10 @@ class SimViewTerrain:
     max_stiffness: float | None = None
 
     def to_json(self):
-        bounds = {
+        # min/max friction/stiffness are independent Optional fields (not tied to
+        # friction_data/stiffness_data by the type system, only by convention in
+        # create()/from_dict), so the dict's values are genuinely `float | None`.
+        bounds: dict[str, float | None] = {
             "minX": self.min_x,
             "minY": self.min_y,
             "maxX": self.max_x,
@@ -276,7 +279,7 @@ class SimViewBody:
     @staticmethod
     def _create_shape_dict(body_type: BodyShapeType, **kwargs) -> dict:
         """Helper to create the shape dictionary, converting tensors."""
-        shape_dict = {"type": body_type.value}
+        shape_dict: dict[str, Any] = {"type": body_type.value}
         for key, value in kwargs.items():
             if isinstance(value, torch.Tensor):
                 if value.numel() > 1:
@@ -506,13 +509,16 @@ class SimViewModel:
     def add_static_object(self, static_object: SimViewStaticObject) -> None:
         if static_object.name in self.static_objects:
             raise ValueError(f"Static object {static_object.name} already exists")
-        if (
-            not static_object.is_singleton
-            and len(static_object.shapes) != self.batch_size
-        ):
-            raise ValueError(
-                f"Batched static object '{static_object.name}' shapes count ({len(static_object.shapes)}) must match batch size ({self.batch_size})."
-            )
+        if not static_object.is_singleton:
+            # SimViewStaticObject.__post_init__ guarantees `shapes` is set
+            # (not None) whenever `is_singleton` is False.
+            assert static_object.shapes is not None
+            if len(static_object.shapes) != self.batch_size:
+                raise ValueError(
+                    f"Batched static object '{static_object.name}' shapes count "
+                    f"({len(static_object.shapes)}) must match batch size "
+                    f"({self.batch_size})."
+                )
         self.static_objects[static_object.name] = static_object
 
     def create_terrain(

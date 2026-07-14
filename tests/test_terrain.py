@@ -33,7 +33,9 @@ def _terrain(batch_size, h_batches, n_batches):
     scene.create_terrain(
         heightmap=heights, normals=normals, x_lim=(-1, 1), y_lim=(-1, 1)
     )
-    return scene.model.terrain, res
+    terrain = scene.model.terrain
+    assert terrain is not None
+    return terrain, res
 
 
 def _per_batch_scene(batch_size: int, offset: float = 0.0) -> SimulationScene:
@@ -65,6 +67,10 @@ def test_shared_terrain_is_singleton_and_broadcast():
     terrain, res = _terrain(batch_size=3, h_batches=1, n_batches=1)
     assert terrain.is_singleton is True
     # Broadcast to batch_size so the viewer (which splits by batch_size) is happy.
+    # create_terrain always binary-encodes heightData/normals (see _encode_blob
+    # in SimViewTerrain.create), so this is always the `str` blob form, never
+    # the plain-list form the field's type also allows.
+    assert isinstance(terrain.height_data, str)
     assert len(_flat(terrain.height_data)) == 3 * res * res
 
 
@@ -73,6 +79,8 @@ def test_mixed_shared_and_per_batch_is_not_singleton():
     # singleton; now it's a consistent non-singleton with height broadcast.
     terrain, res = _terrain(batch_size=3, h_batches=1, n_batches=3)
     assert terrain.is_singleton is False
+    assert isinstance(terrain.height_data, str)
+    assert isinstance(terrain.normals, str)
     assert len(_flat(terrain.height_data)) == 3 * res * res
     assert len(_flat(terrain.normals)) == 3 * res * res * 3
 
@@ -97,7 +105,9 @@ def test_invalid_batch_dim_raises():
 
 def test_per_batch_terrain_save_load_roundtrip(tmp_path):
     scene = _per_batch_scene(batch_size=3)
-    assert scene.model.terrain.is_singleton is False
+    terrain = scene.model.terrain
+    assert terrain is not None
+    assert terrain.is_singleton is False
 
     out = tmp_path / "sim.json"
     scene.save(out)
@@ -105,8 +115,10 @@ def test_per_batch_terrain_save_load_roundtrip(tmp_path):
     assert data["model"]["terrain"]["isSingleton"] is False
 
     loaded = SimulationScene.load(out)
-    assert loaded.model.terrain.is_singleton is False
-    assert loaded.model.terrain.height_data == scene.model.terrain.height_data
+    loaded_terrain = loaded.model.terrain
+    assert loaded_terrain is not None
+    assert loaded_terrain.is_singleton is False
+    assert loaded_terrain.height_data == terrain.height_data
 
 
 def test_per_batch_terrain_merges_across_files(tmp_path):

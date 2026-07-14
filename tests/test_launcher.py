@@ -143,4 +143,4 @@ def test_constructor_rejects_missing_file(tmp_path):
 
 def test_constructor_rejects_unsupported_source_type():
     with pytest.raises(TypeError, match="SimulationScene object or a file path"):
-        SimViewLauncher(12345)
+        SimViewLauncher(12345)  # type: ignore[arg-type]  # deliberately wrong type to test runtime validation

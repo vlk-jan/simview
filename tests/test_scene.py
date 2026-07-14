@@ -137,6 +137,7 @@ def test_add_state_numpy_position_orientation_and_velocity():
 def test_clear_internal_data_clears_friction_and_stiffness():
     scene = build_scene(batch_size=2)
     terrain = scene.model.terrain
+    assert terrain is not None
     assert terrain.friction_data is not None
     assert terrain.stiffness_data is not None
 

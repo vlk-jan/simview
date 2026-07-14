@@ -57,6 +57,11 @@ class CacheControlStaticFiles(StaticFiles):
         # full_path is the absolute filesystem path of the matched file; check it
         # (rather than scope["path"]) since the latter is mount-relative and its
         # exact shape depends on how the StaticFiles app was mounted.
+        # self.directory is set from the `directory=` kwarg we always pass to
+        # StaticFiles.__init__ (see the mount() call below), so it's never None
+        # here even though the base class types it as Optional for callers that
+        # use `packages=` instead.
+        assert self.directory is not None
         rel_path = Path(full_path).relative_to(self.directory).as_posix()
         if rel_path.startswith(_IMMUTABLE_STATIC_DIRS):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -75,10 +80,10 @@ class SimViewServer:
             raise ValueError("Provide 'sim_path' and/or 'data'")
         if sim_path is None:
             self.sim_paths: list[Path] | None = None
-        elif isinstance(sim_path, (list, tuple)):
-            self.sim_paths = [Path(p) for p in sim_path]
-        else:
+        elif isinstance(sim_path, (str, Path)):
             self.sim_paths = [Path(sim_path)]
+        else:
+            self.sim_paths = [Path(p) for p in sim_path]
         # Single-file convenience accessor, used by _load_data when nothing is preloaded.
         self.sim_path = self.sim_paths[0] if self.sim_paths else None
         self._preloaded_data = data
@@ -148,6 +153,10 @@ class SimViewServer:
             data = self._preloaded_data
             self._preloaded_data = None  # allow it to be garbage-collected
         else:
+            # __init__ requires sim_path and/or data; if we get here,
+            # _preloaded_data was None, so sim_path (hence self.sim_path) was
+            # provided and is guaranteed non-None.
+            assert self.sim_path is not None
             logger.info("Loading simulation data from %s...", self.sim_path)
             raw = read_maybe_gzipped_bytes(self.sim_path)
             data = orjson.loads(raw) if orjson else json.loads(raw)
@@ -368,9 +377,9 @@ class SimViewServer:
         open_browser: bool = False,
     ):
         paths = (
-            [Path(p) for p in sim_path]
-            if isinstance(sim_path, (list, tuple))
-            else [Path(sim_path)]
+            [Path(sim_path)]
+            if isinstance(sim_path, (str, Path))
+            else [Path(p) for p in sim_path]
         )
         for p in paths:
             if not p.is_file():

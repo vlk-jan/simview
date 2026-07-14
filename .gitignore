@@ -182,3 +182,11 @@ git-filter-repo
 *.DS_Store
 
 example_sim.json
+
+# Node (frontend test tooling)
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/

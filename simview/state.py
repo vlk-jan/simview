@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -8,6 +9,14 @@ from simview.model import OptionalBodyStateAttribute, _encode_blob
 # Accepted array-like input types for authoring calls: torch tensors and numpy
 # arrays are both supported so callers don't need torch just to build a scene.
 ArrayLike = torch.Tensor | np.ndarray
+
+# Accepted input types for a body's constant `local_transform`: unlike the
+# ArrayLike-typed per-frame pose/vector fields above (which call `.tolist()`
+# unconditionally and so require an actual tensor/ndarray), `local_transform`
+# is only ever normalized via `hasattr(..., "tolist")` + `list(...)` (see
+# SimViewBody.create), so a plain sequence of floats works too and callers
+# shouldn't need numpy/torch just to pass a constant 7-element offset.
+LocalTransformLike = torch.Tensor | np.ndarray | Sequence[float]
 
 # Maps a BodyTrajectory field name to the wire key used in each state's body dict.
 # These are the numeric per-body fields that add_trajectory can pack as binary
@@ -122,30 +131,32 @@ class SimViewBodyState:
     @staticmethod
     def _process_contacts(contacts: ArrayLike | list):
         if isinstance(contacts, (torch.Tensor, np.ndarray)):  # tensor / array
-            is_torch = isinstance(contacts, torch.Tensor)
-            dtype = contacts.dtype
-            is_bool = dtype == torch.bool if is_torch else dtype == np.bool_
-            is_float = (
-                dtype.is_floating_point
-                if is_torch
-                else np.issubdtype(dtype, np.floating)
-            )
-            is_complex = (
-                dtype.is_complex
-                if is_torch
-                else np.issubdtype(dtype, np.complexfloating)
-            )
-            if is_bool or is_float:
-                # Boolean mask (floats treated as a mask of non-zero entries)
-                if is_torch:
+            if isinstance(contacts, torch.Tensor):
+                dtype = contacts.dtype
+                is_bool = dtype == torch.bool
+                is_float = dtype.is_floating_point
+                is_complex = dtype.is_complex
+                if is_bool or is_float:
+                    # Boolean mask (floats treated as a mask of non-zero entries)
                     return [
                         torch.nonzero(c, as_tuple=True)[0].tolist() for c in contacts
                     ]
-                return [np.nonzero(c)[0].tolist() for c in contacts]
-            elif not is_complex:  # integer dtype: assume indices
-                return contacts.tolist()
+                elif not is_complex:  # integer dtype: assume indices
+                    return contacts.tolist()
+                else:
+                    raise ValueError(f"Unsupported contact tensor dtype: {dtype}")
             else:
-                raise ValueError(f"Unsupported contact tensor dtype: {dtype}")
+                np_dtype = contacts.dtype
+                is_bool = np_dtype == np.bool_
+                is_float = np.issubdtype(np_dtype, np.floating)
+                is_complex = np.issubdtype(np_dtype, np.complexfloating)
+                if is_bool or is_float:
+                    # Boolean mask (floats treated as a mask of non-zero entries)
+                    return [np.nonzero(c)[0].tolist() for c in contacts]
+                elif not is_complex:  # integer dtype: assume indices
+                    return contacts.tolist()
+                else:
+                    raise ValueError(f"Unsupported contact tensor dtype: {np_dtype}")
         else:  # list of tensors/arrays or list of lists
             first = contacts[0]
             if isinstance(first, (torch.Tensor, np.ndarray)):

@@ -16,7 +16,12 @@ from .model import (
     SimViewTerrain,
     _encode_blob,
 )
-from .state import TRAJECTORY_VECTOR_FIELDS, ArrayLike, BodyTrajectory, SimViewBodyState
+from .state import (
+    TRAJECTORY_VECTOR_FIELDS,
+    BodyTrajectory,
+    LocalTransformLike,
+    SimViewBodyState,
+)
 from .utils import read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.scene")
@@ -289,8 +294,8 @@ class SimulationScene:
         # Pre-normalize every field to (T, B, k) float32 up front so the per-frame
         # loop below only slices and encodes. Contacts are ragged (ints per body
         # per batch), so they're normalized separately into a plain length-T list.
-        prepared: list[tuple[str, dict[str, np.ndarray]]] = []
-        prepared_contacts: list[tuple[str, list]] = []
+        prepared: list[tuple[str | list[str], dict[str, np.ndarray]]] = []
+        prepared_contacts: list[tuple[str | list[str], list]] = []
         for traj in trajectories:
             _validate_body_name(traj.name, self.model)
             _validate_not_rigid(traj.name, self.model)
@@ -447,7 +452,7 @@ class SimulationScene:
         shape_type: BodyShapeType,
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
         parent: str | None = None,
-        local_transform: ArrayLike | None = None,
+        local_transform: LocalTransformLike | None = None,
         **kwargs,
     ) -> None:
         """Creates and adds a dynamic body to the simulation model.

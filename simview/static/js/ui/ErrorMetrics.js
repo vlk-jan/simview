@@ -1,6 +1,7 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
 import { injectStyles } from "../utils/injectStyles.js";
+import { positionAxisError, positionError, quaternionAngleError } from "../utils/errorMath.js";
 
 // Compares two batches of the same body over the full timeline: Euclidean
 // position error and quaternion angle (orientation) error. Useful for e.g.
@@ -273,20 +274,9 @@ export class ErrorMetrics {
         const axisYSeries = new Array(n);
         const axisZSeries = new Array(n);
         for (let s = 0; s < n; s++) {
-            const pBase = s * 3;
-            const dx = posA[pBase] - posB[pBase];
-            const dy = posA[pBase + 1] - posB[pBase + 1];
-            const dz = posA[pBase + 2] - posB[pBase + 2];
-            const posErr = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-            const qBase = s * 4;
-            const dot =
-                quatA[qBase] * quatB[qBase] +
-                quatA[qBase + 1] * quatB[qBase + 1] +
-                quatA[qBase + 2] * quatB[qBase + 2] +
-                quatA[qBase + 3] * quatB[qBase + 3];
-            const clamped = Math.min(1, Math.max(-1, Math.abs(dot)));
-            const rotErrDeg = (2 * Math.acos(clamped) * 180) / Math.PI;
+            const { dx, dy, dz } = positionAxisError(posA, posB, s);
+            const posErr = positionError(posA, posB, s);
+            const rotErrDeg = (quaternionAngleError(quatA, quatB, s) * 180) / Math.PI;
 
             const t = states[s] ? states[s].time : s;
             posSeries[s] = { x: t, y: posErr };

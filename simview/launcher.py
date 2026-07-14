@@ -73,6 +73,10 @@ class SimViewLauncher:
                     )
                 server.run(host=host, port=port)
             else:
+                # __init__ guarantees exactly one of self._scene / self._sim_file_path
+                # is set (it raises otherwise), so if self._scene is None here,
+                # self._sim_file_path must have been set.
+                assert self._sim_file_path is not None
                 SimViewServer.start(
                     sim_path=self._sim_file_path,
                     host=host,

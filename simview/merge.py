@@ -18,6 +18,7 @@ import json
 import logging
 import struct
 from pathlib import Path
+from typing import Sequence
 
 try:
     import orjson
@@ -72,6 +73,12 @@ def _decode_per_batch(value: list | str, batch_size: int) -> list:
     branching on a single file's encoding."""
     flat = _decode_b64_floats(value)
     if flat is None:
+        # `_decode_b64_floats` only returns None for non-`__b64__` input, and
+        # the only `str` values these terrain fields ever take on are
+        # `__b64__` blobs (see `_expand_batched`, which requires a `str` here
+        # to start with that prefix) -- so a plain (non-b64) `value` is
+        # always a `list` at this point.
+        assert isinstance(value, list)
         return value
     width = len(flat) // batch_size
     return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
@@ -187,7 +194,7 @@ def _merge_bodies(models: list[dict], labels: list[str]) -> list[dict]:
     return bodies
 
 
-def _default_batch_names(paths: list[Path], batch_sizes: list[int]) -> list[str]:
+def _default_batch_names(paths: Sequence[Path], batch_sizes: list[int]) -> list[str]:
     """One name per output batch, derived from the source file it came from.
     Single-batch files just use the file stem; multi-batch files get an index
     suffix so batches from the same file are still distinguishable."""
@@ -540,15 +547,15 @@ def _merge_states(
     return merged_states
 
 
-def merge_simulation_files(paths: list[str | Path]) -> dict:
+def merge_simulation_files(paths: Sequence[str | Path]) -> dict:
     """Load and merge `paths` into a single `{"model": ..., "states": ...}` dict
     where each file's batches are concatenated into the output's batch dimension."""
     if len(paths) < 2:
         raise ValueError("merge_simulation_files requires at least 2 files")
 
-    paths = [Path(p) for p in paths]
-    labels = [p.name for p in paths]
-    docs = [_load_json(p) for p in paths]
+    resolved_paths = [Path(p) for p in paths]
+    labels = [p.name for p in resolved_paths]
+    docs = [_load_json(p) for p in resolved_paths]
     for doc, label in zip(docs, labels):
         _validate_doc(doc, label)
     models = [doc["model"] for doc in docs]
@@ -575,7 +582,7 @@ def merge_simulation_files(paths: list[str | Path]) -> dict:
 
     merged_model = {
         "simBatches": total_batches,
-        "batchNames": _default_batch_names(paths, batch_sizes),
+        "batchNames": _default_batch_names(resolved_paths, batch_sizes),
         "scalarNames": scalar_names,
         "dt": models[0].get("dt"),
         "collapse": models[0].get("collapse", False),
