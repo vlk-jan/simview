@@ -1,5 +1,6 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
+import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import { injectStyles } from "../utils/injectStyles.js";
 
 export class ScalarPlotter {
@@ -92,6 +93,22 @@ export class ScalarPlotter {
             border-right: none;
         }
 
+        /* Export toolbar */
+        .scalar-export-bar {
+            display: flex;
+            justify-content: flex-end;
+            padding: 6px 0 0;
+        }
+        .scalar-export-bar button {
+            background-color: rgba(50, 50, 50, 0.8);
+            color: white;
+            border: 1px solid white;
+            padding: 0.2em 0.6em;
+            border-radius: 3px;
+            font-size: 0.85em;
+            cursor: pointer;
+        }
+
         /* Plot area */
         .scalar-plot-area {
             width: 100%;
@@ -128,6 +145,13 @@ export class ScalarPlotter {
         this.plotArea = document.createElement("div");
         this.plotArea.className = "scalar-plot-area";
 
+        this.exportBar = document.createElement("div");
+        this.exportBar.className = "scalar-export-bar";
+        this.exportButton = document.createElement("button");
+        this.exportButton.textContent = "Export CSV";
+        this.exportBar.appendChild(this.exportButton);
+        this.plotArea.appendChild(this.exportBar);
+
         this.scalarNames.forEach((name, index) => {
             const tabButton = document.createElement("button");
             tabButton.className = "scalar-tab";
@@ -158,6 +182,33 @@ export class ScalarPlotter {
             }
             event.target.blur();
         });
+        this.exportButton.addEventListener("click", () => this._exportCsv());
+    }
+
+    // Downloads the active scalar tab's full series as CSV: time, then one
+    // column per batch (named after the batch's current display name).
+    _exportCsv() {
+        const series = this.scalarSeries.get(this.activeScalar);
+        if (!series || this.times.length === 0) return;
+
+        const batchCount = this.app.batchManager.simBatches;
+        const header = ["time"];
+        for (let i = 0; i < batchCount; i++) {
+            header.push(this.app.batchManager.getBatchName(i) || `batch_${i}`);
+        }
+
+        const rows = this.times.map((t, idx) => {
+            const row = [t];
+            for (let i = 0; i < batchCount; i++) {
+                const point = series[i][idx];
+                row.push(point ? point.y : "");
+            }
+            return row;
+        });
+
+        const csv = rowsToCsv(header, rows);
+        const scalarPart = sanitizeForFilename(this.activeScalar);
+        downloadCsv(`scalar_${scalarPart}.csv`, csv);
     }
 
     // Called by AnalysisPanel when this panel becomes/stops being the visible section.

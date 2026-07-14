@@ -1,7 +1,14 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
+import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
+import {
+    maxWithIndex,
+    positionAxisError,
+    positionError,
+    quaternionAngleError,
+    rmse,
+} from "../utils/errorMath.js";
 import { injectStyles } from "../utils/injectStyles.js";
-import { positionAxisError, positionError, quaternionAngleError } from "../utils/errorMath.js";
 
 // Compares two batches of the same body over the full timeline: Euclidean
 // position error and quaternion angle (orientation) error. Useful for e.g.
@@ -75,6 +82,36 @@ export class ErrorMetrics {
             justify-content: space-between;
             padding: 2px 0;
         }
+        .error-metrics-stats {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: monospace;
+            font-size: 0.85em;
+        }
+        .error-metrics-stats div {
+            display: flex;
+            justify-content: space-between;
+            padding: 1px 0;
+            color: #ccc;
+        }
+        .error-metrics-stats div span:last-child {
+            color: white;
+        }
+        .error-metrics-export {
+            margin-top: 8px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .error-metrics-export button {
+            background-color: rgba(50, 50, 50, 0.8);
+            color: white;
+            border: 1px solid white;
+            padding: 0.2em 0.6em;
+            border-radius: 3px;
+            font-size: 0.85em;
+            cursor: pointer;
+        }
         .error-metrics-plot {
             width: 100%;
             height: 15vh;
@@ -133,6 +170,32 @@ export class ErrorMetrics {
         this.readout.appendChild(this.rotReadout);
         this.content.appendChild(this.readout);
         this._applyAxesVisibility();
+
+        this.stats = document.createElement("div");
+        this.stats.className = "error-metrics-stats";
+        const posRmseRow = this._makeReadoutRow("Position RMSE:");
+        this.posRmseValue = posRmseRow.valueSpan;
+        const posMaxRow = this._makeReadoutRow("Max position error (t):");
+        this.posMaxValue = posMaxRow.valueSpan;
+        const driftRow = this._makeReadoutRow("Final drift:");
+        this.driftValue = driftRow.valueSpan;
+        const rotRmseRow = this._makeReadoutRow("Orientation RMSE:");
+        this.rotRmseValue = rotRmseRow.valueSpan;
+        const rotMaxRow = this._makeReadoutRow("Max angle error (t):");
+        this.rotMaxValue = rotMaxRow.valueSpan;
+        this.stats.appendChild(posRmseRow.row);
+        this.stats.appendChild(posMaxRow.row);
+        this.stats.appendChild(driftRow.row);
+        this.stats.appendChild(rotRmseRow.row);
+        this.stats.appendChild(rotMaxRow.row);
+        this.content.appendChild(this.stats);
+
+        this.exportContainer = document.createElement("div");
+        this.exportContainer.className = "error-metrics-export";
+        this.exportButton = document.createElement("button");
+        this.exportButton.textContent = "Export CSV";
+        this.exportContainer.appendChild(this.exportButton);
+        this.content.appendChild(this.exportContainer);
 
         this.plotDiv = document.createElement("div");
         this.plotDiv.className = "error-metrics-plot";
@@ -223,6 +286,7 @@ export class ErrorMetrics {
             this._applyAxesVisibility();
             this._buildChart();
         });
+        this.exportButton.addEventListener("click", () => this._exportCsv());
     }
 
     // Called by AnalysisPanel when this panel becomes/stops being the visible section.
@@ -293,6 +357,60 @@ export class ErrorMetrics {
     _recompute() {
         this._computeSeries();
         this._buildChart();
+        this._computeStats();
+    }
+
+    // Summary statistics over the full timeline for the current
+    // body/batch-pair selection: position RMSE, max position error (with the
+    // time it occurs at), final-frame drift, orientation RMSE, and max angle
+    // error. Displayed compactly below the live readout.
+    _computeStats() {
+        if (this.posSeries.length === 0) {
+            this.posRmseValue.textContent = "-";
+            this.posMaxValue.textContent = "-";
+            this.driftValue.textContent = "-";
+            this.rotRmseValue.textContent = "-";
+            this.rotMaxValue.textContent = "-";
+            return;
+        }
+
+        const posValues = this.posSeries.map((p) => p.y);
+        const rotValues = this.rotSeries.map((p) => p.y);
+
+        const posRmse = rmse(posValues);
+        const posMax = maxWithIndex(posValues);
+        const posMaxTime = this.posSeries[posMax.index].x;
+        const drift = posValues[posValues.length - 1];
+        const rotRmse = rmse(rotValues);
+        const rotMax = maxWithIndex(rotValues);
+
+        this.posRmseValue.textContent = `${posRmse.toFixed(3)} m`;
+        this.posMaxValue.textContent = `${posMax.value.toFixed(3)} m (t=${posMaxTime.toFixed(3)})`;
+        this.driftValue.textContent = `${drift.toFixed(3)} m`;
+        this.rotRmseValue.textContent = `${rotRmse.toFixed(2)}°`;
+        this.rotMaxValue.textContent = `${rotMax.value.toFixed(2)}°`;
+    }
+
+    // Downloads the current selection's per-frame series as CSV: time,
+    // combined position error, signed per-axis error, and orientation angle
+    // error (degrees, matching the chart/readout convention).
+    _exportCsv() {
+        if (this.posSeries.length === 0) return;
+        const header = ["time", "pos_error", "err_x", "err_y", "err_z", "angle_error_deg"];
+        const rows = this.posSeries.map((p, i) => [
+            p.x,
+            p.y,
+            this.axisSeries.x[i].y,
+            this.axisSeries.y[i].y,
+            this.axisSeries.z[i].y,
+            this.rotSeries[i].y,
+        ]);
+        const csv = rowsToCsv(header, rows);
+        const bodyPart = sanitizeForFilename(this.selectedBody);
+        const batchAPart = sanitizeForFilename(this.app.batchManager.getBatchName(this.batchA));
+        const batchBPart = sanitizeForFilename(this.app.batchManager.getBatchName(this.batchB));
+        const filename = `error_metrics_${bodyPart}_${batchAPart}_vs_${batchBPart}.csv`;
+        downloadCsv(filename, csv);
     }
 
     // Draws the current playback time as a vertical marker line over the

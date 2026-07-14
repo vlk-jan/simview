@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+    maxWithIndex,
     positionAxisError,
     positionError,
     quaternionAngleError,
+    rmse,
 } from "../../simview/static/js/utils/errorMath.js";
 
 describe("positionError / positionAxisError", () => {
@@ -48,5 +50,35 @@ describe("quaternionAngleError", () => {
         const quatB = [1, 0, 0, 0, /* frame 1 */ half, 0, 0, half];
         expect(quaternionAngleError(identity, quatB, 0)).toBeCloseTo(0, 10);
         expect(quaternionAngleError(identity, quatB, 1)).toBeCloseTo(Math.PI / 2, 6);
+    });
+});
+
+describe("rmse", () => {
+    it("computes the root-mean-square of a series", () => {
+        expect(rmse([3, 4])).toBeCloseTo(Math.sqrt(12.5), 10);
+    });
+
+    it("is zero for all-zero values", () => {
+        expect(rmse([0, 0, 0])).toBe(0);
+    });
+
+    it("returns 0 for an empty or missing series", () => {
+        expect(rmse([])).toBe(0);
+        expect(rmse(undefined)).toBe(0);
+    });
+});
+
+describe("maxWithIndex", () => {
+    it("finds the maximum value and its index", () => {
+        expect(maxWithIndex([1, 5, 3, 5, 2])).toEqual({ value: 5, index: 1 });
+    });
+
+    it("handles a single-element series", () => {
+        expect(maxWithIndex([7])).toEqual({ value: 7, index: 0 });
+    });
+
+    it("returns value 0 and index -1 for an empty or missing series", () => {
+        expect(maxWithIndex([])).toEqual({ value: 0, index: -1 });
+        expect(maxWithIndex(undefined)).toEqual({ value: 0, index: -1 });
     });
 });

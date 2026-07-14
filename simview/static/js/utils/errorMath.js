@@ -43,3 +43,27 @@ export function quaternionAngleError(quatA, quatB, frameIndex) {
     const clamped = Math.min(1, Math.max(-1, Math.abs(dot)));
     return 2 * Math.acos(clamped);
 }
+
+// Root-mean-square of a plain numeric array. Returns 0 for an empty series
+// (rather than NaN), so callers can display it without a special case.
+export function rmse(values) {
+    if (!values || values.length === 0) return 0;
+    let sumSq = 0;
+    for (const v of values) sumSq += v * v;
+    return Math.sqrt(sumSq / values.length);
+}
+
+// Finds the maximum value in a plain numeric array and the index at which it
+// occurs. Returns { value: 0, index: -1 } for an empty series.
+export function maxWithIndex(values) {
+    if (!values || values.length === 0) return { value: 0, index: -1 };
+    let bestValue = values[0];
+    let bestIndex = 0;
+    for (let i = 1; i < values.length; i++) {
+        if (values[i] > bestValue) {
+            bestValue = values[i];
+            bestIndex = i;
+        }
+    }
+    return { value: bestValue, index: bestIndex };
+}
