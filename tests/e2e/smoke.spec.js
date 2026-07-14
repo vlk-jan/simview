@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { promises as fs } from "node:fs";
 
 // End-to-end tripwire: loads a real simulation through the real server and
 // checks the page reaches a usable state with no console/page errors, then
@@ -50,4 +51,24 @@ test("recording a WEBM clip downloads a .webm file after one loop", async ({ pag
     const download = await downloadPromise;
 
     expect(download.suggestedFilename()).toMatch(/\.webm$/);
+});
+
+// Screenshot tripwire: exercises AnimationController.captureScreenshot()
+// (see PlaybackControls.js's camera button, next to Record) end to end --
+// click it and confirm a real browser download event fires with a .png
+// filename and a plausible (non-trivial) file size.
+test("screenshot button downloads a .png file", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForSelector("#loading-splash", { state: "detached", timeout: 20_000 });
+
+    const screenshotButton = page.getByTitle("Screenshot (S)");
+    const downloadPromise = page.waitForEvent("download", { timeout: 15_000 });
+    await screenshotButton.click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/\.png$/);
+
+    const downloadPath = await download.path();
+    const stats = await fs.stat(downloadPath);
+    expect(stats.size).toBeGreaterThan(10 * 1024);
 });

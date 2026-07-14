@@ -47,6 +47,10 @@ export class PlaybackControls {
             this.animationController.setRecordingFormat(e.target.value);
         };
 
+        this.screenshotButtonClick = () => {
+            this.animationController.captureScreenshot();
+        };
+
         this.playButtonClick = () => {
             if (this.animationController.isPlaying) {
                 this.animationController.pause();
@@ -114,6 +118,9 @@ export class PlaybackControls {
                 case "r":
                     this.recordButton.click();
                     break;
+                case "s":
+                    this.screenshotButton.click();
+                    break;
                 case " ":
                     this.playButton.click();
                     event.target.blur();
@@ -127,6 +134,13 @@ export class PlaybackControls {
             this.recordButtonClick,
             "100px"
         );
+
+        this.screenshotButton = this.#createButton(
+            "📷",
+            this.screenshotButtonClick,
+            "40px"
+        );
+        this.screenshotButton.title = "Screenshot (S)";
 
         this.formatSelect = document.createElement("select");
         // "mp4" is only offered when this browser's MediaRecorder can
@@ -217,6 +231,7 @@ export class PlaybackControls {
         [
             this.recordButton,
             this.formatSelect,
+            this.screenshotButton,
             this.stepBackButton,
             this.playButton,
             this.stepForwardButton,
@@ -261,6 +276,7 @@ export class PlaybackControls {
         // Remove all event listeners using cached functions
         this.recordButton.removeEventListener("click", this.recordButtonClick);
         this.formatSelect.removeEventListener("change", this.formatSelectChange);
+        this.screenshotButton.removeEventListener("click", this.screenshotButtonClick);
         this.playButton.removeEventListener("click", this.playButtonClick);
         this.stepBackButton.removeEventListener("click", this.stepBackButtonClick);
         this.stepForwardButton.removeEventListener(

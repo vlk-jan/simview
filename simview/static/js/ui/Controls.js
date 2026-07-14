@@ -1,6 +1,7 @@
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import { SELECTION_CONFIG } from "../config.js";
 import { colorMapOptions } from "../../lib/js-colormaps.js";
+import { serializeViewState, toggleMapFromUiState } from "../utils/viewState.js";
 
 export class UIControls {
     constructor(app) {
@@ -309,10 +310,123 @@ export class UIControls {
             this.app.uiState.splitBatchA = cameraControls.splitBatchA;
             this.app.uiState.splitBatchB = cameraControls.splitBatchB;
         }
-        
+
+        cameraControls.copyViewLink = () => this.copyViewLink(copyViewLinkCtrl);
+        const copyViewLinkCtrl = cameraFolder
+            .add(cameraControls, "copyViewLink")
+            .name("Copy view link");
+
         this.cameraControls = cameraControls;
 
         return this.gui;
+    }
+
+    // Builds the current view-state hash (see utils/viewState.js), writes it
+    // to location.hash (via replaceState, so it doesn't spam browser history),
+    // copies the full shareable URL to the clipboard, and gives transient
+    // feedback on the button itself (label flips to "Copied!" for a beat).
+    copyViewLink(controller) {
+        const { camera, controls } = this.app.scene;
+        const toggles = toggleMapFromUiState(this.app.uiState);
+        const hash = serializeViewState({
+            time: this.app.animationController ? this.app.animationController.getCurrentTime() : undefined,
+            camera: {
+                position: camera.position,
+                target: controls.target,
+                fov: camera.fov,
+            },
+            batchIndex: this.app.batchManager ? this.app.batchManager.currentlyActiveBatch : undefined,
+            bodyVisualizationMode: this.app.uiState.bodyVisualizationMode,
+            terrainColorMode: this.app.uiState.terrainColorMode,
+            toggles,
+        });
+
+        history.replaceState(null, "", hash);
+        const url = location.href;
+
+        const showFeedback = (text) => {
+            if (!controller) return;
+            const originalName = "Copy view link";
+            controller.name(text);
+            setTimeout(() => controller.name(originalName), 1500);
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(
+                () => showFeedback("Copied!"),
+                () => this.#fallbackCopyToClipboard(url, showFeedback)
+            );
+        } else {
+            this.#fallbackCopyToClipboard(url, showFeedback);
+        }
+    }
+
+    // execCommand("copy") fallback for browsers/contexts without the async
+    // Clipboard API (e.g. insecure contexts) -- a throwaway offscreen
+    // textarea is the standard workaround.
+    #fallbackCopyToClipboard(text, showFeedback) {
+        try {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(textarea);
+            showFeedback(ok ? "Copied!" : "Copy failed");
+        } catch (e) {
+            console.warn("Failed to copy view link to clipboard:", e);
+            showFeedback("Copy failed");
+        }
+    }
+
+    // Applies a decoded view-state's toggles/bodyVisualizationMode/
+    // terrainColorMode (see utils/viewState.js + SimView.js's apply-on-load
+    // hook) through this panel's own lil-gui controllers -- setValue() runs
+    // each control's existing onChange handler (so e.g. body meshes actually
+    // toggle their axes/trails/etc, exactly like a user clicking the
+    // checkbox would) and refreshes the widget's on-screen display, so
+    // lil-gui never drifts out of sync with uiState. Missing/unknown
+    // controllers (e.g. an attribute not present in this scene) are
+    // silently skipped -- this must tolerate a partial state.
+    applyViewState(state) {
+        if (!state || typeof state !== "object") return;
+
+        if (typeof state.bodyVisualizationMode === "string") {
+            const ctrl = this.findController("bodyVisualizationMode");
+            if (ctrl && this.visualizationModes.includes(state.bodyVisualizationMode)) {
+                ctrl.setValue(state.bodyVisualizationMode);
+            }
+        }
+
+        if (typeof state.terrainColorMode === "string") {
+            const ctrl = this.findController("colorMode");
+            if (ctrl) ctrl.setValue(state.terrainColorMode);
+        }
+
+        if (state.toggles && typeof state.toggles === "object") {
+            const propertyForKey = {
+                axesVisible: "showAxes",
+                trailsVisible: "showTrails",
+                smoothInterpolation: "smoothInterpolation",
+                terrainProbe: "terrainProbe",
+                "attributeVisible.contacts": "showContacts",
+                "attributeVisible.velocity": "showVelocity",
+                "attributeVisible.angularVelocity": "showAngularVelocity",
+                "attributeVisible.force": "showForce",
+                "attributeVisible.torque": "showTorque",
+                "terrainVisualizationModes.surface": "showSurface",
+                "terrainVisualizationModes.wireframe": "showWireframe",
+                "terrainVisualizationModes.normals": "showNormals",
+            };
+            Object.entries(propertyForKey).forEach(([stateKey, property]) => {
+                if (!(stateKey in state.toggles)) return;
+                const ctrl = this.findController(property);
+                if (ctrl) ctrl.setValue(!!state.toggles[stateKey]);
+            });
+        }
     }
 
     setupKeyboardControls(app) {
@@ -373,9 +487,15 @@ export class UIControls {
         );
     }
 
+    // Searches every folder (Body/Terrain/Camera Options), not just
+    // bodyFolder, so callers (keyboard shortcuts, and applyViewState below)
+    // can find and setValue() any control -- setValue() both updates the
+    // underlying uiState (via each controller's onChange) and refreshes the
+    // widget's on-screen display, so this is the single path that keeps
+    // lil-gui and uiState in sync.
     findController(property) {
-        if (!this.bodyFolder) return null;
-        for (const controller of this.bodyFolder.controllers) {
+        if (!this.gui) return null;
+        for (const controller of this.gui.controllersRecursive()) {
             if (controller.property === property) {
                 return controller;
             }

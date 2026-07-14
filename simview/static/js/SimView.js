@@ -23,6 +23,7 @@ import {
 } from "./utils/blobCodec.js";
 import { StateStore } from "./components/StateStore.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
+import { parseViewState } from "./utils/viewState.js";
 
 export class SimView {
     constructor() {
@@ -403,6 +404,7 @@ export class SimView {
         try {
             this.scene = new Scene(this);
             await this.loadData();
+            this.applyViewStateFromHash();
             this.animate();
             const splash = document.getElementById("loading-splash");
             if (splash) splash.remove();
@@ -412,6 +414,70 @@ export class SimView {
             if (splash) {
                 splash.innerHTML = `<h1 style="color: red;">Failed to connect or initialize</h1><p>${error.message}</p>`;
             }
+        }
+    }
+
+    // Shareable-view-link apply-on-load (see utils/viewState.js and
+    // ui/Controls.js's "Copy view link" button that produces these hashes).
+    // Called once from initAndAnimate() right after loadData() resolves --
+    // by then the animation/scene/uiControls are all fully wired (loadData
+    // awaits through to onStoreReady/animationController.loadAnimation for
+    // every non-live wire shape), so goToTime/camera/batch focus are all
+    // safe to apply here. Live-streaming mode is the one case where
+    // loadAnimation may not have run yet (see startLiveStream) -- there's no
+    // timeline to seek yet, so this just skips silently rather than
+    // crashing; the view link's toggles/camera still get applied via the
+    // early-return guards below where possible.
+    //
+    // A malformed/missing hash (parseViewState returning null) or a bad
+    // partial state must never break page load -- every step below is
+    // independently guarded.
+    applyViewStateFromHash() {
+        let state;
+        try {
+            state = parseViewState(location.hash);
+        } catch (e) {
+            console.warn("Failed to parse view-state hash:", e);
+            return;
+        }
+        if (!state) return;
+
+        try {
+            if (this.batchManager && Number.isInteger(state.batchIndex)) {
+                this.batchManager.setActiveBatch(state.batchIndex);
+            }
+
+            if (this.animationController && this.animationController.store) {
+                this.animationController.pause();
+                if (Number.isFinite(state.time)) {
+                    this.animationController.goToTime(state.time);
+                }
+            }
+
+            if (this.scene && state.camera) {
+                const { camera, controls } = this.scene;
+                if (state.camera.position) {
+                    camera.position.set(state.camera.position.x, state.camera.position.y, state.camera.position.z);
+                }
+                if (state.camera.target) {
+                    controls.target.set(state.camera.target.x, state.camera.target.y, state.camera.target.z);
+                }
+                if (Number.isFinite(state.camera.fov)) {
+                    camera.fov = state.camera.fov;
+                    camera.updateProjectionMatrix();
+                }
+                controls.update();
+            }
+
+            // Routed through UIControls.applyViewState so lil-gui's own
+            // controllers (and their onChange handlers, which is what
+            // actually flips body/terrain visuals) stay in sync instead of
+            // uiState silently drifting out from under the displayed panel.
+            if (this.uiControls) {
+                this.uiControls.applyViewState(state);
+            }
+        } catch (e) {
+            console.warn("Failed to apply view state from URL hash:", e);
         }
     }
 

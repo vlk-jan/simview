@@ -499,6 +499,30 @@ export class AnimationController {
         this._pngPending.push(encoded);
     }
 
+    // Single-frame PNG screenshot (see ui/PlaybackControls.js's camera button
+    // and the "S" keyboard shortcut). Renders the scene once immediately
+    // before capturing -- the renderer is created with preserveDrawingBuffer
+    // (see config.js RENDERER_CONFIG), so the canvas already holds the last
+    // rendered frame's pixels, but re-rendering synchronously first guards
+    // against capturing a stale frame if this fires between animation ticks
+    // (e.g. right after a scrub, before the next rAF has redrawn). Downloads
+    // as `simview_t<currentTime>s.png` via a temporary <a download>, same
+    // pattern as downloadBlob() above.
+    captureScreenshot() {
+        const { scene, renderer } = this.app.scene;
+        const camera = this.app.scene.camera;
+        renderer.render(scene, camera);
+        const canvas = renderer.domElement;
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                console.error("Screenshot capture failed: canvas.toBlob returned null.");
+                return;
+            }
+            const time = this.currentTime.toFixed(3);
+            downloadBlob(blob, `simview_t${time}s.png`);
+        }, "image/png");
+    }
+
     updateScene() {
         if (!this.app.bodies || this.currentStateIndex >= this.store.length) return;
         if (this.app.uiState?.smoothInterpolation && this.store.length > 1) {

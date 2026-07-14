@@ -194,6 +194,9 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **Track Body**: Automatically follow a specific body (via the "Camera Options" menu)
 - **Split Screen**: Compare two batches side-by-side (via the "Camera Options" menu, requires ≥2 batches)
 - **Field of View**: Adjust camera FOV (via the "Camera Options" menu)
+- **Copy View Link**: Click the "Copy view link" button (in the "Camera Options" menu) to copy a
+  URL that encodes the current camera, playback time, focused batch, and visualization toggles --
+  opening it restores that view.
 
 ### Timeline
 
@@ -203,6 +206,7 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **Record**: `R` or Click the Record button (select WEBM, MP4 -- if your browser supports
   recording it -- or PNG sequence via the dropdown). Recording seeks to the start, plays
   exactly one loop, then automatically stops and downloads the file.
+- **Screenshot**: `S` or Click the camera button next to Record to save the current frame as a PNG.
 - **Playback Speed**: Adjust speed (0.1x to 5x) via the dropdown next to the timeline
 
 ### Batch Selection
