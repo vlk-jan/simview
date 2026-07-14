@@ -164,6 +164,24 @@ See `example_live.py` for a runnable end-to-end example.
 
 ---
 
+## Jupyter / non-blocking viewing
+
+`scene.show()` starts a viewer on a background thread and returns immediately,
+instead of blocking like `SimViewLauncher`/`SimViewServer.run`. This is handy in a
+notebook: evaluating the returned handle as a cell's result embeds the viewer inline
+via an iframe.
+
+```python
+handle = scene.show()  # non-blocking; scene itself is left untouched
+handle  # in Jupyter, displays the viewer inline (uses _repr_html_)
+
+# ... do other work, or just let the cell above stay interactive ...
+
+handle.stop()  # or: `with scene.show() as handle: ...` to stop automatically
+```
+
+---
+
 ## Visualization Controls
 
 Once the visualizer is running, you can interact with the simulation using the following controls:
@@ -218,7 +236,9 @@ available (e.g. a single-batch scene has no Error Metrics), that one is shown di
 without the switcher.
 
 - **Scalars**: one tab per scalar defined in the model, each plotting its value over
-  time for every batch (colored per batch, click a line to focus that batch).
+  time for every batch (colored per batch, click a line to focus that batch). An
+  "Export CSV" button on the active tab downloads its full series as `time` plus one
+  column per batch, named after each batch's current display name.
 - **Error Metrics**: shown once a scene has 2 or more batches. Pick a body and two
   batches ("Batch A" / "Batch B") to compare — e.g. the real and simulated batches
   produced by [merging multiple files](#comparing-multiple-runs-eg-real-world-vs-simulated)
@@ -228,6 +248,11 @@ without the switcher.
   time with a marker at the current playback position. The "Per-axis" toggle swaps the
   combined position error curve for the signed X/Y/Z error components (Batch A minus
   Batch B), useful for spotting a directional bias instead of just overall magnitude.
+  Below the readout, a compact stats block summarizes the full timeline: position
+  RMSE, the max position error (and when it occurs), the final-frame drift, and the
+  orientation RMSE and max angle error. An "Export CSV" button downloads the current
+  selection's per-frame series (`time`, `pos_error`, `err_x`, `err_y`, `err_z`,
+  `angle_error_deg`).
 
 ### Batch Legend
 

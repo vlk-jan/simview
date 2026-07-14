@@ -16,6 +16,7 @@ from .model import (
     SimViewTerrain,
     _encode_blob,
 )
+from .server import SimViewServer
 from .state import (
     TRAJECTORY_VECTOR_FIELDS,
     BodyTrajectory,
@@ -25,6 +26,43 @@ from .state import (
 from .utils import read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.scene")
+
+
+class ViewerHandle:
+    """A running, non-blocking SimView server for a snapshot of a scene.
+
+    Returned by `SimulationScene.show`. Holds the background server thread
+    started for that snapshot; `stop()` (also called automatically on
+    context-manager exit) shuts it down. `_repr_html_` lets Jupyter render the
+    viewer inline in an iframe just by evaluating the handle in a cell.
+    """
+
+    def __init__(self, threaded) -> None:
+        self._threaded = threaded
+
+    @property
+    def url(self) -> str:
+        return f"http://{self._threaded.bind_host}:{self._threaded.port}"
+
+    def stop(self) -> None:
+        """Stop the background server. Idempotent."""
+        self._threaded.stop()
+
+    def _repr_html_(self) -> str:
+        """Jupyter calls this automatically when the handle is the result of
+        a cell, embedding the viewer inline without the user having to open a
+        separate browser tab."""
+        url = self.url
+        return (
+            f'<iframe src="{url}" width="100%" height="600" '
+            f'style="border:none;" allow="fullscreen"></iframe>'
+        )
+
+    def __enter__(self) -> "ViewerHandle":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.stop()
 
 
 def _to_f4(value) -> np.ndarray:
@@ -422,6 +460,57 @@ class SimulationScene:
         except Exception:
             logger.exception("Error saving simulation data to %s", output_path)
             raise
+
+    def show(
+        self,
+        host: str = "127.0.0.1",
+        preferred_port: int = 5420,
+        open_browser: bool = False,
+    ) -> ViewerHandle:
+        """Serve a snapshot of this scene on a background thread and return
+        immediately, instead of blocking like `SimViewLauncher`/`SimViewServer.run`.
+
+        Intended for Jupyter notebooks and scripts that want to keep running
+        (or keep the cell interactive) while the viewer is up: the returned
+        `ViewerHandle` renders inline via `_repr_html_` when it's a cell's
+        result, and its `stop()` (or exiting it as a context manager) shuts
+        the server down. The scene itself is left untouched -- unlike
+        `SimViewLauncher`, `show` doesn't clear `self.states`/`self.model`, so
+        the same scene can still be `save()`d or shown again afterwards.
+
+        Multiple concurrent `show()` calls (on the same or different scenes)
+        are fine -- each gets its own server thread and port (via
+        `find_free_port`).
+        """
+        if not self.model.is_complete:
+            raise ValueError(
+                "Cannot show scene: the simulation model is not complete "
+                "(e.g. terrain might be missing)."
+            )
+
+        # Local import: simview.live pulls in uvicorn, which authoring-only
+        # (torch-free-viewer) installs may not need until a viewer is
+        # actually started.
+        from .live import _ThreadedServer
+
+        data = {"model": self.model.to_json(), "states": self.states}
+        server = SimViewServer(data=data)
+
+        threaded = _ThreadedServer(
+            server.app,
+            host=host,
+            preferred_port=preferred_port,
+            thread_name="simview-show-server",
+        )
+        handle = ViewerHandle(threaded)
+
+        logger.info("SimView viewer running on %s", handle.url)
+        if open_browser:
+            import webbrowser
+
+            webbrowser.open(handle.url)
+
+        return handle
 
     def create_terrain(
         self,

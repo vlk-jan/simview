@@ -15,6 +15,7 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 # the import cost (and dependency requirement) when an authoring symbol is used.
 _LAZY_EXPORTS = {
     "SimulationScene": "simview.scene",
+    "ViewerHandle": "simview.scene",
     "SimViewBody": "simview.model",
     "SimViewStaticObject": "simview.model",
     "SimViewTerrain": "simview.model",
@@ -36,12 +37,13 @@ if TYPE_CHECKING:
         SimViewStaticObject,
         SimViewTerrain,
     )
-    from simview.scene import SimulationScene
+    from simview.scene import SimulationScene, ViewerHandle
     from simview.state import BodyTrajectory, SimViewBodyState
 
 __all__ = [
     "CACHE_DIR",
     "SimulationScene",
+    "ViewerHandle",
     "SimViewBody",
     "SimViewStaticObject",
     "SimViewTerrain",
