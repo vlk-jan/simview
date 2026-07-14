@@ -49,6 +49,7 @@ dev = [
     "ruff>=0.6",
     "httpx>=0.27", # required by fastapi.testclient
     "pyright>=1.1.411",
+    "websockets>=16.1",
 ]
 
 [tool.ruff]

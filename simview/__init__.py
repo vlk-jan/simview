@@ -23,9 +23,11 @@ _LAZY_EXPORTS = {
     "OptionalBodyStateAttribute": "simview.model",
     "SimViewBodyState": "simview.state",
     "BodyTrajectory": "simview.state",
+    "LiveViewer": "simview.live",
 }
 
 if TYPE_CHECKING:
+    from simview.live import LiveViewer
     from simview.model import (
         BodyShapeType,
         OptionalBodyStateAttribute,
@@ -48,6 +50,7 @@ __all__ = [
     "OptionalBodyStateAttribute",
     "SimViewBodyState",
     "BodyTrajectory",
+    "LiveViewer",
 ]
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import gzip
 import hashlib
@@ -6,6 +7,7 @@ import logging
 import secrets
 import time
 from collections.abc import Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 try:
@@ -21,7 +23,7 @@ except ImportError:
 from importlib.resources import files
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -301,9 +303,26 @@ class SimViewServer:
         self,
         sim_path: str | Path | Sequence[str | Path] | None = None,
         data: dict | None = None,
+        live: bool = False,
     ):
         if sim_path is None and data is None:
             raise ValueError("Provide 'sim_path' and/or 'data'")
+        # Live streaming mode (see simview.live.LiveViewer): /states reports
+        # {"live": true} instead of serving a (possibly empty) states array,
+        # and a /ws/states endpoint is registered to push frames as they're
+        # produced. self.ws_clients is only ever mutated on self.loop (set by
+        # LiveViewer once the server thread's event loop is running) so
+        # push_state's broadcast, running on the caller's thread, never races
+        # a client connecting/disconnecting on the server thread.
+        self.live = live
+        self.loop = None
+        self.ws_clients: set[WebSocket] = set()
+        # All frames pushed so far (live mode only), replayed as the catch-up
+        # message to a client connecting after the run started. Mirrors
+        # scene.states, which LiveViewer.push_state also appends to via
+        # scene.add_state -- kept as a separate list here rather than reaching
+        # into the scene so SimViewServer doesn't need a reference to it.
+        self.frame_buffer: list[dict] = []
         if sim_path is None:
             self.sim_paths: list[Path] | None = None
         elif isinstance(sim_path, (str, Path)):
@@ -315,7 +334,17 @@ class SimViewServer:
         self._preloaded_data = data
         self.model_data = None
 
-        self.app = FastAPI()
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            # Captured here (rather than e.g. in run()) because this runs on
+            # the server thread's event loop once uvicorn starts serving --
+            # LiveViewer needs this exact loop object to bridge push_state
+            # (caller's thread) into broadcast_frame via
+            # asyncio.run_coroutine_threadsafe.
+            self.loop = asyncio.get_running_loop()
+            yield
+
+        self.app = FastAPI(lifespan=lifespan)
         # Instance-scoped state (self.model_data, self.model_bytes, ...) lives on this
         # object rather than in module-level globals, so multiple SimViewServer
         # instances (e.g. in tests) never share or clobber each other's data. It is
@@ -477,7 +506,13 @@ class SimViewServer:
         self._dumps = orjson.dumps if orjson else (lambda o: json.dumps(o).encode())
         if model_data is not None:
             self.model_bytes = gzip.compress(self._dumps(model_data), compresslevel=1)
-        if states_data is not None:
+        if self.live:
+            # Live mode: frames arrive over /ws/states instead, so /states just
+            # tells the client to open the socket (see loadData in SimView.js).
+            self.states_bytes = gzip.compress(
+                self._dumps({"live": True}), compresslevel=1
+            )
+        elif states_data is not None:
             self.states_bytes = gzip.compress(self._dumps(states_data), compresslevel=1)
 
         logger.info("Simulation data loaded successfully.")
@@ -569,6 +604,52 @@ class SimViewServer:
                     )
 
             return {"ok": True}
+
+        if self.live:
+            # Only registered in live mode: LiveViewer.push_state broadcasts
+            # each new frame to every connected socket (see broadcast_frame).
+            # Frames buffered before this client connected are replayed as one
+            # catch-up message first, so a viewer opened mid-run still sees
+            # the whole timeline so far.
+            @self.app.websocket("/ws/states")
+            async def ws_states(websocket: WebSocket):
+                await websocket.accept()
+                self.ws_clients.add(websocket)
+                try:
+                    if self.frame_buffer:
+                        await websocket.send_text(
+                            json.dumps({"states": list(self.frame_buffer)})
+                        )
+                    while True:
+                        # This endpoint is push-only; block here until the
+                        # client disconnects (or the connection otherwise dies)
+                        # so the `finally` below can discard it.
+                        await websocket.receive_text()
+                except WebSocketDisconnect:
+                    pass
+                finally:
+                    self.ws_clients.discard(websocket)
+
+    async def broadcast_frame(self, frame: dict) -> None:
+        """Send one newly-pushed frame to every connected /ws/states client.
+
+        Must run on self.loop (the server thread's event loop) -- LiveViewer
+        schedules this via asyncio.run_coroutine_threadsafe rather than
+        calling it directly from the caller's thread. A dead/broken socket is
+        dropped rather than allowed to raise, since one slow/gone client must
+        never break the broadcast (or the caller's push_state) for the rest.
+        """
+        if not self.ws_clients:
+            return
+        message = json.dumps({"states": [frame]})
+        dead = []
+        for client in self.ws_clients:
+            try:
+                await client.send_text(message)
+            except Exception:
+                dead.append(client)
+        for client in dead:
+            self.ws_clients.discard(client)
 
     def run(
         self,

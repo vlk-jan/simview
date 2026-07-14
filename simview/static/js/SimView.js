@@ -22,6 +22,7 @@ import {
     STATE_FIELD_WIDTHS,
 } from "./utils/blobCodec.js";
 import { StateStore } from "./components/StateStore.js";
+import { shouldFollowLive } from "./utils/liveFollow.js";
 
 export class SimView {
     constructor() {
@@ -41,6 +42,10 @@ export class SimView {
         this.staticObjects = null;
         this.uiState = structuredClone(UI_DEFAULT_CONFIG);
         this.animate = this.animate.bind(this);
+        // Live streaming mode (see startLiveStream): the open WebSocket (or
+        // null once closed/if never opened) and its "LIVE" badge element.
+        this.liveSocket = null;
+        this.liveBadge = null;
     }
 
     static run() {
@@ -88,6 +93,12 @@ export class SimView {
                 // inline __b64__ fields to expand.
                 console.debug(`Received ${statesPayload.length} states (legacy)`);
                 this.processStates(statesPayload);
+            } else if (statesPayload && statesPayload.live === true) {
+                // Live streaming mode (see simview.live.LiveViewer): no states
+                // yet, they arrive incrementally over /ws/states instead.
+                console.debug("Live mode: opening /ws/states");
+                this.store = StateStore.fromLegacy([]);
+                this.startLiveStream(splash);
             } else if (statesPayload && statesPayload.version === 4) {
                 // Columnar wire shape (see server.py::_columnarize_states):
                 // a lightweight index plus /blob/... URLs for the actual
@@ -102,7 +113,10 @@ export class SimView {
                 throw new Error("Unrecognized /states payload shape");
             }
 
-            if (splash) splash.remove();
+            // Live mode keeps the splash up (repurposed as a "waiting for
+            // first state" indicator by startLiveStream) until the first
+            // frame actually arrives -- see the onmessage handler there.
+            if (splash && !this.liveSocket) splash.remove();
             console.log("Initialization complete!");
         } catch (error) {
             console.error("Critical error during initial data fetch:", error);
@@ -142,6 +156,63 @@ export class SimView {
         );
     }
 
+    // Opens the live-streaming WebSocket (see simview.live.LiveViewer): each
+    // message is `{states: [<frame>, ...]}` -- one catch-up message with
+    // every frame buffered so far, then one message per subsequently pushed
+    // frame -- and is run through the same processStatesChunk path the
+    // static per-frame legacy wire shape uses. `splash` (the loading-splash
+    // element, already repurposed as a "waiting for first state" message by
+    // the caller) is removed once the first frame actually arrives.
+    startLiveStream(splash) {
+        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        const socket = new WebSocket(`${protocol}//${location.host}/ws/states`);
+        this.liveSocket = socket;
+        this.showLiveBadge();
+
+        socket.onmessage = (event) => {
+            const { states } = JSON.parse(event.data);
+            if (!states || states.length === 0) return;
+            this.processStatesChunk(states);
+            if (splash) splash.remove();
+        };
+        socket.onclose = () => {
+            console.log("Live stream closed (simulation finished serving).");
+            this.liveSocket = null;
+            this.hideLiveBadge();
+        };
+        socket.onerror = (event) => {
+            console.error("Live stream error:", event);
+        };
+    }
+
+    showLiveBadge() {
+        if (this.liveBadge) return;
+        const badge = document.createElement("div");
+        badge.textContent = "LIVE";
+        Object.assign(badge.style, {
+            position: "absolute",
+            bottom: "20px",
+            right: "20px",
+            padding: "4px 10px",
+            borderRadius: "4px",
+            backgroundColor: "rgba(200, 0, 0, 0.8)",
+            color: "white",
+            fontFamily: "monospace",
+            fontWeight: "bold",
+            letterSpacing: "1px",
+            zIndex: 1000,
+        });
+        document.body.appendChild(badge);
+        this.liveBadge = badge;
+    }
+
+    hideLiveBadge() {
+        if (this.liveBadge) {
+            this.liveBadge.remove();
+            this.liveBadge = null;
+        }
+    }
+
     // Thin delegates to utils/blobCodec.js -- kept as methods since other code
     // calls through `this`/`SimView.*` and the pure decoding logic lives there
     // so it can be unit-tested without a SimView instance.
@@ -162,18 +233,34 @@ export class SimView {
     // Legacy wire shape entry point: decodes any inline __b64__ fields, wraps
     // the array in a LegacyStateStore, and (dis)patches it exactly like the
     // columnar path below via onStoreReady.
+    //
+    // Branches on whether the animation has been loaded yet (not on whether
+    // `this.store` exists) so the live-streaming path works too: there
+    // `this.store` is created empty up front (see startLiveStream), and the
+    // first inbound chunk must still go through the "first load" branch
+    // (loadAnimation/initFromStore) rather than being treated as an append to
+    // an already-running animation.
     processStatesChunk(chunk) {
         this.decodeStatesChunk(chunk);
+        const firstLoad = !this.animationController || !this.animationController.store;
         if (!this.store) {
             this.store = StateStore.fromLegacy(chunk);
-            this.onStoreReady();
+        } else if (firstLoad) {
+            this.store.append(chunk);
         } else {
+            const wasFollowingLive = shouldFollowLive(this.animationController);
             const startIndex = this.store.append(chunk);
             this.animationController.onStatesAppended();
             this.appendBodyHistories(startIndex);
             if (this.errorMetrics) {
                 this.errorMetrics.onHistoryReady();
             }
+            if (wasFollowingLive) {
+                this.animationController.goToTime(this.store.lastTime());
+            }
+        }
+        if (firstLoad) {
+            this.onStoreReady();
         }
     }
 
