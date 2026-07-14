@@ -20,7 +20,6 @@ export class AnalysisPanel {
     _injectStyles() {
         const styleId = "analysis-panel-styles";
         const containerWidthPercentage = 40;
-        const contentMaxHeightPercentage = 30;
         const css = `
         .analysis-container {
             width: ${containerWidthPercentage}%;
@@ -67,12 +66,9 @@ export class AnalysisPanel {
             border-radius: 0 0 5px 5px;
             display: none;
             box-sizing: border-box;
-            overflow: hidden;
         }
         .analysis-content.visible {
             display: block;
-            max-height: ${contentMaxHeightPercentage}vh;
-            overflow-y: auto;
         }
 
         .analysis-mode-tab-bar {

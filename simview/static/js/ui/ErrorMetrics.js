@@ -23,6 +23,7 @@ export class ErrorMetrics {
         this.batchA = 0;
         this.batchB = Math.min(1, app.batchManager.simBatches - 1);
         this.showAxes = false;
+        this.showStats = false;
         this.posSeries = [];
         this.rotSeries = [];
         this.axisSeries = { x: [], y: [], z: [] };
@@ -145,6 +146,7 @@ export class ErrorMetrics {
         this.batchASelect = this._addSelectGroup("Batch A:", batchOptions, this.batchA, true);
         this.batchBSelect = this._addSelectGroup("Batch B:", batchOptions, this.batchB, true);
         this.axesToggle = this._addCheckboxGroup("Per-axis:", this.showAxes);
+        this.statsToggle = this._addCheckboxGroup("Details:", this.showStats);
 
         this.readout = document.createElement("div");
         this.readout.className = "error-metrics-readout";
@@ -189,6 +191,7 @@ export class ErrorMetrics {
         this.stats.appendChild(rotRmseRow.row);
         this.stats.appendChild(rotMaxRow.row);
         this.content.appendChild(this.stats);
+        this._applyStatsVisibility();
 
         this.exportContainer = document.createElement("div");
         this.exportContainer.className = "error-metrics-export";
@@ -257,6 +260,12 @@ export class ErrorMetrics {
         this.axisReadoutZ.style.display = this.showAxes ? "" : "none";
     }
 
+    // Shows/hides the RMSE/max-error/drift summary block based on the
+    // "Details" toggle.
+    _applyStatsVisibility() {
+        this.stats.style.display = this.showStats ? "" : "none";
+    }
+
     // Called after a batch is renamed elsewhere (e.g. the BatchLegend), so the
     // Batch A/B dropdowns don't keep showing a stale name.
     refreshBatchLabels() {
@@ -285,6 +294,10 @@ export class ErrorMetrics {
             this.showAxes = e.target.checked;
             this._applyAxesVisibility();
             this._buildChart();
+        });
+        this.statsToggle.addEventListener("change", (e) => {
+            this.showStats = e.target.checked;
+            this._applyStatsVisibility();
         });
         this.exportButton.addEventListener("click", () => this._exportCsv());
     }
