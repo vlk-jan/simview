@@ -299,6 +299,18 @@ produces.
 > (typically ~3-4× smaller than the equivalent plain JSON floats); pass `binary=False` to
 > either to emit plain JSON lists instead. The viewer and the file-merge decode binary
 > fields transparently. `contacts`, scalars, and `time` are always plain JSON.
+>
+> **Server-side columnar repack.** This on-disk, per-frame layout never changes (and
+> `simview merge` still reads/writes it as described above); but when serving a scene to
+> the viewer, the server repacks `states` at load time into whole-trajectory columns --
+> one binary blob per body per numeric field (and one per scalar), covering all `T`
+> frames at once -- and serves a small JSON index (`{"version": 4, "times", "bodies",
+> "scalars"}`) whose entries are `/blob/...` URLs, fetched in parallel and decoded into
+> `Float32Array`s. This avoids materializing thousands of tiny per-frame JS objects
+> just to play back a long trajectory. The repack requires the body set, per-body field
+> set, and field widths to be identical across every frame (`contacts` is exempt and may
+> come and go per frame); if a scene doesn't meet that, the server falls back to serving
+> the legacy per-frame JSON array unchanged, which the viewer also still supports.
 
 ### Authoring whole trajectories
 

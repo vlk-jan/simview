@@ -21,6 +21,7 @@ import {
     decodeStatesChunk,
     STATE_FIELD_WIDTHS,
 } from "./utils/blobCodec.js";
+import { StateStore } from "./components/StateStore.js";
 
 export class SimView {
     constructor() {
@@ -65,7 +66,7 @@ export class SimView {
             console.timeEnd("parse_model");
 
             console.time("fetch_blobs");
-            await this.fetchModelBlobs(model);
+            await this.fetchBlobs(model);
             console.timeEnd("fetch_blobs");
 
             console.log("Model received, initializing components...");
@@ -79,10 +80,27 @@ export class SimView {
                 throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
 
             console.time("parse_states");
-            const states = await statesResponse.json();
+            const statesPayload = await statesResponse.json();
             console.timeEnd("parse_states");
-            console.debug(`Received ${states.length} states`);
-            this.processStates(states);
+
+            if (Array.isArray(statesPayload)) {
+                // Legacy wire shape: a plain per-frame array, possibly with
+                // inline __b64__ fields to expand.
+                console.debug(`Received ${statesPayload.length} states (legacy)`);
+                this.processStates(statesPayload);
+            } else if (statesPayload && statesPayload.version === 4) {
+                // Columnar wire shape (see server.py::_columnarize_states):
+                // a lightweight index plus /blob/... URLs for the actual
+                // whole-trajectory float32 data, fetched in parallel below.
+                console.debug(`Received ${statesPayload.times.length} states (columnar)`);
+                console.time("fetch_state_blobs");
+                await this.fetchBlobs(statesPayload);
+                console.timeEnd("fetch_state_blobs");
+                this.store = StateStore.fromColumnar(statesPayload, this.batchManager.simBatches);
+                this.onStoreReady();
+            } else {
+                throw new Error("Unrecognized /states payload shape");
+            }
 
             if (splash) splash.remove();
             console.log("Initialization complete!");
@@ -95,10 +113,12 @@ export class SimView {
         }
     }
 
-    async fetchModelBlobs(obj) {
-        // Walk the model first to collect every blob reference, then fetch them
-        // all in parallel -- sequential awaits here serialized what's otherwise
-        // an embarrassingly parallel set of independent HTTP requests.
+    // Walks any JSON-shaped object/array (the model, or the columnar states
+    // payload) collecting every "/blob/..." reference, then fetches them all
+    // in parallel and replaces each in place with its decoded Float32Array --
+    // sequential awaits here would serialize what's otherwise an
+    // embarrassingly parallel set of independent HTTP requests.
+    async fetchBlobs(obj) {
         const refs = [];
         const collect = (node) => {
             if (!node || typeof node !== 'object') return;
@@ -139,39 +159,49 @@ export class SimView {
         decodeStatesChunk(chunk);
     }
 
+    // Legacy wire shape entry point: decodes any inline __b64__ fields, wraps
+    // the array in a LegacyStateStore, and (dis)patches it exactly like the
+    // columnar path below via onStoreReady.
     processStatesChunk(chunk) {
         this.decodeStatesChunk(chunk);
-        if (!this.statesBuffer) {
-            this.statesBuffer = [];
-        }
-        const startIndex = this.statesBuffer.length;
-        this.statesBuffer.push(...chunk);
-
-        if (this.animationController) {
-            if (startIndex === 0) {
-                this.animationController.loadAnimation(this.statesBuffer);
-                if (this.scalarPlotter) {
-                    this.scalarPlotter.initFromStates(this.statesBuffer);
-                }
-            } else {
-                this.animationController.onStatesAppended();
-                if (this.scalarPlotter) {
-                    // scalarPlotter pulls from states array by reference usually
-                }
+        if (!this.store) {
+            this.store = StateStore.fromLegacy(chunk);
+            this.onStoreReady();
+        } else {
+            const startIndex = this.store.append(chunk);
+            this.animationController.onStatesAppended();
+            this.appendBodyHistories(startIndex);
+            if (this.errorMetrics) {
+                this.errorMetrics.onHistoryReady();
             }
         }
+    }
 
-        this.appendBodyHistories(chunk, startIndex);
+    // Called once the store (legacy or columnar) has its full initial
+    // timeline available -- wires it into the animation/scalar/history
+    // consumers that were previously handed the raw states array directly.
+    onStoreReady() {
+        if (this.animationController) {
+            this.animationController.loadAnimation(this.store);
+            if (this.scalarPlotter) {
+                this.scalarPlotter.initFromStore(this.store);
+            }
+        }
+        this.appendBodyHistories(0);
         if (this.errorMetrics) {
             this.errorMetrics.onHistoryReady();
         }
     }
 
-    appendBodyHistories(chunk, startIndex) {
+    // Resolves and records position/orientation (and contacts, vectors, ...)
+    // history for every frame from `startIndex` to the end of the store, for
+    // trails and the error metrics panel. Each frame is materialized
+    // transiently via store.getFrame(i) (not retained) so this works
+    // identically whether the store is legacy or columnar.
+    appendBodyHistories(startIndex) {
         if (!this.bodies || this.bodies.size === 0) return;
-        for (let i = 0; i < chunk.length; i++) {
-            const s = startIndex + i;
-            const bodyStates = chunk[i].bodies;
+        for (let s = startIndex; s < this.store.length; s++) {
+            const bodyStates = this.store.getFrame(s).bodies;
             if (!bodyStates) continue;
             // Resolve off this historical state's own data (not any Body's
             // current/live pose, which reflects whatever frame is currently
@@ -201,12 +231,6 @@ export class SimView {
 
     processStates(statesData) {
         this.processStatesChunk(statesData);
-    }
-
-    // Precomputes per-body, per-batch position/orientation history in a single
-    // pass over all states. Powers trajectory trails and the error metrics panel.
-    buildBodyHistories(states) {
-        this.appendBodyHistories(states, 0);
     }
 
     initFromModel(model) {

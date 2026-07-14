@@ -32,7 +32,11 @@ def test_model_endpoint_serves_gzipped_json(client):
 def test_states_endpoint_serves_gzipped_json(client):
     resp = client.get("/states")
     assert resp.status_code == 200
-    assert len(resp.json()) == 3
+    # build_scene's states are consistent across frames, so they're served as
+    # the columnar v4 payload (see test_columnar_states.py), not a bare array.
+    body = resp.json()
+    assert body["version"] == 4
+    assert len(body["times"]) == 3
 
 
 def test_payload_advertises_gzip_encoding(client):
@@ -176,7 +180,7 @@ def test_serves_gzipped_scene_file(tmp_path):
 
     model = client.get("/model").json()
     assert model["simBatches"] == 2
-    assert len(client.get("/states").json()) == 3
+    assert len(client.get("/states").json()["times"]) == 3
 
 
 # --- Server hardening (gameplan item 10 / bug B7) ----------------------------

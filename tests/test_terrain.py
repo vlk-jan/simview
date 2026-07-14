@@ -159,4 +159,6 @@ def test_per_batch_terrain_served_by_server(tmp_path):
     assert blob_resp.status_code == 200
     floats = struct.unpack(f"<{len(blob_resp.content) // 4}f", blob_resp.content)
     assert len(floats) == 3 * 3 * 3  # batch * res * res
-    assert len(client.get("/states").json()) == 2
+    # Consistent per-frame states get columnarized into the v4 payload (see
+    # test_columnar_states.py) rather than served as a bare per-frame array.
+    assert len(client.get("/states").json()["times"]) == 2

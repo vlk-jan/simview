@@ -196,40 +196,27 @@ export class ScalarPlotter {
         this.setFocusedBatch(this.currentFocusedBatch, true);
     }
 
-    initFromStates(states) {
-        this.times = [];
+    initFromStore(store) {
         const batchSize = this.app.batchManager.simBatches;
+        this.times = store.times;
         this.indices = [...Array(batchSize).keys()];
         for (const scalarName of this.scalarNames) {
-            this.scalarBounds.set(scalarName, [Number.MAX_VALUE, Number.MIN_VALUE]);
-            this.scalarSeries.set(
-                scalarName,
-                new Array(batchSize).fill().map(() => [])
-            );
-        }
-        for (const state of states) {
-            for (const scalarName of this.scalarNames) {
-                const scalarValues = state[scalarName];
-                if (scalarValues === undefined) {
-                    throw new Error(`Scalar "${scalarName}" not found in state.`);
+            // Per-batch series as plain {x, y} points (sliced into uPlot's
+            // columnar format on render), pulled from the store rather than
+            // walked per-frame here -- the columnar store already holds each
+            // scalar as one whole-trajectory Float32Array.
+            const series = store.getScalarSeries(scalarName, batchSize);
+            this.scalarSeries.set(scalarName, series);
+
+            let min = Number.MAX_VALUE;
+            let max = Number.MIN_VALUE;
+            for (const batchSeries of series) {
+                for (const { y } of batchSeries) {
+                    min = Math.min(min, y);
+                    max = Math.max(max, y);
                 }
-                var [min, max] = this.scalarBounds.get(scalarName);
-                for (let i = 0; i < batchSize; i++) {
-                    const scalarValue = scalarValues[i];
-                    if (scalarValue === undefined) {
-                        throw new Error(
-                            `Scalar "${scalarName}" not found in state at index ${i}.`
-                        );
-                    }
-                    // Store as plain {x, y} points; sliced into uPlot's columnar
-                    // format on render.
-                    this.scalarSeries.get(scalarName)[i].push({ x: state.time, y: scalarValue });
-                    min = Math.min(min, scalarValue);
-                    max = Math.max(max, scalarValue);
-                }
-                this.scalarBounds.set(scalarName, [min, max]);
             }
-            this.times.push(state.time);
+            this.scalarBounds.set(scalarName, [min, max]);
         }
 
         for (const scalarName of this.scalarNames) {

@@ -6,7 +6,7 @@ export class AnimationController {
     constructor(app, simulationTimestep) {
         this.app = app;
         this.playbackControls = null;
-        this.states = null;
+        this.store = null;
         this.isPlaying = false;
         this.playbackSpeed = 1;
         this.isRecording = false;
@@ -21,17 +21,17 @@ export class AnimationController {
         this.lastUpdateTime = null;
     }
 
-    loadAnimation(states) {
-        if (!states || states.length === 0) {
+    loadAnimation(store) {
+        if (!store || store.length === 0) {
             console.warn("No states received for animation.");
             return;
         }
-        this.states = states;
-        this.totalTime = this.states[this.states.length - 1].time;
+        this.store = store;
+        this.totalTime = this.store.lastTime();
 
         // Infer simulation timestep if not provided or invalid
-        if ((!this.simulationTimestep || isNaN(this.simulationTimestep)) && this.states.length > 1) {
-            const dt = this.states[1].time - this.states[0].time;
+        if ((!this.simulationTimestep || isNaN(this.simulationTimestep)) && this.store.length > 1) {
+            const dt = this.store.timeAt(1) - this.store.timeAt(0);
             if (dt > 0) {
                 console.log(`Inferred simulation timestep from states: ${dt}`);
                 this.simulationTimestep = dt;
@@ -49,8 +49,8 @@ export class AnimationController {
     }
 
     onStatesAppended() {
-        if (this.states && this.states.length > 0) {
-            this.totalTime = this.states[this.states.length - 1].time;
+        if (this.store && this.store.length > 0) {
+            this.totalTime = this.store.lastTime();
         }
         if (this.playbackControls) {
             this.playbackControls.forceRedraw();
@@ -102,37 +102,37 @@ export class AnimationController {
         this.app.bodyStateWindow.forceRedraw();
     }
 
-    // Binary search over states[i].time (time-ordered, but not necessarily
+    // Binary search over store.timeAt(i) (time-ordered, but not necessarily
     // uniformly spaced -- adaptive-step simulations break the old
     // targetTime/simulationTimestep shortcut) for the index whose time is
     // nearest targetTime.
     getStateIndexForTime(targetTime) {
-        const states = this.states;
+        const store = this.store;
         let lo = 0;
-        let hi = states.length - 1;
-        if (targetTime <= states[lo].time) return lo;
-        if (targetTime >= states[hi].time) return hi;
+        let hi = store.length - 1;
+        if (targetTime <= store.timeAt(lo)) return lo;
+        if (targetTime >= store.timeAt(hi)) return hi;
         while (lo < hi - 1) {
             const mid = (lo + hi) >> 1;
-            if (states[mid].time <= targetTime) {
+            if (store.timeAt(mid) <= targetTime) {
                 lo = mid;
             } else {
                 hi = mid;
             }
         }
         // lo and hi now straddle targetTime; pick whichever is closer.
-        return targetTime - states[lo].time <= states[hi].time - targetTime ? lo : hi;
+        return targetTime - store.timeAt(lo) <= store.timeAt(hi) - targetTime ? lo : hi;
     }
 
     seekToIndex(index) {
         this.currentStateIndex = index;
-        this.currentTime = this.states[index].time;
+        this.currentTime = this.store.timeAt(index);
         this.updateScene();
     }
 
     stepForward() {
         if (this.isPlaying) return; // Ignore if playing
-        const newIndex = (this.currentStateIndex + 1) % this.states.length;
+        const newIndex = (this.currentStateIndex + 1) % this.store.length;
         this.seekToIndex(newIndex);
         this.forceRedrawStaticElements();
     }
@@ -140,7 +140,7 @@ export class AnimationController {
     stepBackward() {
         if (this.isPlaying) return; // Ignore if playing
         const newIndex =
-            (this.currentStateIndex - 1 + this.states.length) % this.states.length;
+            (this.currentStateIndex - 1 + this.store.length) % this.store.length;
         this.seekToIndex(newIndex);
         this.forceRedrawStaticElements();
     }
@@ -190,7 +190,7 @@ export class AnimationController {
     }
 
     getCurrentState() {
-        return this.states[this.currentStateIndex];
+        return this.store.getFrame(this.currentStateIndex);
     }
 
     stopRecording() {
@@ -203,7 +203,7 @@ export class AnimationController {
     }
 
     animate(now) {
-        if (!this.isPlaying || !this.states) return;
+        if (!this.isPlaying || !this.store) return;
         if (this.lastUpdateTime === null) {
             this.lastUpdateTime = now;
         }
@@ -241,8 +241,8 @@ export class AnimationController {
     }
 
     updateScene() {
-        if (!this.app.bodies || !this.states[this.currentStateIndex]) return;
-        const state = this.states[this.currentStateIndex];
+        if (!this.app.bodies || this.currentStateIndex >= this.store.length) return;
+        const state = this.store.getFrame(this.currentStateIndex);
         // Resolve parent-relative (rigid/articulated) transforms and expand
         // grouped names into ordinary absolute-world transforms, then update
         // each body exactly as before.

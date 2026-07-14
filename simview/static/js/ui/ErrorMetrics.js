@@ -248,8 +248,8 @@ export class ErrorMetrics {
             this.axisSeries = { x: [], y: [], z: [] };
             return;
         }
-        const states = this.app.animationController ? this.app.animationController.states : null;
-        if (!states) {
+        const store = this.app.animationController ? this.app.animationController.store : null;
+        if (!store) {
             this.posSeries = [];
             this.rotSeries = [];
             this.axisSeries = { x: [], y: [], z: [] };
@@ -278,7 +278,7 @@ export class ErrorMetrics {
             const posErr = positionError(posA, posB, s);
             const rotErrDeg = (quaternionAngleError(quatA, quatB, s) * 180) / Math.PI;
 
-            const t = states[s] ? states[s].time : s;
+            const t = s < store.length ? store.timeAt(s) : s;
             posSeries[s] = { x: t, y: posErr };
             rotSeries[s] = { x: t, y: rotErrDeg };
             axisXSeries[s] = { x: t, y: dx };

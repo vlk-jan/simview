@@ -13,6 +13,11 @@ try:
 except ImportError:
     orjson = None
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 from importlib.resources import files
 
 import uvicorn
@@ -41,6 +46,227 @@ _ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 # is cache-busted via the ?v= query param in index.html instead, so it only needs
 # a short revalidation window.
 _IMMUTABLE_STATIC_DIRS = ("lib/",)
+
+# Per-body numeric state fields eligible for columnar (whole-trajectory) binary
+# packing, with their trailing per-batch-row width. Same fields/widths
+# SimViewBodyState/add_trajectory may binary-encode per frame (state.py,
+# blobCodec.js) -- the columnar repack below just packs a whole (T, B, k) run
+# instead of one (B, k) blob per frame.
+_STATE_FIELD_WIDTHS = {
+    "bodyTransform": 7,
+    "velocity": 3,
+    "angularVelocity": 3,
+    "force": 3,
+    "torque": 3,
+}
+
+
+class _StatesShapeMismatch(Exception):
+    """Raised internally by _columnarize_states to bail out to the legacy
+    array response -- caught in one place rather than threading a bunch of
+    `if inconsistent: return None` checks through the nested loops below."""
+
+
+def _decode_state_field_rows(value, width: int, batch_size: int):
+    """Decode one state's per-body field value (either a `__b64__` blob or a
+    plain nested/flat JSON list) into a (batch_size, width) float32 array.
+
+    Mirrors the shapes SimViewBodyState.to_json()/add_trajectory produce: a
+    `__b64__` blob is always batch_size rows of `width` floats; a plain list is
+    either already nested (one row per batch) or, for a single-batch scene, a
+    flat list of `width` floats (see README "Authoring whole trajectories").
+    """
+    assert np is not None
+    if isinstance(value, str):
+        if not value.startswith("__b64__"):
+            raise _StatesShapeMismatch(f"unexpected string value for field: {value!r}")
+        flat = np.frombuffer(base64.b64decode(value[7:]), dtype="<f4")
+    else:
+        arr = np.asarray(value, dtype="<f4")
+        if arr.ndim == 1:
+            if batch_size != 1:
+                raise _StatesShapeMismatch(
+                    "flat (non-nested) field value with batch size != 1"
+                )
+            arr = arr[None, :]
+        flat = arr.reshape(-1)
+    if flat.size != batch_size * width:
+        raise _StatesShapeMismatch(
+            f"field has {flat.size} floats; expected {batch_size * width} "
+            f"({batch_size} batches x {width})"
+        )
+    return flat.reshape(batch_size, width)
+
+
+def _body_key(name):
+    """Hashable key for a body's `name` (a string, or a list of grouped names
+    for bodies moving rigidly together -- see BodyTrajectory/SimViewBodyState).
+    The original `name` value (str or list) is what actually gets emitted in
+    the columnar payload; this is only used to identify "the same body slot"
+    across frames."""
+    return tuple(name) if isinstance(name, list) else name
+
+
+def _columnarize_states(states_data: list, model_data: dict | None, register_blob):
+    """Repack the legacy per-frame `states` array into the columnar v4 payload
+    described in README.md, or return None if `states_data` doesn't meet the
+    strict consistency requirements (in which case the caller must fall back
+    to serving `states_data` exactly as today).
+
+    `register_blob(bytes) -> url` registers one whole-trajectory float32 blob
+    (e.g. in self.blobs) and returns its `/blob/{token}/{id}` URL.
+
+    Strict by design: this trades a bit of coverage (an inconsistent scene
+    just doesn't get the perf win) for never risking a subtly wrong repack
+    reaching the viewer. The one deliberate exception is `contacts`, which may
+    legitimately come and go per frame (see README) without disqualifying the
+    rest of the scene from columnar packing.
+    """
+    if np is None or not states_data:
+        return None
+    if model_data is None:
+        return None
+
+    batch_size = int(model_data.get("simBatches", 1))
+
+    try:
+        times = []
+        # Per body: ordered list of field names (first frame's order/set is
+        # the contract every other frame must match), plus the accumulated
+        # (T, B, k) rows for each field, and the original name value to emit.
+        body_order: list = []
+        body_fields: dict[object, list[str]] = {}
+        body_name_value: dict[object, object] = {}
+        body_rows: dict[object, dict[str, list]] = {}
+        body_contacts: dict[object, list] = {}
+        any_contacts: set = set()
+
+        for state_idx, state in enumerate(states_data):
+            if "time" not in state:
+                raise _StatesShapeMismatch(f"state {state_idx} is missing 'time'")
+            times.append(state["time"])
+
+            bodies = state.get("bodies") or []
+            seen_keys = set()
+            for body in bodies:
+                if not isinstance(body, dict) or "name" not in body:
+                    raise _StatesShapeMismatch(
+                        f"state {state_idx} has a body entry missing 'name'"
+                    )
+                name = body["name"]
+                if not isinstance(name, (str, list)):
+                    raise _StatesShapeMismatch(
+                        f"state {state_idx} has a non-string/list body name"
+                    )
+                key = _body_key(name)
+                if key in seen_keys:
+                    raise _StatesShapeMismatch(
+                        f"state {state_idx} lists body '{name}' more than once"
+                    )
+                seen_keys.add(key)
+
+                fields = sorted(k for k in body if k in _STATE_FIELD_WIDTHS)
+                if key not in body_fields:
+                    if state_idx != 0 and body_rows.get(key) is None:
+                        # A body appearing for the first time after frame 0
+                        # would leave earlier frames' rows undefined -- bail
+                        # rather than guess a fill value.
+                        raise _StatesShapeMismatch(
+                            f"body '{name}' first appears at state {state_idx}, "
+                            "not state 0"
+                        )
+                    body_order.append(key)
+                    body_fields[key] = fields
+                    body_name_value[key] = name
+                    body_rows[key] = {f: [] for f in fields}
+                elif body_fields[key] != fields:
+                    raise _StatesShapeMismatch(
+                        f"body '{name}' has inconsistent field set across frames"
+                    )
+
+                for field in fields:
+                    width = _STATE_FIELD_WIDTHS[field]
+                    rows = _decode_state_field_rows(body[field], width, batch_size)
+                    body_rows[key][field].append(rows)
+
+                if "contacts" in body:
+                    any_contacts.add(key)
+                    body_contacts.setdefault(key, [None] * state_idx).append(
+                        body["contacts"]
+                    )
+                elif key in any_contacts:
+                    body_contacts[key].append(None)
+
+            missing = set(body_order) - seen_keys
+            if missing:
+                raise _StatesShapeMismatch(
+                    f"state {state_idx} is missing bodies present in earlier "
+                    f"frames: {sorted(str(m) for m in missing)}"
+                )
+            # A body with contacts not yet seen this frame (declared later than
+            # its own first appearance) still needs a None placeholder so its
+            # contacts list stays length == number of frames seen so far.
+            for key in any_contacts:
+                lst = body_contacts[key]
+                if len(lst) < state_idx + 1:
+                    lst.append(None)
+
+            scalar_names = model_data.get("scalarNames") or []
+            for name in scalar_names:
+                if name not in state:
+                    raise _StatesShapeMismatch(
+                        f"state {state_idx} is missing scalar '{name}'"
+                    )
+
+        T = len(states_data)
+
+        bodies_payload = []
+        for key in body_order:
+            fields_payload = {}
+            for field, per_frame_rows in body_rows[key].items():
+                if len(per_frame_rows) != T:
+                    raise _StatesShapeMismatch(
+                        f"body '{body_name_value[key]}' field '{field}' is "
+                        "missing from some frames"
+                    )
+                stacked = np.ascontiguousarray(
+                    np.stack(per_frame_rows, axis=0), dtype="<f4"
+                )  # (T, B, k)
+                fields_payload[field] = register_blob(stacked.tobytes())
+            entry = {"name": body_name_value[key], "fields": fields_payload}
+            if key in any_contacts:
+                entry["contacts"] = body_contacts[key]
+            bodies_payload.append(entry)
+
+        scalars_payload = {}
+        for name in model_data.get("scalarNames") or []:
+            per_frame = []
+            for state in states_data:
+                row = np.asarray(state[name], dtype="<f4")
+                if row.ndim == 0:
+                    row = row.reshape(1)
+                if row.shape != (batch_size,):
+                    raise _StatesShapeMismatch(
+                        f"scalar '{name}' has shape {row.shape}; expected "
+                        f"({batch_size},)"
+                    )
+                per_frame.append(row)
+            stacked = np.ascontiguousarray(np.stack(per_frame, axis=0), dtype="<f4")
+            scalars_payload[name] = register_blob(stacked.tobytes())
+
+        return {
+            "version": 4,
+            "times": times,
+            "bodies": bodies_payload,
+            "scalars": scalars_payload,
+        }
+    except _StatesShapeMismatch as e:
+        logger.warning(
+            "States data is not columnar-repackable, falling back to the "
+            "legacy per-frame array response: %s",
+            e,
+        )
+        return None
 
 
 class BatchNamesRequest(BaseModel):
@@ -223,6 +449,26 @@ class SimViewServer:
 
         if self.model_data is not None:
             extract_blobs(self.model_data)
+
+        def register_blob(raw: bytes) -> str:
+            blob_id = len(self.blobs)
+            self.blobs.append(raw)
+            return f"/blob/{self._blob_token}/{blob_id}"
+
+        # Repack the per-frame states array into whole-trajectory columnar
+        # blobs (wire format v4, see README "Binary state fields") so the
+        # viewer parses one lightweight JSON index plus raw binary instead of
+        # thousands of tiny per-frame objects/base64 strings. Falls back to
+        # serving `states_data` exactly as before if it isn't strictly
+        # consistent across frames (see _columnarize_states).
+        if isinstance(states_data, list) and states_data:
+            columnar = _columnarize_states(states_data, model_data, register_blob)
+            if columnar is not None:
+                states_data = columnar
+        # Discard the raw per-frame states list now that everything needed
+        # from it (columnar or not) has been extracted -- it can be large
+        # (the dominant memory user for a long simulation).
+        del data
 
         # Pre-serialize and pre-compress once so HTTP endpoints never do work per request.
         # compresslevel=1 is fastest (still typically 5-10x smaller for JSON). model_data
