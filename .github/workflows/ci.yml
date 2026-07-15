@@ -74,7 +74,7 @@ jobs:
         run: uv sync --extra authoring
 
       - name: Generate example_sim.json
-        run: uv run python example.py
+        run: uv run python example.py --no-launch
 
       - name: Set up Node
         uses: actions/setup-node@v4

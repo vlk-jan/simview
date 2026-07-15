@@ -68,11 +68,15 @@ for t in range(50):
     )
 
 if __name__ == "__main__":
+    import sys
+
     # Save to file
     output_file = "example_sim.json"
     scene.save(output_file)
     print(f"Simulation saved to {output_file}")
 
-    # Launch visualization immediately:
-    launcher = SimViewLauncher(scene)
-    launcher.launch()
+    # Launch visualization immediately, unless just generating the file
+    # (e.g. for CI, where nothing sends the Ctrl-C that stops the server).
+    if "--no-launch" not in sys.argv:
+        launcher = SimViewLauncher(scene)
+        launcher.launch()

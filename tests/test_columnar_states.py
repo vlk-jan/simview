@@ -5,11 +5,11 @@ The on-disk JSON format and merge.py are unaffected -- this only covers the
 repack the server does at load time before serving `/states`.
 """
 
-import numpy as np
 import pytest
 
 pytest.importorskip("torch")
 
+import numpy as np
 import torch
 from fastapi.testclient import TestClient
 
