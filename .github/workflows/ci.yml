@@ -37,7 +37,7 @@ jobs:
         run: uv run pyright
 
       - name: Test with coverage
-        run: uv run pytest --cov=simview --cov-report=term-missing --cov-fail-under=80 -q
+        run: uv run pytest --cov=simview --cov-report=term-missing --cov-fail-under=83 -q
 
   test-js:
     runs-on: ubuntu-latest
