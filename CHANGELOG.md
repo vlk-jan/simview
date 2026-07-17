@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3] - 2026-07-17
+
 ### Added
 
 - Expose the installed package version as `simview.__version__`.
@@ -88,7 +90,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.2...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.3...HEAD
+[3.3]: https://github.com/vlk-jan/simview/compare/v3.2...v3.3
 [3.2]: https://github.com/vlk-jan/simview/compare/v3.1...v3.2
 [3.1]: https://github.com/vlk-jan/simview/compare/v3.0...v3.1
 [3.0]: https://github.com/vlk-jan/simview/releases/tag/v3.0
