@@ -7,8 +7,6 @@ export class BatchManager {
         this.app = app;
         this.simBatches = 1; // Default to single batch
         this.currentlyActiveBatch = 0; // Default to the first batch
-        this.collapsedMode = false; // Flag for collapsed mode, TODO implement this
-        this.focusedMode = false; // Flag for focused mode, TODO implement this
 
         // Batch offset configuration
         this.spacing = 0.5; // Spacing between batches in meters
