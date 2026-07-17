@@ -59,6 +59,17 @@ class _ThreadedServer:
             http = "httptools"
         except ImportError:
             http = "auto"
+        # Prefer uvicorn's modern sansio websocket implementation when the
+        # `websockets` package is available -- the default "auto" still selects
+        # the legacy implementation, which emits DeprecationWarnings. Fall back
+        # to "auto" (which degrades gracefully to wsproto/none) on a bare
+        # install without `websockets`.
+        try:
+            import websockets  # noqa: F401
+
+            ws = "websockets-sansio"
+        except ImportError:
+            ws = "auto"
         config = uvicorn.Config(
             app,
             host=host,
@@ -66,6 +77,7 @@ class _ThreadedServer:
             log_level="info",
             loop=loop,
             http=http,
+            ws=ws,
         )
         self._uvicorn_server = uvicorn.Server(config)
 
