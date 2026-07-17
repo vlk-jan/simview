@@ -1,7 +1,16 @@
 import logging
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
 from typing import TYPE_CHECKING
 
 CACHE_DIR = ".simview_cache"
+
+try:
+    __version__ = _version("simview")
+except PackageNotFoundError:
+    # Editable/source checkout that was never installed as a distribution.
+    __version__ = "0.0.0.dev0"
+del _version, PackageNotFoundError
 
 # Library best practice: attach a NullHandler to the package root logger so
 # `import simview` is silent by default for downstream users. Applications
@@ -41,6 +50,7 @@ if TYPE_CHECKING:
     from simview.state import BodyTrajectory, SimViewBodyState
 
 __all__ = [
+    "__version__",
     "CACHE_DIR",
     "SimulationScene",
     "ViewerHandle",

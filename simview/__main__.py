@@ -5,10 +5,9 @@ import logging
 import shutil
 import sys
 import tempfile
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from simview import CACHE_DIR
+from simview import CACHE_DIR, __version__
 from simview.server import SimViewServer
 
 logger = logging.getLogger("simview.cli")
@@ -39,10 +38,9 @@ def _package_version() -> str:
     """The installed simview version, with a sensible fallback for editable
     checkouts run without an installed distribution (e.g. `python -m simview`
     from a source tree that was never `pip install -e`'d)."""
-    try:
-        return version("simview")
-    except PackageNotFoundError:
+    if __version__ == "0.0.0.dev0":
         return "unknown (not installed)"
+    return __version__
 
 
 def clear_cache():

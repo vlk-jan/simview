@@ -10,13 +10,13 @@ requires-python = ">=3.12"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 authors = [
+    { name = "Jan Vlk", email = "vlkjan6@fel.cvut.cz" },
     { name = "Ales Kucera", email = "kuceral4@fel.cvut.cz" },
     { name = "David Korcak", email = "david.korcak@gmail.com" },
-    { name = "Jan Vlk", email = "vlkjan6@fel.cvut.cz" },
 ]
 description = "THREE.js-based simulation visualization tool"
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
