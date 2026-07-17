@@ -692,6 +692,7 @@ class SimViewServer:
             host=host,
             port=port,
             log_level="debug" if debug else "info",
+            access_log=debug,
             loop=loop,
             http=http,
         )
