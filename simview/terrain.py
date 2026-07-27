@@ -14,6 +14,8 @@ providing a skimmable terminal rendering of the same data.
 """
 
 import base64
+import csv
+import io
 import json
 import math
 import struct
@@ -458,6 +460,28 @@ def format_area_text(result: dict) -> str:
     return "\n".join(lines)
 
 
+def format_point_csv(result: dict) -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["layer", "value", "clamped"])
+    for layer, info in result["layers"].items():
+        writer.writerow([layer, info["value"], info["clamped"]])
+    return buf.getvalue()
+
+
+def format_area_csv(result: dict) -> str:
+    layers = list(result["layers"])
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["x", "y", *layers])
+    for row_idx, y in enumerate(result["y_coords"]):
+        for col_idx, x in enumerate(result["x_coords"]):
+            writer.writerow(
+                [x, y, *(result["layers"][layer][row_idx][col_idx] for layer in layers)]
+            )
+    return buf.getvalue()
+
+
 def format_point_diff_text(result: dict) -> str:
     lines = [
         f"Point ({result['point']['x']}, {result['point']['y']})  "
@@ -498,3 +522,37 @@ def format_area_diff_text(result: dict) -> str:
         for row in grids["delta"]:
             lines.append("  " + " ".join(f"{v:+.4g}" for v in row))
     return "\n".join(lines)
+
+
+def format_point_diff_csv(result: dict) -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["layer", "value_a", "value_b", "delta", "clamped"])
+    for layer, info in result["layers"].items():
+        writer.writerow(
+            [layer, info["value_a"], info["value_b"], info["delta"], info["clamped"]]
+        )
+    return buf.getvalue()
+
+
+def format_area_diff_csv(result: dict) -> str:
+    layers = list(result["layers"])
+    header = ["x", "y"]
+    for layer in layers:
+        header += [f"{layer}_a", f"{layer}_b", f"{layer}_delta"]
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row_idx, y in enumerate(result["y_coords"]):
+        for col_idx, x in enumerate(result["x_coords"]):
+            row = [x, y]
+            for layer in layers:
+                grids = result["layers"][layer]
+                row += [
+                    grids["value_a"][row_idx][col_idx],
+                    grids["value_b"][row_idx][col_idx],
+                    grids["delta"][row_idx][col_idx],
+                ]
+            writer.writerow(row)
+    return buf.getvalue()

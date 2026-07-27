@@ -99,6 +99,9 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
             len(args.area),
         )
         sys.exit(1)
+    if args.json and args.csv:
+        logger.error("Error: --json and --csv are mutually exclusive.")
+        sys.exit(1)
 
     diff_mode = args.batches is not None
 
@@ -116,28 +119,34 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                     args.layer,
                 )
                 text = terrain_mod.format_point_diff_text(result)
+                csv_text = terrain_mod.format_point_diff_csv(result)
             else:
                 bounds = tuple(args.area) if args.area else None
                 result = terrain_mod.query_area_diff(
                     model_data, bounds, batch_a, batch_b, args.layer, args.stride
                 )
                 text = terrain_mod.format_area_diff_text(result)
+                csv_text = terrain_mod.format_area_diff_csv(result)
         elif args.point is not None:
             result = terrain_mod.query_point(
                 model_data, args.point[0], args.point[1], args.layer, args.batch
             )
             text = terrain_mod.format_point_text(result)
+            csv_text = terrain_mod.format_point_csv(result)
         else:
             bounds = tuple(args.area) if args.area else None
             result = terrain_mod.query_area(
                 model_data, bounds, args.layer, args.batch, args.stride
             )
             text = terrain_mod.format_area_text(result)
+            csv_text = terrain_mod.format_area_csv(result)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
 
-    if args.json:
+    if args.csv:
+        print(csv_text, end="")
+    elif args.json:
         print(json.dumps(result, indent=2))
     else:
         print(text)
@@ -154,6 +163,9 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
             "scene.json --batches 0 1'."
         )
         sys.exit(1)
+    if args.json and args.csv:
+        logger.error("Error: --json and --csv are mutually exclusive.")
+        sys.exit(1)
 
     try:
         model_data, states_data = diff_mod.load_scene(path)
@@ -168,11 +180,14 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
             rot_threshold_deg=args.rot_threshold_deg,
         )
         text = diff_mod.format_diff_text(result)
+        csv_text = diff_mod.format_diff_csv(result)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
 
-    if args.json:
+    if args.csv:
+        print(csv_text, end="")
+    elif args.json:
         print(json.dumps(result, indent=2))
     else:
         print(text)
@@ -222,6 +237,14 @@ def build_parser() -> argparse.ArgumentParser:
             "With 'simview info <file>', 'simview terrain <file>', or "
             "'simview diff <file>', print machine-readable JSON instead of "
             "text."
+        ),
+    )
+    parser.add_argument(
+        "--csv",
+        action="store_true",
+        help=(
+            "With 'simview terrain <file>' or 'simview diff <file>', print "
+            "CSV instead of text. Mutually exclusive with --json."
         ),
     )
     parser.add_argument(

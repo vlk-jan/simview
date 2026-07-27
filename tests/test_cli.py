@@ -1,7 +1,9 @@
 """Tests for the simview CLI (gameplan item 13: --version/--host/--port/
 --no-browser/--save-merged)."""
 
+import csv
 import gzip
+import io
 import json
 
 import pytest
@@ -505,6 +507,100 @@ def test_terrain_batches_takes_precedence_over_batch_flag(
     result = json.loads(capsys.readouterr().out)
     assert "batch_a" in result
     assert "batch" not in result
+
+
+def test_diff_csv_flag_produces_parseable_csv(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "diff", str(sim_file), "--batches", "0", "1", "--csv"],
+    )
+    cli.main()
+
+    rows = list(csv.reader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0] == [
+        "body",
+        "frame",
+        "time",
+        "position_error",
+        "orientation_error_deg",
+    ]
+    assert len(rows) - 1 == 3  # build_scene() has 3 states
+
+
+def test_terrain_area_csv_flag_produces_parseable_csv(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--area", "--csv"],
+    )
+    cli.main()
+
+    rows = list(csv.reader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0][:2] == ["x", "y"]
+    assert len(rows) > 1
+
+
+def test_terrain_point_batches_csv_flag_produces_parseable_csv(
+    capsys, monkeypatch, tmp_path
+):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--point",
+            "0",
+            "0",
+            "--batches",
+            "0",
+            "1",
+            "--csv",
+        ],
+    )
+    cli.main()
+
+    rows = list(csv.reader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0] == ["layer", "value_a", "value_b", "delta", "clamped"]
+
+
+def test_json_and_csv_together_errors(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "diff",
+            str(sim_file),
+            "--batches",
+            "0",
+            "1",
+            "--json",
+            "--csv",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "mutually exclusive" in capsys.readouterr().err
 
 
 def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path):

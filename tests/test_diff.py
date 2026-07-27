@@ -3,13 +3,15 @@ pytest.importorskip("torch") since the module itself must work on a base
 install (see CLAUDE.md's "authoring" extra guard)."""
 
 import base64
+import csv
+import io
 import json
 import math
 import struct
 
 import pytest
 
-from simview.diff import compute_trajectory_diff, format_diff_text
+from simview.diff import compute_trajectory_diff, format_diff_csv, format_diff_text
 
 
 def _blob(values: list[float]) -> str:
@@ -197,6 +199,28 @@ def test_results_are_json_serializable():
     states = _states_two_bodies(offset=1.0)
     result = compute_trajectory_diff(_model(), states, batch_a=0, batch_b=1)
     assert json.loads(json.dumps(result)) == result
+
+
+def test_format_diff_csv_render():
+    states = _states_two_bodies(frames=3, offset=1.0)
+    result = compute_trajectory_diff(_model(), states, batch_a=0, batch_b=1)
+    rows = list(csv.reader(io.StringIO(format_diff_csv(result))))
+
+    assert rows[0] == [
+        "body",
+        "frame",
+        "time",
+        "position_error",
+        "orientation_error_deg",
+    ]
+    expected_row_count = sum(
+        len(body["frame_indices"]) for body in result["bodies"].values()
+    )
+    assert len(rows) - 1 == expected_row_count
+
+    first_data_row = rows[1]
+    assert first_data_row[0] in result["bodies"]
+    assert float(first_data_row[3]) == pytest.approx(1.0)
 
 
 def test_quat_angle_matches_known_90_degree_rotation():

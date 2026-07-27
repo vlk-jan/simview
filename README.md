@@ -112,6 +112,7 @@ simview terrain scene.json --point 1.5 -2.0        # bilinear-interpolated value
 simview terrain scene.json --area                  # whole terrain extent
 simview terrain scene.json --area -5 5 -5 0        # xmin xmax ymin ymax sub-box
 simview terrain scene.json --area --json           # machine-readable JSON (for scripts/agents)
+simview terrain scene.json --area --csv            # CSV (for pandas/spreadsheets)
 ```
 
 Add `--layer height|friction|stiffness` to restrict to one layer, `--batch N`
@@ -137,6 +138,7 @@ viewer:
 ```bash
 simview diff scene.json --batches 0 1                 # every body, human-readable text
 simview diff scene.json --batches 0 1 --json           # machine-readable JSON (for scripts/agents)
+simview diff scene.json --batches 0 1 --csv            # CSV, one row per (body, frame)
 simview diff scene.json --batches 0 1 --body Box       # restrict to one body
 ```
 

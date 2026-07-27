@@ -6,14 +6,20 @@ Not to be confused with tests/test_terrain.py, which covers authoring-side
 terrain batch/singleton handling in SimulationScene.create_terrain."""
 
 import base64
+import csv
+import io
 import json
 import struct
 
 import pytest
 
 from simview.terrain import (
+    format_area_csv,
+    format_area_diff_csv,
     format_area_diff_text,
     format_area_text,
+    format_point_csv,
+    format_point_diff_csv,
     format_point_diff_text,
     format_point_text,
     query_area,
@@ -281,3 +287,47 @@ def test_diff_results_are_json_serializable():
     area_result = query_area_diff(model, bounds=None, batch_a=0, batch_b=1)
     assert json.loads(json.dumps(point_result)) == point_result
     assert json.loads(json.dumps(area_result)) == area_result
+
+
+def test_format_point_csv_render():
+    model = _model()
+    result = query_point(model, x=1.0, y=1.0)
+    rows = list(csv.reader(io.StringIO(format_point_csv(result))))
+    assert rows[0] == ["layer", "value", "clamped"]
+    assert rows[1][0] == "height"
+    assert float(rows[1][1]) == pytest.approx(4.0)
+
+
+def test_format_area_csv_render():
+    model = _model()
+    result = query_area(model, bounds=(0.0, 1.0, 0.0, 1.0))
+    rows = list(csv.reader(io.StringIO(format_area_csv(result))))
+    assert rows[0] == ["x", "y", "height"]
+    assert len(rows) - 1 == 4  # 2x2 grid
+    values = {(float(r[0]), float(r[1])): float(r[2]) for r in rows[1:]}
+    assert values[(0.0, 0.0)] == pytest.approx(0.0)
+    assert values[(1.0, 1.0)] == pytest.approx(4.0)
+
+
+def test_format_point_diff_csv_render():
+    model = _two_batch_model(offset=100.0)
+    result = query_point_diff(model, x=1.0, y=1.0, batch_a=0, batch_b=1)
+    rows = list(csv.reader(io.StringIO(format_point_diff_csv(result))))
+    assert rows[0] == ["layer", "value_a", "value_b", "delta", "clamped"]
+    assert rows[1][0] == "height"
+    assert float(rows[1][1]) == pytest.approx(4.0)
+    assert float(rows[1][2]) == pytest.approx(104.0)
+    assert float(rows[1][3]) == pytest.approx(100.0)
+
+
+def test_format_area_diff_csv_render():
+    model = _two_batch_model(offset=100.0)
+    result = query_area_diff(model, bounds=(0.0, 1.0, 0.0, 1.0), batch_a=0, batch_b=1)
+    rows = list(csv.reader(io.StringIO(format_area_diff_csv(result))))
+    assert rows[0] == ["x", "y", "height_a", "height_b", "height_delta"]
+    assert len(rows) - 1 == 4
+    by_coord = {(float(r[0]), float(r[1])): r for r in rows[1:]}
+    row = by_coord[(1.0, 1.0)]
+    assert float(row[2]) == pytest.approx(4.0)
+    assert float(row[3]) == pytest.approx(104.0)
+    assert float(row[4]) == pytest.approx(100.0)

@@ -19,6 +19,8 @@ same data.
 """
 
 import base64
+import csv
+import io
 import json
 import math
 import struct
@@ -335,3 +337,24 @@ def format_diff_text(result: dict) -> str:
             )
 
     return "\n".join(lines)
+
+
+def format_diff_csv(result: dict) -> str:
+    """Render `compute_trajectory_diff`'s output as CSV: one row per
+    (body, frame), full series (no truncation) -- CSV output is for scripts,
+    matching the "just the numbers, in full" philosophy `--json` already
+    uses everywhere in this CLI."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ["body", "frame", "time", "position_error", "orientation_error_deg"]
+    )
+    for label, body in result["bodies"].items():
+        for frame_idx, t, p, r in zip(
+            body["frame_indices"],
+            body["times"],
+            body["position_error"],
+            body["orientation_error_deg"],
+        ):
+            writer.writerow([label, frame_idx, t, p, r])
+    return buf.getvalue()
