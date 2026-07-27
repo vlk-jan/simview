@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4] - 2026-07-27
+
+### Added
+
+- `simview info <file>`: a structural summary of a scene JSON (model/terrain/
+  body/state breakdown, columnar-repack eligibility, consistency warnings) in
+  human-readable text or `--json`.
+- `simview terrain <file> --point/--area`: numeric height/friction/stiffness
+  queries (bilinear-interpolated at a point, or a raw grid over an area), plus
+  `--batches A B` to compare two batches (`value_a`/`value_b`/`delta` per
+  layer).
+- `simview diff <file> --batches A B`: per-frame position/orientation
+  divergence between two batches' trajectories, with `--body`/`--every`/
+  `--pos-threshold`/`--rot-threshold-deg` options.
+- `--csv` output for `simview diff` and `simview terrain`, alongside the
+  existing `--json`.
+
+### Changed
+
+- Only emit uvicorn's access log when running in debug mode.
+
 ## [3.3] - 2026-07-17
 
 ### Added
@@ -90,7 +111,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.3...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.4...HEAD
+[3.4]: https://github.com/vlk-jan/simview/compare/v3.3...v3.4
 [3.3]: https://github.com/vlk-jan/simview/compare/v3.2...v3.3
 [3.2]: https://github.com/vlk-jan/simview/compare/v3.1...v3.2
 [3.1]: https://github.com/vlk-jan/simview/compare/v3.0...v3.1
