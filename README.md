@@ -37,16 +37,28 @@ require `torch`.
 
 Requires **Python 3.12+**.
 
+### From PyPI
+
 To only view existing simulation JSON files:
 
 ```bash
-pip install -e .
+pip install simview
 ```
 
 To also author simulations from Python (installs `torch` and `einops`):
 
 ```bash
-pip install -e ".[authoring]"
+pip install "simview[authoring]"
+```
+
+### From source
+
+For working on SimView itself (or to track an unreleased commit), install an
+editable checkout instead:
+
+```bash
+pip install -e .              # viewing only
+pip install -e ".[authoring]" # viewing + authoring
 ```
 
 For independent use of this repository, use `venv` or `uv`:
@@ -106,6 +118,35 @@ Add `--layer height|friction|stiffness` to restrict to one layer, `--batch N`
 to pick a batch (only matters when the terrain isn't a singleton), and
 `--stride N` to subsample an `--area` query. Like `simview info`, this works
 on gzip-compressed files and doesn't require the `authoring` extra.
+
+Pass `--batches A B` instead of `--batch N` to compare two batches directly
+(e.g. a ground-truth terrain vs. a recovered friction/stiffness estimate)
+instead of querying a single one — each layer then reports `value_a`,
+`value_b`, and their `delta`:
+
+```bash
+simview terrain scene.json --area --batches 0 1 --json   # ground truth vs. estimate, whole extent
+```
+
+### Comparing two batches' trajectories
+
+To check how far apart two batches' trajectories are — e.g. ground truth vs.
+a model's prediction, or baseline vs. post-adaptation — without opening the
+viewer:
+
+```bash
+simview diff scene.json --batches 0 1                 # every body, human-readable text
+simview diff scene.json --batches 0 1 --json           # machine-readable JSON (for scripts/agents)
+simview diff scene.json --batches 0 1 --body Box       # restrict to one body
+```
+
+For each body, this reports per-frame position error (meters) and
+orientation error (degrees, quaternion angular distance) between the two
+batches, plus mean/max/final summaries. Add `--every N` to subsample frames,
+and `--pos-threshold METERS`/`--rot-threshold-deg DEGREES` to report the
+first frame where a batch's trajectory diverges past a given tolerance. Like
+`simview info`/`simview terrain`, this works on gzip-compressed files and
+doesn't require the `authoring` extra.
 
 ### Visualization of exported simulations
 

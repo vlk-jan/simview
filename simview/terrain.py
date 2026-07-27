@@ -293,6 +293,140 @@ def query_area(
     }
 
 
+def query_point_diff(
+    model_data: dict,
+    x: float,
+    y: float,
+    batch_a: int,
+    batch_b: int,
+    layers: str | list[str] = "all",
+) -> dict:
+    """Like `query_point`, but samples both `batch_a` and `batch_b` and
+    additionally returns their delta (`value_b - value_a`) per layer.
+
+    Returns a JSON-serializable dict: `{"point": {"x", "y"}, "batch_a",
+    "batch_b", "is_singleton", "layers": {layer: {"value_a", "value_b",
+    "delta", "abs_delta", "clamped"}}}`. Raises `ValueError` on the same
+    conditions as `query_point`, plus `batch_a == batch_b`.
+    """
+    if batch_a == batch_b:
+        raise ValueError("batch_a and batch_b must differ")
+
+    terrain = _require_terrain(model_data)
+    dims = terrain["dimensions"]
+    bounds = terrain["bounds"]
+    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
+    min_x, max_x = bounds["minX"], bounds["maxX"]
+    min_y, max_y = bounds["minY"], bounds["maxY"]
+    batch_size = int(model_data.get("simBatches") or 1)
+    resolved_layers = _resolve_layers(terrain, layers)
+
+    layers_out = {}
+    for layer in resolved_layers:
+        value = terrain[_LAYER_KEYS[layer]]
+        grid_a = _decode_grid(value, shape_x, shape_y, batch_size, batch_a)
+        grid_b = _decode_grid(value, shape_x, shape_y, batch_size, batch_b)
+        value_a, clamped_a = _bilinear_sample(
+            grid_a, shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
+        )
+        value_b, clamped_b = _bilinear_sample(
+            grid_b, shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
+        )
+        delta = value_b - value_a
+        layers_out[layer] = {
+            "value_a": value_a,
+            "value_b": value_b,
+            "delta": delta,
+            "abs_delta": abs(delta),
+            "clamped": clamped_a or clamped_b,
+        }
+
+    return {
+        "point": {"x": x, "y": y},
+        "batch_a": batch_a,
+        "batch_b": batch_b,
+        "is_singleton": bool(terrain.get("isSingleton", False)),
+        "layers": layers_out,
+    }
+
+
+def query_area_diff(
+    model_data: dict,
+    bounds: tuple[float, float, float, float] | None,
+    batch_a: int,
+    batch_b: int,
+    layers: str | list[str] = "all",
+    stride: int = 1,
+) -> dict:
+    """Like `query_area`, but samples both `batch_a` and `batch_b` and
+    additionally returns their elementwise delta (`value_b - value_a`) per
+    layer.
+
+    Returns a JSON-serializable dict: `{"batch_a", "batch_b", "is_singleton",
+    "x_coords", "y_coords", "layers": {layer: {"value_a", "value_b",
+    "delta", "abs_delta"}}}` (each a nested grid, rows follow `y_coords`,
+    columns follow `x_coords`). Raises `ValueError` on the same conditions
+    as `query_area`, plus `batch_a == batch_b`.
+    """
+    if batch_a == batch_b:
+        raise ValueError("batch_a and batch_b must differ")
+
+    terrain = _require_terrain(model_data)
+    dims = terrain["dimensions"]
+    b = terrain["bounds"]
+    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
+    min_x, max_x = b["minX"], b["maxX"]
+    min_y, max_y = b["minY"], b["maxY"]
+    batch_size = int(model_data.get("simBatches") or 1)
+    resolved_layers = _resolve_layers(terrain, layers)
+
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1; got {stride}")
+
+    if bounds is None:
+        col_start, col_end = 0, shape_x - 1
+        row_start, row_end = 0, shape_y - 1
+    else:
+        xmin, xmax, ymin, ymax = bounds
+        col_start, col_end = _grid_index_range(xmin, xmax, min_x, max_x, shape_x)
+        row_start, row_end = _grid_index_range(ymin, ymax, min_y, max_y, shape_y)
+        if col_start > col_end or row_start > row_end:
+            raise ValueError("requested area does not overlap the terrain extent")
+
+    cols = list(range(col_start, col_end + 1, stride))
+    rows = list(range(row_start, row_end + 1, stride))
+    x_coords = [_grid_coord(c, min_x, max_x, shape_x) for c in cols]
+    y_coords = [_grid_coord(r, min_y, max_y, shape_y) for r in rows]
+
+    layers_out = {}
+    for layer in resolved_layers:
+        value = terrain[_LAYER_KEYS[layer]]
+        grid_a = _decode_grid(value, shape_x, shape_y, batch_size, batch_a)
+        grid_b = _decode_grid(value, shape_x, shape_y, batch_size, batch_b)
+        value_a = [[grid_a[r][c] for c in cols] for r in rows]
+        value_b = [[grid_b[r][c] for c in cols] for r in rows]
+        delta = [
+            [value_b[ri][ci] - value_a[ri][ci] for ci in range(len(cols))]
+            for ri in range(len(rows))
+        ]
+        abs_delta = [[abs(v) for v in row] for row in delta]
+        layers_out[layer] = {
+            "value_a": value_a,
+            "value_b": value_b,
+            "delta": delta,
+            "abs_delta": abs_delta,
+        }
+
+    return {
+        "batch_a": batch_a,
+        "batch_b": batch_b,
+        "is_singleton": bool(terrain.get("isSingleton", False)),
+        "x_coords": x_coords,
+        "y_coords": y_coords,
+        "layers": layers_out,
+    }
+
+
 def format_point_text(result: dict) -> str:
     lines = [
         f"Point ({result['point']['x']}, {result['point']['y']})  "
@@ -321,4 +455,46 @@ def format_area_text(result: dict) -> str:
         lines.append(f"\n{layer}:")
         for row in grid:
             lines.append("  " + " ".join(f"{v:.4g}" for v in row))
+    return "\n".join(lines)
+
+
+def format_point_diff_text(result: dict) -> str:
+    lines = [
+        f"Point ({result['point']['x']}, {result['point']['y']})  "
+        f"batch_a={result['batch_a']}  batch_b={result['batch_b']}"
+    ]
+    if result["is_singleton"]:
+        lines.append(
+            "  (terrain is singleton: same data for every batch -- a nonzero "
+            "delta below likely indicates a bug)"
+        )
+    for layer, info in result["layers"].items():
+        note = (
+            " (clamped: point is outside the terrain extent)" if info["clamped"] else ""
+        )
+        lines.append(
+            f"  {layer}: a={info['value_a']:.6g}  b={info['value_b']:.6g}  "
+            f"delta={info['delta']:+.6g}{note}"
+        )
+    return "\n".join(lines)
+
+
+def format_area_diff_text(result: dict) -> str:
+    x_coords, y_coords = result["x_coords"], result["y_coords"]
+    lines = [
+        f"Area x=[{x_coords[0]:.4g}, {x_coords[-1]:.4g}] "
+        f"y=[{y_coords[0]:.4g}, {y_coords[-1]:.4g}]  "
+        f"({len(x_coords)} x {len(y_coords)} points)  "
+        f"batch_a={result['batch_a']}  batch_b={result['batch_b']}"
+    ]
+    if result["is_singleton"]:
+        lines.append(
+            "  (terrain is singleton: same data for every batch -- a nonzero "
+            "delta below likely indicates a bug)"
+        )
+    for layer, grids in result["layers"].items():
+        max_abs_delta = max((v for row in grids["abs_delta"] for v in row), default=0.0)
+        lines.append(f"\n{layer} delta (b - a), max |delta|={max_abs_delta:.4g}:")
+        for row in grids["delta"]:
+            lines.append("  " + " ".join(f"{v:+.4g}" for v in row))
     return "\n".join(lines)

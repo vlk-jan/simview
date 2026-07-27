@@ -83,7 +83,8 @@ def run_info(path: Path, as_json: bool) -> None:
 
 def run_terrain(path: Path, args: argparse.Namespace) -> None:
     """Print terrain value(s) at a point or over an area, from the scene JSON
-    at `path`, to stdout."""
+    at `path`, to stdout. With `--batches A B`, compares two batches instead
+    of querying a single one."""
     from simview import terrain as terrain_mod
 
     if (args.point is None) == (args.area is None):
@@ -99,9 +100,29 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    diff_mode = args.batches is not None
+
     try:
         model_data = terrain_mod.load_scene_model(path)
-        if args.point is not None:
+        if diff_mode:
+            batch_a, batch_b = args.batches
+            if args.point is not None:
+                result = terrain_mod.query_point_diff(
+                    model_data,
+                    args.point[0],
+                    args.point[1],
+                    batch_a,
+                    batch_b,
+                    args.layer,
+                )
+                text = terrain_mod.format_point_diff_text(result)
+            else:
+                bounds = tuple(args.area) if args.area else None
+                result = terrain_mod.query_area_diff(
+                    model_data, bounds, batch_a, batch_b, args.layer, args.stride
+                )
+                text = terrain_mod.format_area_diff_text(result)
+        elif args.point is not None:
             result = terrain_mod.query_point(
                 model_data, args.point[0], args.point[1], args.layer, args.batch
             )
@@ -112,6 +133,41 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                 model_data, bounds, args.layer, args.batch, args.stride
             )
             text = terrain_mod.format_area_text(result)
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(text)
+
+
+def run_diff(path: Path, args: argparse.Namespace) -> None:
+    """Print a trajectory divergence report between two batches of the scene
+    JSON at `path`, to stdout."""
+    from simview import diff as diff_mod
+
+    if args.batches is None:
+        logger.error(
+            "Error: 'simview diff' requires --batches A B, e.g. 'simview diff "
+            "scene.json --batches 0 1'."
+        )
+        sys.exit(1)
+
+    try:
+        model_data, states_data = diff_mod.load_scene(path)
+        result = diff_mod.compute_trajectory_diff(
+            model_data,
+            states_data,
+            args.batches[0],
+            args.batches[1],
+            body=args.body,
+            every=args.every,
+            pos_threshold=args.pos_threshold,
+            rot_threshold_deg=args.rot_threshold_deg,
+        )
+        text = diff_mod.format_diff_text(result)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -147,10 +203,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Path(s) to simulation JSON file(s) to visualize, 'clear' to clear "
             "cache, 'info <file>' to print a structural summary of one scene "
-            "file, or 'terrain <file>' to query terrain values at a point or "
-            "over an area. Multiple visualize-mode files are merged into one "
-            "scene, each file's batches appended as extra batches (e.g. a "
-            "real-world recording plus a simulated rerun)."
+            "file, 'terrain <file>' to query terrain values at a point or over "
+            "an area, or 'diff <file>' to compare two batches' trajectories. "
+            "Multiple visualize-mode files are merged into one scene, each "
+            "file's batches appended as extra batches (e.g. a real-world "
+            "recording plus a simulated rerun)."
         ),
     )
     parser.add_argument(
@@ -162,8 +219,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help=(
-            "With 'simview info <file>' or 'simview terrain <file>', print "
-            "machine-readable JSON instead of text."
+            "With 'simview info <file>', 'simview terrain <file>', or "
+            "'simview diff <file>', print machine-readable JSON instead of "
+            "text."
         ),
     )
     parser.add_argument(
@@ -211,6 +269,57 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "With 'simview terrain <file> --area', subsample every Nth grid "
             "point in both directions (default: 1)."
+        ),
+    )
+    parser.add_argument(
+        "--batches",
+        nargs=2,
+        type=int,
+        metavar=("A", "B"),
+        help=(
+            "Two batch indices to compare. Required by 'simview diff <file>'. "
+            "With 'simview terrain <file> --point|--area', switches into "
+            "cross-batch diff mode (value_a/value_b/delta per layer) instead "
+            "of a single-batch query, and takes precedence over --batch if "
+            "both are given."
+        ),
+    )
+    parser.add_argument(
+        "--body",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help=(
+            "With 'simview diff <file>', restrict the trajectory diff to one "
+            "body (matched by its full label, e.g. 'wheel_fl+wheel_fr', or by "
+            "any single name inside a rigidly-grouped body). Default: diff "
+            "every body present in states."
+        ),
+    )
+    parser.add_argument(
+        "--every",
+        type=int,
+        default=1,
+        help="With 'simview diff <file>', sample every Nth frame (default: 1).",
+    )
+    parser.add_argument(
+        "--pos-threshold",
+        type=float,
+        default=None,
+        metavar="METERS",
+        help=(
+            "With 'simview diff <file>', report the first sampled frame whose "
+            "position error exceeds this many meters."
+        ),
+    )
+    parser.add_argument(
+        "--rot-threshold-deg",
+        type=float,
+        default=None,
+        metavar="DEGREES",
+        help=(
+            "With 'simview diff <file>', report the first sampled frame whose "
+            "orientation error exceeds this many degrees."
         ),
     )
     parser.add_argument(
@@ -288,6 +397,21 @@ def main():
             logger.error("Error: File '%s' not found or is not a file.", terrain_path)
             sys.exit(1)
         run_terrain(terrain_path, args)
+        return
+
+    if args.inputs and args.inputs[0] == "diff":
+        diff_args = args.inputs[1:]
+        if len(diff_args) != 1:
+            logger.error(
+                "Error: 'simview diff' requires exactly one file argument, "
+                "e.g. 'simview diff scene.json --batches 0 1'."
+            )
+            sys.exit(1)
+        diff_path = Path(diff_args[0])
+        if not (diff_path.exists() and diff_path.is_file()):
+            logger.error("Error: File '%s' not found or is not a file.", diff_path)
+            sys.exit(1)
+        run_diff(diff_path, args)
         return
 
     if args.inputs == ["clear"]:

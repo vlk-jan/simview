@@ -310,6 +310,203 @@ def test_terrain_missing_file_errors(capsys, monkeypatch, tmp_path):
     assert "not found" in capsys.readouterr().err
 
 
+def test_diff_prints_text_summary_by_default(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", "diff", str(sim_file), "--batches", "0", "1"]
+    )
+    cli.main()
+
+    out = capsys.readouterr().out
+    assert "Box" in out
+    assert "pos_err" in out
+    assert not out.startswith("{")
+
+
+def test_diff_json_flag_prints_valid_json(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "diff", str(sim_file), "--batches", "0", "1", "--json"],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["bodies"]["Box"]["summary"]["position_error"][
+        "mean"
+    ] == pytest.approx(0.0)
+
+
+def test_diff_requires_batches_flag(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "diff", str(sim_file)])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "requires --batches" in capsys.readouterr().err
+
+
+def test_diff_missing_file_errors(capsys, monkeypatch, tmp_path):
+    missing = tmp_path / "does-not-exist.json"
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "diff", str(missing), "--batches", "0", "1"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_diff_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "diff"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "exactly one file" in capsys.readouterr().err
+
+
+def test_diff_body_flag_filters_to_one_body(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "diff",
+            str(sim_file),
+            "--batches",
+            "0",
+            "1",
+            "--body",
+            "Box",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert set(result["bodies"]) == {"Box"}
+
+
+def test_diff_single_batch_scene_errors(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", "diff", str(sim_file), "--batches", "0", "1"]
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "need at least 2" in capsys.readouterr().err
+
+
+def test_terrain_batches_flag_switches_to_point_diff_mode(
+    capsys, monkeypatch, tmp_path
+):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--point",
+            "0",
+            "0",
+            "--batches",
+            "0",
+            "1",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert "value_a" in result["layers"]["height"]
+    assert "value_b" in result["layers"]["height"]
+    assert "delta" in result["layers"]["height"]
+    assert "batch" not in result
+
+
+def test_terrain_batches_flag_switches_to_area_diff_mode(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--area",
+            "--batches",
+            "0",
+            "1",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert "value_a" in result["layers"]["height"]
+    assert "batch" not in result
+
+
+def test_terrain_batches_takes_precedence_over_batch_flag(
+    capsys, monkeypatch, tmp_path
+):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--point",
+            "0",
+            "0",
+            "--batch",
+            "1",
+            "--batches",
+            "0",
+            "1",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert "batch_a" in result
+    assert "batch" not in result
+
+
 def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path):
     scene = build_scene(batch_size=1)
     sim_file = tmp_path / "sim.json"
