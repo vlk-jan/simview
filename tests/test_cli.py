@@ -151,6 +151,73 @@ def test_save_merged_gzips_when_path_ends_in_gz(monkeypatch, tmp_path):
     assert merged["model"]["simBatches"] == 2
 
 
+def test_info_prints_text_summary_by_default(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(sim_file)])
+    cli.main()
+
+    out = capsys.readouterr().out
+    assert "Model" in out
+    assert "States" in out
+    assert not out.startswith("{")
+
+
+def test_info_json_flag_prints_valid_json(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(sim_file), "--json"])
+    cli.main()
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["model"]["batch_size"] == 2
+    assert summary["states"]["frame_count"] == 3
+
+
+def test_info_missing_file_errors(capsys, monkeypatch, tmp_path):
+    missing = tmp_path / "does-not-exist.json"
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(missing)])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_info_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "exactly one file" in capsys.readouterr().err
+
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    a.write_text("{}")
+    b.write_text("{}")
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(a), str(b)])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "exactly one file" in capsys.readouterr().err
+
+
+def test_info_works_on_gzipped_scene(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file, compress=True)
+    gz_file = sim_file.with_name(sim_file.name + ".gz")
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(gz_file), "--json"])
+    cli.main()
+
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["file"]["gzipped"] is True
+    assert summary["states"]["frame_count"] == 3
+
+
 def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path):
     scene = build_scene(batch_size=1)
     sim_file = tmp_path / "sim.json"

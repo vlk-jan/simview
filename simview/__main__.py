@@ -65,6 +65,22 @@ def clear_cache():
     logger.info("Cache cleared.")
 
 
+def run_info(path: Path, as_json: bool) -> None:
+    """Print a structural summary of the scene JSON at `path` to stdout."""
+    from simview.info import format_text, summarize_scene
+
+    try:
+        summary = summarize_scene(path)
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.error("Error: Could not parse '%s' as a scene file: %s", path, e)
+        sys.exit(1)
+
+    if as_json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(format_text(summary))
+
+
 def save_merged(paths: list[Path], out_path: Path) -> None:
     """Merge `paths` (must be >= 2) and write the result to `out_path`, gzipped
     if it ends in .gz, without starting the server."""
@@ -88,16 +104,22 @@ def build_parser() -> argparse.ArgumentParser:
         "inputs",
         nargs="*",
         help=(
-            "Path(s) to simulation JSON file(s) to visualize, or 'clear' to clear "
-            "cache. Multiple files are merged into one scene, each file's batches "
-            "appended as extra batches (e.g. a real-world recording plus a "
-            "simulated rerun)."
+            "Path(s) to simulation JSON file(s) to visualize, 'clear' to clear "
+            "cache, or 'info <file>' to print a structural summary of one scene "
+            "file. Multiple visualize-mode files are merged into one scene, each "
+            "file's batches appended as extra batches (e.g. a real-world recording "
+            "plus a simulated rerun)."
         ),
     )
     parser.add_argument(
         "--version",
         action="store_true",
         help="Print the installed simview version and exit.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="With 'simview info <file>', print machine-readable JSON instead of text.",
     )
     parser.add_argument(
         "--host",
@@ -145,6 +167,21 @@ def main():
     if not args.inputs:
         parser.print_help()
         sys.exit(1)
+
+    if args.inputs and args.inputs[0] == "info":
+        info_args = args.inputs[1:]
+        if len(info_args) != 1:
+            logger.error(
+                "Error: 'simview info' requires exactly one file argument, e.g. "
+                "'simview info scene.json'."
+            )
+            sys.exit(1)
+        info_path = Path(info_args[0])
+        if not (info_path.exists() and info_path.is_file()):
+            logger.error("Error: File '%s' not found or is not a file.", info_path)
+            sys.exit(1)
+        run_info(info_path, as_json=args.json)
+        return
 
     if args.inputs == ["clear"]:
         clear_cache()

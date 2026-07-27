@@ -77,6 +77,19 @@ all of this using the following command:
 simview clear
 ```
 
+### Inspecting a scene file
+
+To print a quick structural summary of a scene JSON file (body/terrain/state
+breakdown, plus consistency warnings) without opening the viewer:
+
+```bash
+simview info scene.json          # human-readable text
+simview info scene.json --json   # machine-readable JSON (for scripts/agents)
+```
+
+Works on gzip-compressed files automatically, and does not require the
+`authoring` extra.
+
 ### Visualization of exported simulations
 
 To visualize a simulation defined in a JSON file, run the following command, replacing `[path_to_json_file]` with the actual path to your JSON data:
