@@ -218,6 +218,98 @@ def test_info_works_on_gzipped_scene(capsys, monkeypatch, tmp_path):
     assert summary["states"]["frame_count"] == 3
 
 
+def test_terrain_point_prints_text_by_default(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", "terrain", str(sim_file), "--point", "0", "0"]
+    )
+    cli.main()
+
+    out = capsys.readouterr().out
+    assert "height:" in out
+    assert "friction:" in out
+    assert not out.startswith("{")
+
+
+def test_terrain_point_json_flag_prints_valid_json(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--point", "0", "0", "--json"],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["layers"]["height"]["value"] == pytest.approx(0.0)
+    assert result["layers"]["friction"]["value"] == pytest.approx(0.5)
+
+
+def test_terrain_area_whole_extent_and_subbox(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--area", "--json"],
+    )
+    cli.main()
+    whole = json.loads(capsys.readouterr().out)
+    assert len(whole["x_coords"]) == 4  # build_scene's terrain resolution
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--area", "-5", "0", "-5", "0", "--json"],
+    )
+    cli.main()
+    sub = json.loads(capsys.readouterr().out)
+    assert len(sub["x_coords"]) < len(whole["x_coords"])
+
+
+def test_terrain_point_and_area_are_mutually_exclusive(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--point", "0", "0", "--area"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "exactly one of --point or --area" in capsys.readouterr().err
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "terrain", str(sim_file)])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "exactly one of --point or --area" in capsys.readouterr().err
+
+
+def test_terrain_missing_file_errors(capsys, monkeypatch, tmp_path):
+    missing = tmp_path / "does-not-exist.json"
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(missing), "--point", "0", "0"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "not found" in capsys.readouterr().err
+
+
 def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path):
     scene = build_scene(batch_size=1)
     sim_file = tmp_path / "sim.json"

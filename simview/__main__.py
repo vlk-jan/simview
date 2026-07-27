@@ -81,6 +81,47 @@ def run_info(path: Path, as_json: bool) -> None:
         print(format_text(summary))
 
 
+def run_terrain(path: Path, args: argparse.Namespace) -> None:
+    """Print terrain value(s) at a point or over an area, from the scene JSON
+    at `path`, to stdout."""
+    from simview import terrain as terrain_mod
+
+    if (args.point is None) == (args.area is None):
+        logger.error(
+            "Error: 'simview terrain' requires exactly one of --point or --area."
+        )
+        sys.exit(1)
+    if args.area is not None and len(args.area) not in (0, 4):
+        logger.error(
+            "Error: --area requires 0 values (whole terrain extent) or 4 values "
+            "(xmin xmax ymin ymax); got %d.",
+            len(args.area),
+        )
+        sys.exit(1)
+
+    try:
+        model_data = terrain_mod.load_scene_model(path)
+        if args.point is not None:
+            result = terrain_mod.query_point(
+                model_data, args.point[0], args.point[1], args.layer, args.batch
+            )
+            text = terrain_mod.format_point_text(result)
+        else:
+            bounds = tuple(args.area) if args.area else None
+            result = terrain_mod.query_area(
+                model_data, bounds, args.layer, args.batch, args.stride
+            )
+            text = terrain_mod.format_area_text(result)
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(text)
+
+
 def save_merged(paths: list[Path], out_path: Path) -> None:
     """Merge `paths` (must be >= 2) and write the result to `out_path`, gzipped
     if it ends in .gz, without starting the server."""
@@ -105,10 +146,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help=(
             "Path(s) to simulation JSON file(s) to visualize, 'clear' to clear "
-            "cache, or 'info <file>' to print a structural summary of one scene "
-            "file. Multiple visualize-mode files are merged into one scene, each "
-            "file's batches appended as extra batches (e.g. a real-world recording "
-            "plus a simulated rerun)."
+            "cache, 'info <file>' to print a structural summary of one scene "
+            "file, or 'terrain <file>' to query terrain values at a point or "
+            "over an area. Multiple visualize-mode files are merged into one "
+            "scene, each file's batches appended as extra batches (e.g. a "
+            "real-world recording plus a simulated rerun)."
         ),
     )
     parser.add_argument(
@@ -119,7 +161,57 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="With 'simview info <file>', print machine-readable JSON instead of text.",
+        help=(
+            "With 'simview info <file>' or 'simview terrain <file>', print "
+            "machine-readable JSON instead of text."
+        ),
+    )
+    parser.add_argument(
+        "--point",
+        nargs=2,
+        type=float,
+        metavar=("X", "Y"),
+        help=(
+            "With 'simview terrain <file>', query terrain value(s) at a single "
+            "(x, y) point (bilinear-interpolated). Mutually exclusive with "
+            "--area."
+        ),
+    )
+    parser.add_argument(
+        "--area",
+        nargs="*",
+        type=float,
+        metavar="BOUND",
+        help=(
+            "With 'simview terrain <file>', query terrain values over a "
+            "rectangular area: pass no values for the whole terrain extent, "
+            "or exactly 4 values 'XMIN XMAX YMIN YMAX' for a sub-box. Mutually "
+            "exclusive with --point."
+        ),
+    )
+    parser.add_argument(
+        "--layer",
+        choices=["height", "friction", "stiffness", "all"],
+        default="all",
+        help=(
+            "With 'simview terrain <file>', which terrain layer(s) to query "
+            "(default: all present)."
+        ),
+    )
+    parser.add_argument(
+        "--batch",
+        type=int,
+        default=0,
+        help="With 'simview terrain <file>', batch index to query (default: 0).",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=1,
+        help=(
+            "With 'simview terrain <file> --area', subsample every Nth grid "
+            "point in both directions (default: 1)."
+        ),
     )
     parser.add_argument(
         "--host",
@@ -181,6 +273,21 @@ def main():
             logger.error("Error: File '%s' not found or is not a file.", info_path)
             sys.exit(1)
         run_info(info_path, as_json=args.json)
+        return
+
+    if args.inputs and args.inputs[0] == "terrain":
+        terrain_args = args.inputs[1:]
+        if len(terrain_args) != 1:
+            logger.error(
+                "Error: 'simview terrain' requires exactly one file argument, "
+                "e.g. 'simview terrain scene.json --point 0 0'."
+            )
+            sys.exit(1)
+        terrain_path = Path(terrain_args[0])
+        if not (terrain_path.exists() and terrain_path.is_file()):
+            logger.error("Error: File '%s' not found or is not a file.", terrain_path)
+            sys.exit(1)
+        run_terrain(terrain_path, args)
         return
 
     if args.inputs == ["clear"]:

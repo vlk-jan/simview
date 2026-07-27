@@ -90,6 +90,23 @@ simview info scene.json --json   # machine-readable JSON (for scripts/agents)
 Works on gzip-compressed files automatically, and does not require the
 `authoring` extra.
 
+### Querying terrain data
+
+To read raw numeric terrain values (height, and friction/stiffness if present)
+at a single point or over an area, without opening the viewer:
+
+```bash
+simview terrain scene.json --point 1.5 -2.0        # bilinear-interpolated value(s) at (x, y)
+simview terrain scene.json --area                  # whole terrain extent
+simview terrain scene.json --area -5 5 -5 0        # xmin xmax ymin ymax sub-box
+simview terrain scene.json --area --json           # machine-readable JSON (for scripts/agents)
+```
+
+Add `--layer height|friction|stiffness` to restrict to one layer, `--batch N`
+to pick a batch (only matters when the terrain isn't a singleton), and
+`--stride N` to subsample an `--area` query. Like `simview info`, this works
+on gzip-compressed files and doesn't require the `authoring` extra.
+
 ### Visualization of exported simulations
 
 To visualize a simulation defined in a JSON file, run the following command, replacing `[path_to_json_file]` with the actual path to your JSON data:
