@@ -243,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="https://vlk-jan.github.io/assets/demos/simview/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Live Demo
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -378,6 +397,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="https://vlk-jan.github.io/assets/demos/simview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live Demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -392,10 +438,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -413,8 +459,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -591,10 +637,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   
@@ -612,8 +658,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -851,10 +897,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -872,8 +918,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_4">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1083,9 +1129,37 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v3.4...HEAD">Unreleased</a></h2>
-<h2 id="34-2026-07-27"><a href="https://github.com/vlk-jan/simview/compare/v3.3...v3.4">3.4</a> - 2026-07-27</h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v3.5...HEAD">Unreleased</a></h2>
+<h2 id="35-2026-07-28"><a href="https://github.com/vlk-jan/simview/compare/v3.4...v3.5">3.5</a> - 2026-07-28</h2>
 <h3 id="added">Added</h3>
+<ul>
+<li><code>simview render &lt;file&gt; --output frame.png</code>: headless PNG screenshot via a
+  real (headless) browser driving a real <code>SimViewServer</code> instance, with
+  <code>--view</code>/<code>--width</code>/<code>--height</code> options. Ships as a new optional <code>render</code>
+  extra rather than a hard dependency.</li>
+<li>Terrain diff color overlay: a "diff" color mode (diverging colormap
+  centered on zero) plus Diff Layer/Batch A/Batch B pickers in Terrain
+  Options, with a matching diverging colorbar in the Legend.</li>
+<li>The terrain data probe now shows every batch's height/friction/stiffness
+  at the hovered cell, plus each one's delta from a reference batch, instead
+  of just the hovered batch.</li>
+<li><code>--per-axis</code> flag for <code>simview diff</code>, reporting signed <code>err_x</code>/<code>err_y</code>/
+  <code>err_z</code> (batch A minus batch B) per frame in <code>--json</code>/<code>--csv</code> output.</li>
+<li>Mean/min <code>|delta|</code> stats (alongside the existing max) in
+  <code>simview terrain --batches --area</code> output.</li>
+<li>Full documentation site (MkDocs + mkdocs-material + mkdocstrings) covering
+  usage, the CLI, the JSON format specification, the API reference, and a
+  developer guide, published to GitHub Pages. <code>README.md</code> is trimmed to a
+  landing page that links to it.</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li>The Error Metrics panel auto-selects a sensible Batch A/B default from
+  batch names (e.g. ground-truth vs. post-adaptation) instead of always
+  defaulting to indices 0/1, falling back to 0/1 when no batch name matches.</li>
+</ul>
+<h2 id="34-2026-07-27"><a href="https://github.com/vlk-jan/simview/compare/v3.3...v3.4">3.4</a> - 2026-07-27</h2>
+<h3 id="added_1">Added</h3>
 <ul>
 <li><code>simview info &lt;file&gt;</code>: a structural summary of a scene JSON (model/terrain/
   body/state breakdown, columnar-repack eligibility, consistency warnings) in
@@ -1100,18 +1174,18 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>--csv</code> output for <code>simview diff</code> and <code>simview terrain</code>, alongside the
   existing <code>--json</code>.</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed_1">Changed</h3>
 <ul>
 <li>Only emit uvicorn's access log when running in debug mode.</li>
 </ul>
 <h2 id="33-2026-07-17"><a href="https://github.com/vlk-jan/simview/compare/v3.2...v3.3">3.3</a> - 2026-07-17</h2>
-<h3 id="added_1">Added</h3>
+<h3 id="added_2">Added</h3>
 <ul>
 <li>Expose the installed package version as <code>simview.__version__</code>.</li>
 <li>Test against Python 3.14 in CI and advertise it in the package classifiers.</li>
 <li>Dependabot configuration for GitHub Actions, npm, and Python dependencies.</li>
 </ul>
-<h3 id="changed_1">Changed</h3>
+<h3 id="changed_2">Changed</h3>
 <ul>
 <li>Bump the PyPI development-status classifier to <code>5 - Production/Stable</code>.</li>
 <li>Use uvicorn's modern sansio websocket implementation for the live server when
@@ -1123,13 +1197,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Unused <code>collapsedMode</code>/<code>focusedMode</code> placeholder flags from <code>BatchManager</code>.</li>
 </ul>
 <h2 id="32-2026-07-15"><a href="https://github.com/vlk-jan/simview/compare/v3.1...v3.2">3.2</a> - 2026-07-15</h2>
-<h3 id="added_2">Added</h3>
+<h3 id="added_3">Added</h3>
 <ul>
 <li>Shareable view links: the current camera/playback state is encoded in the URL
   hash so a view can be restored or handed off.</li>
 <li>Single-frame PNG screenshot export.</li>
 </ul>
-<h3 id="changed_2">Changed</h3>
+<h3 id="changed_3">Changed</h3>
 <ul>
 <li>Prepare packaging for PyPI publishing (metadata, build, publish workflow).</li>
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
@@ -1142,7 +1216,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Plot visualization fixes.</li>
 </ul>
 <h2 id="31-2026-07-14"><a href="https://github.com/vlk-jan/simview/compare/v3.0...v3.1">3.1</a> - 2026-07-14</h2>
-<h3 id="added_3">Added</h3>
+<h3 id="added_4">Added</h3>
 <ul>
 <li>Live streaming mode: <code>LiveViewer</code> pushes states to connected browser tabs over
   WebSocket as a simulation runs.</li>
@@ -1150,7 +1224,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Smooth interpolated playback (position lerp + quaternion slerp) with a toggle.</li>
 <li>Error-metric summary stats and CSV export in the analysis panel.</li>
 </ul>
-<h3 id="changed_3">Changed</h3>
+<h3 id="changed_4">Changed</h3>
 <ul>
 <li>Vendor three.js and chroma-js locally so the viewer works fully offline.</li>
 <li>Serve states as per-body whole-trajectory binary columns ("v4" columnar
