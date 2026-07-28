@@ -1,0 +1,84 @@
+site_name: SimView
+site_description: THREE.js-based simulation visualization tool
+site_author: Jan Vlk
+repo_url: https://github.com/vlk-jan/simview
+repo_name: vlk-jan/simview
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 <a href="https://vlk-jan.github.io">Jan Vlk</a>
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.superfences
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            merge_init_into_class: true
+
+nav:
+  - Home: index.md
+  - Usage:
+      - Quick Start & Installation: usage/getting-started.md
+      - CLI Utilities: usage/cli.md
+      - Live Streaming: usage/live-streaming.md
+      - Jupyter / Non-blocking Viewing: usage/jupyter.md
+      - Visualization Controls: usage/controls.md
+  - API Reference:
+      - Scenes & Viewer Handles: api/scene.md
+      - Model (Bodies, Shapes, Terrain): api/model.md
+      - State & Trajectories: api/state.md
+      - Server: api/server.md
+      - Live Viewer: api/live.md
+      - Launcher: api/launcher.md
+      - Merge: api/merge.md
+  - Developer Guide:
+      - Architecture: dev/architecture.md
+      - JSON Format Specification: dev/json-format.md
+      - Testing: dev/testing.md
+      - Contributing: dev/contributing.md
+      - Changelog: dev/changelog.md
