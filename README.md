@@ -1,6 +1,7 @@
 # SimView Visualizer
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue.svg)](https://vlk-jan.github.io/simview/)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://vlk-jan.github.io/assets/demos/simview/)
 
 **SimView** is a powerful and interactive tool for visualizing 3D models and terrain data in simulations. It enables you to explore and analyze multiple simulation scenarios (batches) within a shared environment, all defined through an intuitive JSON format or a Python API.
 
@@ -14,6 +15,10 @@ Full documentation — usage guides, CLI reference, the JSON format specificatio
 the API reference, and developer/architecture docs — is available at:
 
 **[https://vlk-jan.github.io/simview/](https://vlk-jan.github.io/simview/)**
+
+Want to try it without installing anything? There's a
+[live browser demo](https://vlk-jan.github.io/assets/demos/simview/)
+(static snapshot, no backend needed).
 
 ---
 
