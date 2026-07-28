@@ -256,6 +256,39 @@ def test_query_area_diff_returns_expected_subgrids_and_delta():
     assert layer["value_b"] == [[100.0, 101.0], [103.0, 104.0]]
     assert layer["delta"] == [[100.0, 100.0], [100.0, 100.0]]
     assert layer["abs_delta"] == [[100.0, 100.0], [100.0, 100.0]]
+    assert layer["stats"] == {
+        "mean_abs_delta": pytest.approx(100.0),
+        "max_abs_delta": pytest.approx(100.0),
+        "min_abs_delta": pytest.approx(100.0),
+    }
+
+
+def test_query_area_diff_stats_mean_max_min_for_nonuniform_delta():
+    # grid_b = 2 * grid_a, so delta == grid_a itself: values 0..8, mean=4.0.
+    grid_a = _GRID_VALUES
+    grid_b = [v * 2 for v in _GRID_VALUES]
+    terrain = {
+        "dimensions": {"sizeX": 2.0, "sizeY": 2.0, "resolutionX": 3, "resolutionY": 3},
+        "bounds": {
+            "minX": 0.0,
+            "maxX": 2.0,
+            "minY": 0.0,
+            "maxY": 2.0,
+            "minZ": 0.0,
+            "maxZ": 8.0,
+        },
+        "heightData": _blob(grid_a + grid_b),
+        "normals": [[[0, 0, 1]] * 3] * 3,
+        "isSingleton": False,
+        "frictionData": None,
+        "stiffnessData": None,
+    }
+    model = {"simBatches": 2, "terrain": terrain}
+    result = query_area_diff(model, bounds=None, batch_a=0, batch_b=1)
+    stats = result["layers"]["height"]["stats"]
+    assert stats["mean_abs_delta"] == pytest.approx(4.0)
+    assert stats["max_abs_delta"] == pytest.approx(8.0)
+    assert stats["min_abs_delta"] == pytest.approx(0.0)
 
 
 def test_query_area_diff_with_stride():

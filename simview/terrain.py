@@ -412,11 +412,17 @@ def query_area_diff(
             for ri in range(len(rows))
         ]
         abs_delta = [[abs(v) for v in row] for row in delta]
+        flat_abs_delta = [v for row in abs_delta for v in row]
         layers_out[layer] = {
             "value_a": value_a,
             "value_b": value_b,
             "delta": delta,
             "abs_delta": abs_delta,
+            "stats": {
+                "mean_abs_delta": sum(flat_abs_delta) / len(flat_abs_delta),
+                "max_abs_delta": max(flat_abs_delta),
+                "min_abs_delta": min(flat_abs_delta),
+            },
         }
 
     return {
@@ -517,8 +523,13 @@ def format_area_diff_text(result: dict) -> str:
             "delta below likely indicates a bug)"
         )
     for layer, grids in result["layers"].items():
-        max_abs_delta = max((v for row in grids["abs_delta"] for v in row), default=0.0)
-        lines.append(f"\n{layer} delta (b - a), max |delta|={max_abs_delta:.4g}:")
+        stats = grids["stats"]
+        lines.append(
+            f"\n{layer} delta (b - a), |delta|: "
+            f"mean={stats['mean_abs_delta']:.4g}  "
+            f"max={stats['max_abs_delta']:.4g}  "
+            f"min={stats['min_abs_delta']:.4g}:"
+        )
         for row in grids["delta"]:
             lines.append("  " + " ".join(f"{v:+.4g}" for v in row))
     return "\n".join(lines)
