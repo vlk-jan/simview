@@ -199,17 +199,88 @@ export class InteractionController {
         tooltip.style.left = `${e.clientX + 10}px`;
         tooltip.style.top = `${e.clientY + 10}px`;
         tooltip.style.display = "block";
-        
-        let text = `Batch: ${batchIndex}\nX: ${point.x.toFixed(3)}, Y: ${point.y.toFixed(3)}\nHeight: ${props.height.toFixed(3)}`;
-        if (props.friction !== undefined) text += `\nFriction: ${props.friction.toFixed(3)}`;
-        if (props.stiffness !== undefined) text += `\nStiffness: ${props.stiffness.toExponential(2)}`;
-        
-        tooltip.innerText = text;
+
+        tooltip.innerText = this.#formatTerrainTooltip(point, batchIndex, props);
 
         if (this.probeSphere) {
             this.probeSphere.position.copy(point);
             this.probeSphere.visible = true;
         }
+    }
+
+    // Single-batch tooltip text: "Batch: N\nX: .., Y: ..\nHeight: ..." etc.
+    // Used when the terrain is singleton (every batch shares the same data,
+    // so showing all of them would just repeat the same numbers) or there's
+    // only one batch to begin with.
+    #formatSingleBatchProps(props) {
+        let text = `Height: ${props.height.toFixed(3)}`;
+        if (props.friction !== undefined) text += `\nFriction: ${props.friction.toFixed(3)}`;
+        if (props.stiffness !== undefined) text += `\nStiffness: ${props.stiffness.toExponential(2)}`;
+        return text;
+    }
+
+    // Builds the terrain probe tooltip text. For a non-singleton terrain
+    // with 2+ batches, shows every batch's height/friction/stiffness plus,
+    // for every batch other than the reference, its delta from the
+    // reference batch (the Terrain Options "Diff Batch A" pick, or batch 0
+    // if that's unset) -- so a DRIFT-style 4-batch scene shows all of
+    // GT/baseline/pre/post at a glance instead of one at a time.
+    #formatTerrainTooltip(point, batchIndex, props) {
+        const header = `X: ${point.x.toFixed(3)}, Y: ${point.y.toFixed(3)}`;
+        const simBatches = this.app.batchManager?.simBatches ?? 1;
+
+        if (this.app.terrain.isSingleton || simBatches < 2) {
+            return `Batch: ${batchIndex}\n${header}\n${this.#formatSingleBatchProps(props)}`;
+        }
+
+        const allProps = this.app.terrain.getPropertiesAtAllBatches(
+            point.x,
+            point.y,
+            batchIndex
+        );
+        if (!allProps) {
+            return `Batch: ${batchIndex}\n${header}\n${this.#formatSingleBatchProps(props)}`;
+        }
+
+        const referenceBatch = this.app.uiState?.terrainDiffBatchA ?? 0;
+        const referenceProps = allProps.get(referenceBatch);
+
+        const lines = [header];
+        for (let i = 0; i < simBatches; i++) {
+            const batchProps = allProps.get(i);
+            if (!batchProps) continue;
+
+            const isRef = i === referenceBatch;
+            const label = `Batch ${i}${isRef ? " (ref)" : ""}${i === batchIndex ? " *" : ""}:`;
+            const fields = [`h=${batchProps.height.toFixed(3)}`];
+            if (batchProps.friction !== undefined) {
+                fields.push(`fric=${batchProps.friction.toFixed(3)}`);
+            }
+            if (batchProps.stiffness !== undefined) {
+                fields.push(`stiff=${batchProps.stiffness.toExponential(2)}`);
+            }
+            if (!isRef && referenceProps) {
+                const dh = batchProps.height - referenceProps.height;
+                fields.push(`Δh=${dh >= 0 ? "+" : ""}${dh.toFixed(3)}`);
+                if (
+                    batchProps.friction !== undefined &&
+                    referenceProps.friction !== undefined
+                ) {
+                    const df = batchProps.friction - referenceProps.friction;
+                    fields.push(`Δfric=${df >= 0 ? "+" : ""}${df.toFixed(3)}`);
+                }
+                if (
+                    batchProps.stiffness !== undefined &&
+                    referenceProps.stiffness !== undefined
+                ) {
+                    const ds = batchProps.stiffness - referenceProps.stiffness;
+                    fields.push(`Δstiff=${ds >= 0 ? "+" : ""}${ds.toExponential(2)}`);
+                }
+            }
+            lines.push(`${label} ${fields.join("  ")}`);
+        }
+        lines.push("(* = hovered batch)");
+        return lines.join("\n");
     }
 
     hideTerrainTooltip() {

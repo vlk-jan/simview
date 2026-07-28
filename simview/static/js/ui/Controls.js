@@ -237,7 +237,62 @@ export class UIControls {
             .name("Color Mode")
             .onChange((value) => {
                 this.updateTerrainColorMode(value);
+                this.updateDiffControlsVisibility(value);
             });
+
+        // "diff" mode's own layer/batch-pair pickers -- only meaningful (and
+        // only shown) when Color Mode is "diff". Mirrors the Camera Options
+        // folder's splitBatchA/B show/hide-on-toggle pattern above.
+        let diffLayerCtrl = null;
+        let diffBatchACtrl = null;
+        let diffBatchBCtrl = null;
+        if (
+            this.app.terrain &&
+            this.app.batchManager &&
+            this.app.batchManager.simBatches >= 2
+        ) {
+            const diffLayers = this.app.terrain.getAvailableDiffLayers();
+            const batches = Array.from(
+                { length: this.app.batchManager.simBatches },
+                (_, i) => i
+            );
+            const diffControls = {
+                diffLayer: this.app.uiState.terrainDiffLayer || diffLayers[0] || "height",
+                diffBatchA: this.app.uiState.terrainDiffBatchA ?? 0,
+                diffBatchB:
+                    this.app.uiState.terrainDiffBatchB ??
+                    Math.min(1, this.app.batchManager.simBatches - 1),
+            };
+            this.app.uiState.terrainDiffLayer = diffControls.diffLayer;
+            this.app.uiState.terrainDiffBatchA = diffControls.diffBatchA;
+            this.app.uiState.terrainDiffBatchB = diffControls.diffBatchB;
+
+            diffLayerCtrl = this.terrainFolder
+                .add(diffControls, "diffLayer", diffLayers)
+                .name("Diff Layer")
+                .onChange((value) => {
+                    this.app.uiState.terrainDiffLayer = value;
+                    this.refreshTerrainDiff();
+                });
+            diffBatchACtrl = this.terrainFolder
+                .add(diffControls, "diffBatchA", batches)
+                .name("Diff Batch A")
+                .onChange((value) => {
+                    this.app.uiState.terrainDiffBatchA = parseInt(value);
+                    this.refreshTerrainDiff();
+                });
+            diffBatchBCtrl = this.terrainFolder
+                .add(diffControls, "diffBatchB", batches)
+                .name("Diff Batch B")
+                .onChange((value) => {
+                    this.app.uiState.terrainDiffBatchB = parseInt(value);
+                    this.refreshTerrainDiff();
+                });
+        }
+        this.diffControlsElements = [diffLayerCtrl, diffBatchACtrl, diffBatchBCtrl].filter(
+            Boolean
+        );
+        this.updateDiffControlsVisibility(currentColorMode);
 
         const terrainProbeCtrl = this.terrainFolder
             .add(terrainControls, "terrainProbe")
@@ -568,6 +623,27 @@ export class UIControls {
         if (this.app.terrain) {
             this.app.uiState.terrainColorMode = mode;
             this.app.terrain.setColorMode(mode);
+            if (this.app.legend) this.app.legend.update();
+        }
+    }
+
+    // Shows the Diff Layer/Batch A/Batch B pickers only while Color Mode is
+    // "diff" -- they're meaningless otherwise.
+    updateDiffControlsVisibility(mode) {
+        if (!this.diffControlsElements) return;
+        for (const ctrl of this.diffControlsElements) {
+            if (mode === "diff") ctrl.show();
+            else ctrl.hide();
+        }
+    }
+
+    // Re-renders the terrain diff overlay after the layer/batch-pair pickers
+    // change, without going through the full setColorMode/setColorMap path
+    // (the color *mode* itself -- "diff" -- hasn't changed, just which
+    // layer/batches it diffs).
+    refreshTerrainDiff() {
+        if (this.app.terrain) {
+            this.app.terrain.setColorMode("diff");
             if (this.app.legend) this.app.legend.update();
         }
     }

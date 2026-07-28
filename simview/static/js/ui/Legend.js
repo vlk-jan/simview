@@ -35,7 +35,8 @@ export class Legend {
 
         this.container.style.display = "flex";
         const mode = this.app.uiState.terrainColorMode || "height";
-        const cmapName = this.app.uiState.terrainColorMap || "viridis";
+        const cmapName =
+            mode === "diff" ? "coolwarm" : this.app.uiState.terrainColorMap || "viridis";
 
         let minVal, maxVal, unit, title;
 
@@ -54,9 +55,24 @@ export class Legend {
             maxVal = this.app.terrain.bounds.maxStiffness ?? 500000.0;
             unit = "N/m";
             title = "Stiffness";
+        } else if (mode === "diff") {
+            const layer = this.app.uiState.terrainDiffLayer || "friction";
+            const batchA = this.app.uiState.terrainDiffBatchA ?? 0;
+            const batchB =
+                this.app.uiState.terrainDiffBatchB ??
+                Math.min(1, this.app.batchManager.simBatches - 1);
+            const maxAbsDelta = this.app.terrain.getDiffMaxAbsDelta();
+            minVal = -maxAbsDelta;
+            maxVal = maxAbsDelta;
+            unit = layer === "height" ? "m" : layer === "stiffness" ? "N/m" : "";
+            const layerTitle = layer.charAt(0).toUpperCase() + layer.slice(1);
+            title = `Δ${layerTitle} (batch ${batchB} − batch ${batchA})`;
         }
 
-        const decimals = (mode === "stiffness" && maxVal > 1000) ? 0 : 2;
+        const isStiffnessScale =
+            mode === "stiffness" ||
+            (mode === "diff" && this.app.uiState.terrainDiffLayer === "stiffness");
+        const decimals = isStiffnessScale && maxVal > 1000 ? 0 : 2;
         this.container.innerHTML = `
             <div style="font-weight: bold; margin-bottom: 5px; text-align: center;">${title} ${unit ? `(${unit})` : ""}</div>
             <div id="legend-gradient" style="height: 20px; width: 100%; margin-bottom: 5px; border: 1px solid white;"></div>

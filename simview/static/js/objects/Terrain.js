@@ -356,6 +356,32 @@ export class Terrain {
         }
     }
 
+    // Returns the per-batch data array for a diff layer name ("height",
+    // "friction", or "stiffness").
+    #diffLayerData(layer) {
+        if (layer === "friction") return this.frictionData;
+        if (layer === "stiffness") return this.stiffnessData;
+        return this.heightData;
+    }
+
+    // Largest absolute (batchB - batchA) delta over the whole grid for a
+    // diff layer, used to scale the diverging colormap so it's centered on
+    // zero. Returns 0 (rather than dividing by zero downstream) if the data
+    // is missing or the two batches are identical -- callers treat 0 as "no
+    // delta to show".
+    #maxAbsDelta(layer, batchA, batchB) {
+        const data = this.#diffLayerData(layer);
+        const a = data && data[batchA];
+        const b = data && data[batchB];
+        if (!a || !b) return 0;
+        let max = 0;
+        for (let i = 0; i < a.length; i++) {
+            const abs = Math.abs(b[i] - a[i]);
+            if (abs > max) max = abs;
+        }
+        return max;
+    }
+
     #updateSurfaceColor(batchIndex, geometry, callableColormap) {
         if (!geometry) return;
         const position = geometry.attributes.position;
@@ -365,10 +391,40 @@ export class Terrain {
         const { resolutionX, resolutionY } = this.dimensions;
         const mode = this.app.uiState.terrainColorMode || "height";
 
+        let diffLayer, diffBatchA, diffBatchB, diffLayerData, maxAbsDelta;
+        if (mode === "diff") {
+            // Diff mode always renders with a fixed diverging colormap
+            // (centered on zero), independent of the sequential "Color Map"
+            // picker used by height/friction/stiffness -- see Legend.js's
+            // matching "diff" branch.
+            callableColormap = this.getCallableFromColorMapName("coolwarm");
+            diffLayer = this.app.uiState.terrainDiffLayer || "friction";
+            diffBatchA = this.app.uiState.terrainDiffBatchA ?? 0;
+            diffBatchB =
+                this.app.uiState.terrainDiffBatchB ??
+                Math.min(1, this.app.batchManager.simBatches - 1);
+            diffLayerData = this.#diffLayerData(diffLayer);
+            maxAbsDelta = this.#maxAbsDelta(diffLayer, diffBatchA, diffBatchB);
+        }
+
         // Update all colors based on the new colormap
         for (let i = 0; i < position.count; i++) {
             let value;
-            if (mode === "height") {
+            if (mode === "diff") {
+                const col = i % resolutionX;
+                const invertedRow = Math.floor(i / resolutionX);
+                const row = resolutionY - invertedRow - 1;
+                const dataIndex = row * resolutionX + col;
+
+                const a = diffLayerData && diffLayerData[diffBatchA];
+                const b = diffLayerData && diffLayerData[diffBatchB];
+                if (a && b && maxAbsDelta > 0) {
+                    const delta = b[dataIndex] - a[dataIndex];
+                    value = 0.5 + 0.5 * Math.max(-1, Math.min(1, delta / maxAbsDelta));
+                } else {
+                    value = 0.5; // no delta (or missing data): render as the center color
+                }
+            } else if (mode === "height") {
                 value = this.calculateNormalizedHeight(position.getZ(i));
             } else {
                 const col = i % resolutionX;
@@ -399,6 +455,17 @@ export class Terrain {
         }
         // Update the buffer
         colorAttribute.needsUpdate = true;
+    }
+
+    // Max |delta| for the currently-configured diff layer/batch pair, for
+    // Legend.js to label the diverging colorbar's endpoints.
+    getDiffMaxAbsDelta() {
+        const layer = this.app.uiState.terrainDiffLayer || "friction";
+        const batchA = this.app.uiState.terrainDiffBatchA ?? 0;
+        const batchB =
+            this.app.uiState.terrainDiffBatchB ??
+            Math.min(1, this.app.batchManager.simBatches - 1);
+        return this.#maxAbsDelta(layer, batchA, batchB);
     }
 
     // Update terrain colors with current colormap
@@ -439,11 +506,25 @@ export class Terrain {
         if (this.stiffnessData && this.stiffnessData.length > 0) {
             modes.push("stiffness");
         }
+        if (this.app.batchManager.simBatches >= 2) {
+            modes.push("diff");
+        }
         return modes;
     }
 
-    getPropertiesAt(x, y, batchIndex) {
-        const batchOffset = this.app.batchManager.getBatchOffset(batchIndex);
+    // Layer names ("height"/"friction"/"stiffness") with per-batch data
+    // present, for the diff mode's layer picker in Controls.js.
+    getAvailableDiffLayers() {
+        return this.getAvailableColorModes().filter((mode) => mode !== "diff");
+    }
+
+    // Resolves a world-space (x, y) point -- clicked/hovered on
+    // `spatialBatchIndex`'s own terrain patch, hence that batch's world
+    // offset is what maps it back to local grid coordinates -- to a grid
+    // (col, row) index. Returns `null` if the point falls outside the
+    // terrain extent (or off the grid after rounding).
+    #resolveGridIndex(x, y, spatialBatchIndex) {
+        const batchOffset = this.app.batchManager.getBatchOffset(spatialBatchIndex);
         const localX = x - batchOffset.x;
         const localY = y - batchOffset.y;
 
@@ -456,29 +537,60 @@ export class Terrain {
 
         const col = Math.round(((localX - minX) / sizeX) * (resolutionX - 1));
         const row = Math.round(((localY - minY) / sizeY) * (resolutionY - 1));
-
         if (col < 0 || col >= resolutionX || row < 0 || row >= resolutionY) return null;
 
-        const dataIndex = row * resolutionX + col;
-        const props = {};
-        
-        const dataBatchIndex = this.isSingleton ? 0 : batchIndex;
+        return row * this.dimensions.resolutionX + col;
+    }
 
+    // Reads height/friction/stiffness for `dataBatchIndex` at an already-
+    // resolved flat grid index (see #resolveGridIndex). Shared by
+    // getPropertiesAt and getPropertiesAtAllBatches so both look up data the
+    // same way.
+    #propsAtIndex(dataIndex, dataBatchIndex) {
+        const props = {};
         if (this.heightData && this.heightData[dataBatchIndex]) {
             props.height = this.heightData[dataBatchIndex][dataIndex];
         } else {
             return null;
         }
-
         if (this.frictionData && this.frictionData[dataBatchIndex]) {
             props.friction = this.frictionData[dataBatchIndex][dataIndex];
         }
-        
         if (this.stiffnessData && this.stiffnessData[dataBatchIndex]) {
             props.stiffness = this.stiffnessData[dataBatchIndex][dataIndex];
         }
-
         return props;
+    }
+
+    getPropertiesAt(x, y, batchIndex) {
+        const dataIndex = this.#resolveGridIndex(x, y, batchIndex);
+        if (dataIndex === null) return null;
+        const dataBatchIndex = this.isSingleton ? 0 : batchIndex;
+        return this.#propsAtIndex(dataIndex, dataBatchIndex);
+    }
+
+    // Like getPropertiesAt, but returns every batch's properties at the same
+    // grid cell -- the world point `(x, y)` was clicked/hovered on
+    // `hoveredBatchIndex`'s terrain patch (batches are laid out side by side
+    // in world space, each at its own offset), so that's the one used to
+    // resolve the point to a grid cell; every other batch's value at that
+    // *same* cell is then read directly, without re-applying its own world
+    // offset to the original point (which would incorrectly re-project it
+    // onto a different patch entirely). Returns `null` if the point is
+    // outside the terrain extent; otherwise a `Map<batchIndex, props>`
+    // (batches whose data lookup fails, e.g. a missing field, are omitted).
+    getPropertiesAtAllBatches(x, y, hoveredBatchIndex) {
+        const dataIndex = this.#resolveGridIndex(x, y, hoveredBatchIndex);
+        if (dataIndex === null) return null;
+
+        const simBatches = this.app.batchManager.simBatches;
+        const result = new Map();
+        for (let i = 0; i < simBatches; i++) {
+            const dataBatchIndex = this.isSingleton ? 0 : i;
+            const props = this.#propsAtIndex(dataIndex, dataBatchIndex);
+            if (props) result.set(i, props);
+        }
+        return result;
     }
 
     // Get THREE.js group containing all visualizations
