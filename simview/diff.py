@@ -180,19 +180,25 @@ def compute_trajectory_diff(
     every: int = 1,
     pos_threshold: float | None = None,
     rot_threshold_deg: float | None = None,
+    per_axis: bool = False,
 ) -> dict:
     """Per-frame positional/orientation divergence between batch `batch_a`
     and batch `batch_b`'s trajectories in `states_data`, for every body
     present in the states (or just `body` if given).
 
     Returns a JSON-serializable dict: `{"batch_a", "batch_b", "every",
-    "pos_threshold", "rot_threshold_deg", "bodies": {label: {"frame_indices",
-    "times", "position_error", "orientation_error_deg", "summary": {
-    "frame_count", "position_error": {"mean","max","final"},
+    "pos_threshold", "rot_threshold_deg", "per_axis", "bodies": {label:
+    {"frame_indices", "times", "position_error", "orientation_error_deg",
+    "summary": {"frame_count", "position_error": {"mean","max","final"},
     "orientation_error_deg": {...}, "first_frame_exceeding_pos_threshold",
-    "first_frame_exceeding_rot_threshold"}}}}`. Raises `ValueError` on
-    invalid batch indices, `every < 1`, an unmatched/ambiguous `body`, or a
-    scene with no diffable bodies.
+    "first_frame_exceeding_rot_threshold"}}}}`. When `per_axis` is set, each
+    body also gets `"err_x"`/`"err_y"`/`"err_z"` per-frame series (signed
+    `batch_a - batch_b`, matching the browser Error Metrics panel's
+    per-axis toggle -- see `static/js/utils/errorMath.js`'s
+    `positionAxisError`) and matching `"err_x"`/`"err_y"`/`"err_z"` entries
+    in `summary` (mean/max/final of the *signed* value, so directional bias
+    is visible). Raises `ValueError` on invalid batch indices, `every < 1`,
+    an unmatched/ambiguous `body`, or a scene with no diffable bodies.
     """
     batch_size = _resolve_batches(model_data, batch_a, batch_b)
     if every < 1:
@@ -223,6 +229,9 @@ def compute_trajectory_diff(
         times: list = []
         position_error: list[float] = []
         orientation_error_deg: list[float] = []
+        err_x: list[float] = []
+        err_y: list[float] = []
+        err_z: list[float] = []
 
         for idx, state in enumerate(states_data):
             if idx % every != 0:
@@ -245,24 +254,36 @@ def compute_trajectory_diff(
             times.append(state.get("time"))
             position_error.append(math.dist(row_a[:3], row_b[:3]))
             orientation_error_deg.append(_quat_angle_deg(row_a[3:], row_b[3:]))
+            if per_axis:
+                err_x.append(row_a[0] - row_b[0])
+                err_y.append(row_a[1] - row_b[1])
+                err_z.append(row_a[2] - row_b[2])
 
+        summary = {
+            "frame_count": len(frame_indices),
+            "position_error": _stats(position_error),
+            "orientation_error_deg": _stats(orientation_error_deg),
+            "first_frame_exceeding_pos_threshold": _first_exceeding(
+                frame_indices, position_error, pos_threshold
+            ),
+            "first_frame_exceeding_rot_threshold": _first_exceeding(
+                frame_indices, orientation_error_deg, rot_threshold_deg
+            ),
+        }
         bodies_out[label] = {
             "frame_indices": frame_indices,
             "times": times,
             "position_error": position_error,
             "orientation_error_deg": orientation_error_deg,
-            "summary": {
-                "frame_count": len(frame_indices),
-                "position_error": _stats(position_error),
-                "orientation_error_deg": _stats(orientation_error_deg),
-                "first_frame_exceeding_pos_threshold": _first_exceeding(
-                    frame_indices, position_error, pos_threshold
-                ),
-                "first_frame_exceeding_rot_threshold": _first_exceeding(
-                    frame_indices, orientation_error_deg, rot_threshold_deg
-                ),
-            },
+            "summary": summary,
         }
+        if per_axis:
+            bodies_out[label]["err_x"] = err_x
+            bodies_out[label]["err_y"] = err_y
+            bodies_out[label]["err_z"] = err_z
+            summary["err_x"] = _stats(err_x)
+            summary["err_y"] = _stats(err_y)
+            summary["err_z"] = _stats(err_z)
 
     return {
         "batch_a": batch_a,
@@ -270,6 +291,7 @@ def compute_trajectory_diff(
         "every": every,
         "pos_threshold": pos_threshold,
         "rot_threshold_deg": rot_threshold_deg,
+        "per_axis": per_axis,
         "bodies": bodies_out,
     }
 
@@ -306,6 +328,13 @@ def format_diff_text(result: dict) -> str:
             f"  rot_err (deg): mean={rot['mean']:.6g}  max={rot['max']:.6g}  "
             f"final={rot['final']:.6g}"
         )
+        if result.get("per_axis"):
+            for axis in ("err_x", "err_y", "err_z"):
+                a = summary[axis]
+                lines.append(
+                    f"  {axis} (m):      mean={a['mean']:.6g}  max={a['max']:.6g}  "
+                    f"final={a['final']:.6g}"
+                )
         if summary["first_frame_exceeding_pos_threshold"] is not None:
             lines.append(
                 "  first frame exceeding pos_threshold: "
@@ -344,17 +373,22 @@ def format_diff_csv(result: dict) -> str:
     (body, frame), full series (no truncation) -- CSV output is for scripts,
     matching the "just the numbers, in full" philosophy `--json` already
     uses everywhere in this CLI."""
+    per_axis = result.get("per_axis")
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(
-        ["body", "frame", "time", "position_error", "orientation_error_deg"]
-    )
+    header = ["body", "frame", "time", "position_error", "orientation_error_deg"]
+    if per_axis:
+        header += ["err_x", "err_y", "err_z"]
+    writer.writerow(header)
     for label, body in result["bodies"].items():
-        for frame_idx, t, p, r in zip(
+        columns = [
             body["frame_indices"],
             body["times"],
             body["position_error"],
             body["orientation_error_deg"],
-        ):
-            writer.writerow([label, frame_idx, t, p, r])
+        ]
+        if per_axis:
+            columns += [body["err_x"], body["err_y"], body["err_z"]]
+        for row in zip(*columns):
+            writer.writerow([label, *row])
     return buf.getvalue()

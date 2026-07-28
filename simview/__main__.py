@@ -178,6 +178,7 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
             every=args.every,
             pos_threshold=args.pos_threshold,
             rot_threshold_deg=args.rot_threshold_deg,
+            per_axis=args.per_axis,
         )
         text = diff_mod.format_diff_text(result)
         csv_text = diff_mod.format_diff_csv(result)
@@ -343,6 +344,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "With 'simview diff <file>', report the first sampled frame whose "
             "orientation error exceeds this many degrees."
+        ),
+    )
+    parser.add_argument(
+        "--per-axis",
+        action="store_true",
+        help=(
+            "With 'simview diff <file>', also report signed per-axis "
+            "(err_x/err_y/err_z = batch_a - batch_b) position error, matching "
+            "the browser Error Metrics panel's per-axis toggle."
         ),
     )
     parser.add_argument(

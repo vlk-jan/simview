@@ -66,6 +66,27 @@ def test_compute_trajectory_diff_basic_position_and_orientation_error():
     assert box["orientation_error_deg"] == pytest.approx([0.0, 0.0, 0.0], abs=1e-6)
 
 
+def test_compute_trajectory_diff_per_axis_reports_signed_batch_a_minus_b():
+    states = _states_two_bodies(offset=1.0)
+    result = compute_trajectory_diff(
+        _model(), states, batch_a=0, batch_b=1, per_axis=True
+    )
+    box = result["bodies"]["Box"]
+    assert result["per_axis"] is True
+    # batch b's x is batch a's x + offset, so err_x = a - b = -offset.
+    assert box["err_x"] == pytest.approx([-1.0, -1.0, -1.0])
+    assert box["err_y"] == pytest.approx([0.0, 0.0, 0.0])
+    assert box["err_z"] == pytest.approx([0.0, 0.0, 0.0])
+    assert box["summary"]["err_x"]["mean"] == pytest.approx(-1.0)
+
+
+def test_compute_trajectory_diff_without_per_axis_omits_axis_fields():
+    states = _states_two_bodies(offset=1.0)
+    result = compute_trajectory_diff(_model(), states, batch_a=0, batch_b=1)
+    assert result["per_axis"] is False
+    assert "err_x" not in result["bodies"]["Box"]
+
+
 def test_compute_trajectory_diff_zero_error_when_batches_identical():
     states = _states_two_bodies(offset=0.0)
     result = compute_trajectory_diff(_model(), states, batch_a=0, batch_b=1)
@@ -221,6 +242,40 @@ def test_format_diff_csv_render():
     first_data_row = rows[1]
     assert first_data_row[0] in result["bodies"]
     assert float(first_data_row[3]) == pytest.approx(1.0)
+
+
+def test_format_diff_csv_render_per_axis_adds_columns():
+    states = _states_two_bodies(frames=3, offset=1.0)
+    result = compute_trajectory_diff(
+        _model(), states, batch_a=0, batch_b=1, per_axis=True
+    )
+    rows = list(csv.reader(io.StringIO(format_diff_csv(result))))
+
+    assert rows[0] == [
+        "body",
+        "frame",
+        "time",
+        "position_error",
+        "orientation_error_deg",
+        "err_x",
+        "err_y",
+        "err_z",
+    ]
+    first_data_row = rows[1]
+    assert float(first_data_row[5]) == pytest.approx(-1.0)
+    assert float(first_data_row[6]) == pytest.approx(0.0)
+    assert float(first_data_row[7]) == pytest.approx(0.0)
+
+
+def test_format_diff_text_per_axis_shows_axis_lines():
+    states = _states_two_bodies(offset=1.0)
+    result = compute_trajectory_diff(
+        _model(), states, batch_a=0, batch_b=1, per_axis=True
+    )
+    text = format_diff_text(result)
+    assert "err_x (m):" in text
+    assert "err_y (m):" in text
+    assert "err_z (m):" in text
 
 
 def test_quat_angle_matches_known_90_degree_rotation():

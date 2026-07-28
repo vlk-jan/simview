@@ -346,6 +346,32 @@ def test_diff_json_flag_prints_valid_json(capsys, monkeypatch, tmp_path):
     ] == pytest.approx(0.0)
 
 
+def test_diff_per_axis_flag_adds_axis_fields_to_json(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "diff",
+            str(sim_file),
+            "--batches",
+            "0",
+            "1",
+            "--per-axis",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["per_axis"] is True
+    assert "err_x" in result["bodies"]["Box"]
+
+
 def test_diff_requires_batches_flag(capsys, monkeypatch, tmp_path):
     scene = build_scene(batch_size=2)
     sim_file = tmp_path / "sim.json"
