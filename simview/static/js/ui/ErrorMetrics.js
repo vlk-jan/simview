@@ -1,5 +1,6 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
+import { pickDefaultBatchPair } from "../utils/batchPresets.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
     maxWithIndex,
@@ -20,8 +21,13 @@ export class ErrorMetrics {
         this.app = app;
         this.isExpanded = false;
         this.selectedBody = app.bodies.keys().next().value || null;
-        this.batchA = 0;
-        this.batchB = Math.min(1, app.batchManager.simBatches - 1);
+        const batchNames = Array.from(
+            { length: app.batchManager.simBatches },
+            (_, i) => app.batchManager.getBatchName(i)
+        );
+        const defaultPair = pickDefaultBatchPair(batchNames);
+        this.batchA = defaultPair.batchA;
+        this.batchB = defaultPair.batchB;
         this.showAxes = false;
         this.showStats = false;
         this.posSeries = [];
