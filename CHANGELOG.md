@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5] - 2026-07-28
+
+### Added
+
+- `simview render <file> --output frame.png`: headless PNG screenshot via a
+  real (headless) browser driving a real `SimViewServer` instance, with
+  `--view`/`--width`/`--height` options. Ships as a new optional `render`
+  extra rather than a hard dependency.
+- Terrain diff color overlay: a "diff" color mode (diverging colormap
+  centered on zero) plus Diff Layer/Batch A/Batch B pickers in Terrain
+  Options, with a matching diverging colorbar in the Legend.
+- The terrain data probe now shows every batch's height/friction/stiffness
+  at the hovered cell, plus each one's delta from a reference batch, instead
+  of just the hovered batch.
+- `--per-axis` flag for `simview diff`, reporting signed `err_x`/`err_y`/
+  `err_z` (batch A minus batch B) per frame in `--json`/`--csv` output.
+- Mean/min `|delta|` stats (alongside the existing max) in
+  `simview terrain --batches --area` output.
+- Full documentation site (MkDocs + mkdocs-material + mkdocstrings) covering
+  usage, the CLI, the JSON format specification, the API reference, and a
+  developer guide, published to GitHub Pages. `README.md` is trimmed to a
+  landing page that links to it.
+
+### Changed
+
+- The Error Metrics panel auto-selects a sensible Batch A/B default from
+  batch names (e.g. ground-truth vs. post-adaptation) instead of always
+  defaulting to indices 0/1, falling back to 0/1 when no batch name matches.
+
 ## [3.4] - 2026-07-27
 
 ### Added
@@ -111,7 +140,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.4...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.5...HEAD
+[3.5]: https://github.com/vlk-jan/simview/compare/v3.4...v3.5
 [3.4]: https://github.com/vlk-jan/simview/compare/v3.3...v3.4
 [3.3]: https://github.com/vlk-jan/simview/compare/v3.2...v3.3
 [3.2]: https://github.com/vlk-jan/simview/compare/v3.1...v3.2
