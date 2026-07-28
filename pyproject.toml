@@ -42,6 +42,10 @@ Issues = "https://github.com/vlk-jan/simview/issues"
 # Needed only to author simulations via the Python API (simview.scene / state / model).
 # Viewing an existing JSON file does not require these.
 authoring = ["torch", "einops", "numpy"]
+# Needed only for `simview render` (headless PNG screenshots, e.g. from a
+# SLURM job with no display). Also requires a one-time `playwright install
+# chromium` to fetch the browser binary itself.
+render = ["playwright>=1.40"]
 
 [project.scripts]
 simview = "simview.__main__:main"

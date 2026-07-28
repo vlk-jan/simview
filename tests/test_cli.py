@@ -629,6 +629,98 @@ def test_json_and_csv_together_errors(capsys, monkeypatch, tmp_path):
     assert "mutually exclusive" in capsys.readouterr().err
 
 
+def test_render_requires_output_flag(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "render", str(sim_file)])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "requires --output" in capsys.readouterr().err
+
+
+def test_render_missing_file_errors(capsys, monkeypatch, tmp_path):
+    missing = tmp_path / "does-not-exist.json"
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "render", str(missing), "--output", str(tmp_path / "out.png")],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_render_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", "render", "--output", str(tmp_path / "out.png")]
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "requires exactly one file" in capsys.readouterr().err
+
+
+def test_render_reports_missing_playwright_cleanly(capsys, monkeypatch, tmp_path):
+    """Without the 'render' extra installed, 'simview render' must fail with
+    a clear install hint rather than a raw ModuleNotFoundError traceback --
+    simulate that by making the lazy import fail, regardless of whether
+    playwright actually happens to be installed in the test environment."""
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    out_path = tmp_path / "out.png"
+
+    import simview.render as render_mod
+
+    def _raise_missing_playwright(*args, **kwargs):
+        raise ImportError("'simview render' needs the 'playwright' package")
+
+    monkeypatch.setattr(render_mod, "render_screenshot", _raise_missing_playwright)
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "render", str(sim_file), "--output", str(out_path)],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "playwright" in capsys.readouterr().err
+    assert not out_path.exists()
+
+
+def test_render_creates_png_file(monkeypatch, tmp_path):
+    pytest.importorskip("playwright")
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    out_path = tmp_path / "out.png"
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "render",
+            str(sim_file),
+            "--output",
+            str(out_path),
+            # A distinct, unlikely-to-collide port -- --port 0 doesn't mean
+            # "let the OS pick" here (find_free_port would just echo back 0
+            # unchanged; see simview/utils.py), so pick a fixed one instead.
+            "--port",
+            "18420",
+        ],
+    )
+    cli.main()
+
+    assert out_path.exists()
+    assert out_path.stat().st_size > 1024
+
+
 def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path):
     scene = build_scene(batch_size=1)
     sim_file = tmp_path / "sim.json"

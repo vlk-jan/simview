@@ -194,6 +194,36 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
         print(text)
 
 
+def run_render(path: Path, args: argparse.Namespace) -> None:
+    """Headlessly render one PNG screenshot of the scene JSON at `path`, for
+    generating figures from a display-less environment (e.g. a SLURM job)."""
+    from simview.render import render_screenshot
+
+    if args.output is None:
+        logger.error(
+            "Error: 'simview render' requires --output, e.g. 'simview render "
+            "scene.json --output frame.png'."
+        )
+        sys.exit(1)
+
+    try:
+        render_screenshot(
+            path,
+            args.output,
+            host=args.host,
+            port=args.port,
+            view=args.view,
+            width=args.width,
+            height=args.height,
+        )
+    except ImportError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    except (RuntimeError, TimeoutError) as e:
+        logger.error("Error: 'simview render' failed: %s", e)
+        sys.exit(1)
+
+
 def save_merged(paths: list[Path], out_path: Path) -> None:
     """Merge `paths` (must be >= 2) and write the result to `out_path`, gzipped
     if it ends in .gz, without starting the server."""
@@ -220,10 +250,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Path(s) to simulation JSON file(s) to visualize, 'clear' to clear "
             "cache, 'info <file>' to print a structural summary of one scene "
             "file, 'terrain <file>' to query terrain values at a point or over "
-            "an area, or 'diff <file>' to compare two batches' trajectories. "
-            "Multiple visualize-mode files are merged into one scene, each "
-            "file's batches appended as extra batches (e.g. a real-world "
-            "recording plus a simulated rerun)."
+            "an area, 'diff <file>' to compare two batches' trajectories, or "
+            "'render <file>' to headlessly save a PNG screenshot (needs the "
+            "'render' extra). Multiple visualize-mode files are merged into "
+            "one scene, each file's batches appended as extra batches (e.g. a "
+            "real-world recording plus a simulated rerun)."
         ),
     )
     parser.add_argument(
@@ -376,6 +407,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="Don't automatically open a browser tab once the server starts.",
     )
     parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="With 'simview render <file>', PNG file path to save the screenshot to.",
+    )
+    parser.add_argument(
+        "--view",
+        type=str,
+        default=None,
+        metavar="HASH",
+        help=(
+            "With 'simview render <file>', a shareable view-link hash (from "
+            "the viewer's 'Copy view link' button, with or without the "
+            "leading '#') to set the camera/playback/terrain state before "
+            "capturing. Default: the viewer's startup state."
+        ),
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=1280,
+        help="With 'simview render <file>', screenshot width in pixels (default: 1280).",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=720,
+        help="With 'simview render <file>', screenshot height in pixels (default: 720).",
+    )
+    parser.add_argument(
         "--save-merged",
         type=str,
         default=None,
@@ -445,6 +507,21 @@ def main():
             logger.error("Error: File '%s' not found or is not a file.", diff_path)
             sys.exit(1)
         run_diff(diff_path, args)
+        return
+
+    if args.inputs and args.inputs[0] == "render":
+        render_args = args.inputs[1:]
+        if len(render_args) != 1:
+            logger.error(
+                "Error: 'simview render' requires exactly one file argument, "
+                "e.g. 'simview render scene.json --output frame.png'."
+            )
+            sys.exit(1)
+        render_path = Path(render_args[0])
+        if not (render_path.exists() and render_path.is_file()):
+            logger.error("Error: File '%s' not found or is not a file.", render_path)
+            sys.exit(1)
+        run_render(render_path, args)
         return
 
     if args.inputs == ["clear"]:
