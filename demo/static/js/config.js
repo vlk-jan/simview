@@ -1,0 +1,234 @@
+export const UI_DEFAULT_CONFIG = {
+    bodyVisualizationMode: "points",
+    axesVisible: false,
+    trailsVisible: false,
+    smoothInterpolation: true,
+    attributeVisible: {
+        contacts: false,
+        velocity: false,
+        angularVelocity: false,
+        force: false,
+        torque: false,
+    },
+    terrainVisualizationModes: {
+        surface: true,
+        wireframe: true,
+        normals: false,
+    },
+    terrainColorMap: "magma", // Default colormap
+    terrainColorMode: "height", // height, friction, or stiffness
+    terrainProbe: false, // interactive terrain probe on click
+};
+
+export const FREQ_CONFIG = {
+    scene: 60, // Scene update frequency in Hz
+    scalarPlotter: 20,
+    bodyStateWindow: 30,
+    playbackControls: 20,
+    errorMetrics: 20,
+    terrainProfile: 20,
+};
+
+export const CONTROLS_CONFIG = {
+    minDistance: 1,
+    maxDistance: 500,
+    enableDamping: false,
+    dampingFactor: 0.05,
+    screenSpacePanning: true,
+    maxPolarAngle: Math.PI,
+    enablePan: true,
+    panSpeed: 2.0,
+    rotateSpeed: 1.5,
+    zoomSpeed: 1.2,
+    listenToKeyEvents: true,
+};
+
+export const SCENE_CONFIG = {
+    defaultUp: [0, 0, 1],
+};
+
+export const RENDERER_CONFIG = {
+    antialias: true,
+    preserveDrawingBuffer: true,
+    pixelRatio: window.devicePixelRatio,
+    clearColor: 0x000000,
+    clearAlpha: 1.0,
+};
+
+export const CAMERA_CONFIG = {
+    fov: 40,
+    near: 0.1,
+    far: 500,
+    position: [-15, -15, 10],
+    up: [0, 0, 1],
+};
+
+export const LIGHTING_CONFIG = {
+    ambient: {
+        color: 0xffffff,
+        intensity: 0.9,
+    },
+    directional: {
+        color: 0xffffff,
+        intensity: 0.8,
+        position: [10, 10, 10],
+    },
+};
+
+export const GROUND_CONFIG = {
+    size: 1000, // Size of the ground plane
+    divisions: 100, // Number of grid divisions
+    mainColor: 0x444444, // Main ground color
+    gridColor: 0x888888, // Grid line color
+    position: [0, 0, 0], // Position of the ground plane
+    rotation: [0, 0, 0], // Rotation of the ground plane
+};
+
+export const TERRAIN_CONFIG = {
+    skipNormalCells: 10,
+    normalLength: 0.2,
+};
+
+export const BODY_CONFIG = {
+    geometry: {
+        box: {
+            widthSegments: 4,
+            heightSegments: 4,
+            depthSegments: 4,
+        },
+        sphere: {
+            widthSegments: 16,
+            heightSegments: 16,
+        },
+        cylinder: {
+            radialSegments: 32,
+            heightSegments: 4,
+        },
+    },
+    wireframe: {
+        color: 0x4080ff,
+    },
+    points: {
+        size: 0.1,
+        opacity: 0.7,
+        alphaTest: 0.5,
+        transparent: false,
+        texture: "static/textures/points/ball1.png",
+    },
+    contactPoints: {
+        size: 0.7,
+        opacity: 1.0,
+        alphaTest: 0.5,
+        transparent: false,
+        texture: "static/textures/contacts/red-cross0.png",
+    },
+};
+
+export const SCALAR_PLOTTER_CONFIG = {
+    stepsPerYAxis: 5,
+    inactiveBatchOpacity: 0.3,
+};
+
+export const TRAIL_CONFIG = {
+    opacity: 0.6,
+};
+
+export const BODY_VECTOR_CONFIG = {
+    // Linear velocity
+    velocity: {
+        color: 0x2ca02c,
+        scale: 1.0,
+    },
+    // Angular velocity
+    angularVelocity: {
+        color: 0xffff00,
+        scale: 1.0,
+    },
+    // Force
+    force: {
+        color: 0xff7f0e,
+        scale: 1.0,
+    },
+    // Torque
+    torque: {
+        color: 0xd62728,
+        scale: 1.0,
+    },
+};
+
+export const POINT_VECTOR_CONFIG = {
+    // Contact Normal (n)
+    contactNormal: {
+        color: 0xff0000,
+        scale: 0.5,
+        visible: false,
+    },
+};
+
+export const CONTACT_CONFIG = {
+    points: {
+        size: 0.5,
+        opacity: 1.0,
+        texture: "static/textures/contacts/red-cross0.png",
+        transparent: false,
+    },
+    normals: {
+        color: 0xff0000,
+    },
+};
+
+export const SELECTION_CONFIG = {
+    BODIES: {
+        key: "ctrl",
+        set: "selectedBodies",
+        objects: "bodies",
+    },
+    CONTACT_POINTS: {
+        key: "Alt",
+        set: "selectedContactPoints",
+        objects: "contactPoints",
+    },
+    BATCH: {
+        key: "shiftKey",
+    },
+};
+
+export const BATCH_PALETTE_GENERATION_CONFIG = {
+    colors: ["#00429d", "#96ffea", "#ff40e0", "#ffffe0", "#ff005e", "#93003a"],
+    correctLightness: true,
+};
+
+export const STATIC_OBJECT_CONFIG = {
+    geometry: {
+        box: {
+            widthSegments: 4,
+            heightSegments: 4,
+            depthSegments: 4,
+        },
+        sphere: {
+            widthSegments: 16,
+            heightSegments: 16,
+        },
+        cylinder: {
+            radialSegments: 32,
+            heightSegments: 4,
+        },
+    },
+    wireframe: {
+        color: 0x4080ff,
+    },
+    points: {
+        size: 0.2,
+        opacity: 0.7,
+        alphaTest: 0.5,
+        transparent: false,
+        texture: "static/textures/points/ball1.png",
+    },
+    contactPoints: {
+        size: 0.7,
+        opacity: 1.0,
+        alphaTest: 0.5,
+        transparent: false,
+        texture: "static/textures/contacts/red-cross0.png",
+    },
+};

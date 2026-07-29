@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>SimView</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;," />
+    <link
+      rel="stylesheet"
+      href="http://127.0.0.1:5420/static/css/controls.css"
+    />
+    <link
+      rel="stylesheet"
+      href="http://127.0.0.1:5420/static/lib/uPlot.min.css"
+    />
+    <style>
+      body {
+        margin: 0;
+        background-color: #000;
+        color: #fff;
+      }
+      #info {
+        position: absolute;
+        top: 10px;
+        width: 100%;
+        text-align: center;
+      }
+    </style>
+  <script>window.__simviewStaticBase = ".";</script>
+</head>
+  <body>
+    <div id="container"></div>
+
+    <!-- Add loading splash screen -->
+    <div id="loading-splash">
+      <h1>Loading...</h1>
+    </div>
+
+    <!-- WEBM/MP4 recording uses native canvas.captureStream() + MediaRecorder
+         (no library needed). The PNG-sequence recording format still needs
+         tar.js + download.js, but only loads them on demand, when the user
+         starts a PNG recording -- see static/js/utils/loadRecordingLibs.js. -->
+
+    <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are
+         vendored locally (same-origin) instead of loaded from a CDN, so the
+         viewer keeps working with no internet access. Each library lives in
+         a version-stamped directory (e.g. lib/three-0.174.0/) because
+         simview/static/lib/ is served with a long-lived, immutable
+         Cache-Control header (see _IMMUTABLE_STATIC_DIRS in
+         simview/server.py) -- bumping a pinned version must change the URL,
+         which a version-stamped directory name gives us for free. Since
+         these are now same-origin static files (not a third-party CDN
+         response), there is no SRI/integrity concern to guard against. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "http://127.0.0.1:5420/static/lib/three-0.174.0/three.module.js",
+          "three/addons/": "http://127.0.0.1:5420/static/lib/three-0.174.0/addons/",
+          "chroma": "http://127.0.0.1:5420/static/lib/chroma-js-3.1.2/index.min.js"
+        }
+      }
+    </script>
+
+    <script
+      type="module"
+      src="http://127.0.0.1:5420/static/js/main.js?v=1785332861"
+    ></script>
+    <script>
+      console.log("SimView index.html loaded");
+      window.onerror = function(msg, url, line, col, error) {
+        console.error("Global Error:", msg, "at", url, ":", line);
+        const splash = document.getElementById("loading-splash");
+        if (splash) {
+          splash.innerHTML = `<h1 style="color: red;">JS Error</h1><p>${msg}</p><p>${url}:${line}</p>`;
+        }
+      };
+    </script>
+  </body>
+</html>
