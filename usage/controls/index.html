@@ -732,6 +732,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#scene-info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scene Info
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1305,6 +1316,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#scene-info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scene Info
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1403,6 +1425,11 @@ without the switcher.</p>
 bottom-right corner, listing each batch's color, index, and name. Click a row to focus
 that batch, or click a name to rename it in place — renames persist next to the input
 file(s), so they survive a reload or server restart.</p>
+<h2 id="scene-info">Scene Info</h2>
+<p>When the scene JSON includes a <code>model.metadata</code> object, a read-only "Scene Info" panel
+appears in the GUI listing each key/value pair — e.g. the engine, checkpoint path, git
+commit, or CLI args a run was produced with — so a scene saved months ago is still
+self-describing. <code>simview info &lt;file&gt;</code> prints the same fields on the command line.</p>
 
 
 

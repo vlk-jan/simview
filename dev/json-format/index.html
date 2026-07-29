@@ -1321,6 +1321,10 @@ produces.</p>
 <li><strong><code>scalarNames</code></strong> <em>(array[string])</em> — names of per-batch scalar time-series (e.g. <code>"energy"</code>).</li>
 <li><strong><code>dt</code></strong> <em>(float)</em> — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.</li>
 <li><strong><code>collapse</code></strong> <em>(boolean)</em> — UI hint to start with the body-state window collapsed.</li>
+<li><strong><code>metadata</code></strong> <em>(object, optional)</em> — free-form, JSON-serializable run provenance (e.g.
+  engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
+  read-only in <code>simview info</code> and the browser's "Scene Info" GUI folder so a scene saved
+  months ago stays self-describing.</li>
 <li><strong><code>bodies</code></strong> <em>(array)</em> — dynamic bodies. Each entry:</li>
 <li><strong><code>name</code></strong> <em>(string)</em> — unique identifier, referenced from each state.</li>
 <li><strong><code>shape</code></strong> <em>(object)</em> — geometry, keyed by a <strong>string</strong> <code>type</code>:<ul>
