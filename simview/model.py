@@ -2,7 +2,7 @@ import base64
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -566,9 +566,11 @@ class SimViewModel:
             nx = -dzdx
             ny = -dzdy
             nz = torch.ones_like(nx)
-            normals = torch.stack([nx, ny, nz], dim=-3)
-            normals = normals / torch.linalg.norm(normals, dim=-3, keepdim=True)
-            normals = normals.to(dtype=heightmap.dtype)
+            computed_normals = torch.stack([nx, ny, nz], dim=-3)
+            computed_normals = computed_normals / torch.linalg.norm(
+                computed_normals, dim=-3, keepdim=True
+            )
+            normals = cast(torch.Tensor, computed_normals.to(dtype=heightmap.dtype))
 
         if normals.ndim == 3:  # channels first
             normals = normals.unsqueeze(0)  # add batch dim
