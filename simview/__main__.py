@@ -185,7 +185,10 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
 
 def run_diff(path: Path, args: argparse.Namespace) -> None:
     """Print a trajectory divergence report between two batches of the scene
-    JSON at `path`, to stdout."""
+    JSON at `path`, to stdout. With `--fail-on-exceed`, additionally exits
+    with a non-zero code once printing is done: 0 = within thresholds, 1 =
+    usage/parse error, 2 = a threshold was exceeded (see `--fail-on-exceed`'s
+    help text)."""
     from simview import diff as diff_mod
 
     if args.batches is None:
@@ -197,6 +200,17 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
     if args.json and args.csv:
         logger.error("Error: --json and --csv are mutually exclusive.")
         sys.exit(1)
+    if (
+        args.fail_on_exceed
+        and args.pos_threshold is None
+        and args.rot_threshold_deg is None
+    ):
+        logger.error(
+            "Error: --fail-on-exceed requires --pos-threshold and/or "
+            "--rot-threshold-deg."
+        )
+        sys.exit(1)
+
     try:
         model_data, states_data = diff_mod.load_scene(path)
         result = diff_mod.compute_trajectory_diff(
@@ -222,6 +236,15 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
         print(json.dumps(result, indent=2))
     else:
         print(text)
+
+    if args.fail_on_exceed:
+        exceeded = any(
+            body["summary"]["first_frame_exceeding_pos_threshold"] is not None
+            or body["summary"]["first_frame_exceeding_rot_threshold"] is not None
+            for body in result["bodies"].values()
+        )
+        if exceeded:
+            sys.exit(2)
 
 
 def run_render(path: Path, args: argparse.Namespace) -> None:
@@ -435,6 +458,18 @@ def build_parser() -> argparse.ArgumentParser:
             "With 'simview diff <file>', also report signed per-axis "
             "(err_x/err_y/err_z = batch_a - batch_b) position error, matching "
             "the browser Error Metrics panel's per-axis toggle."
+        ),
+    )
+    parser.add_argument(
+        "--fail-on-exceed",
+        action="store_true",
+        help=(
+            "With 'simview diff <file>', exit with code 2 (after printing the "
+            "normal output) if any diffed body's trajectory exceeds "
+            "--pos-threshold or --rot-threshold-deg; requires at least one of "
+            "them. Exit codes: 0 = within thresholds, 1 = usage/parse error, "
+            "2 = threshold exceeded -- lets scripts/CI tell divergence apart "
+            "from a broken invocation."
         ),
     )
     parser.add_argument(

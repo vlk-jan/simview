@@ -99,6 +99,22 @@ first frame where a batch's trajectory diverges past a given tolerance. Like
 `simview info`/`simview terrain`, this works on gzip-compressed files and
 doesn't require the `authoring` extra.
 
+Add `--fail-on-exceed` to make `simview diff` machine-checkable in a script
+or CI job: it requires at least one of `--pos-threshold`/`--rot-threshold-deg`,
+and exits non-zero if any diffed body's trajectory exceeds it (after
+printing the normal output, so you still get the report either way):
+
+```bash
+simview diff scene.json --batches 0 1 --pos-threshold 0.1 --fail-on-exceed
+echo $?   # 0 = within threshold, 1 = usage/parse error, 2 = threshold exceeded
+```
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Every diffed body stayed within the given threshold(s). |
+| `1` | Usage or parse error (bad arguments, unreadable file, etc.). |
+| `2` | At least one diffed body's trajectory exceeded a threshold. |
+
 ## Visualization of exported simulations
 
 To visualize a simulation defined in a JSON file, run the following command, replacing `[path_to_json_file]` with the actual path to your JSON data:

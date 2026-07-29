@@ -728,6 +728,76 @@ def test_diff_single_batch_scene_errors(capsys, monkeypatch, tmp_path):
     assert "need at least 2" in capsys.readouterr().err
 
 
+def test_diff_fail_on_exceed_exits_2_when_threshold_exceeded(
+    capsys, monkeypatch, tmp_path
+):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "diff",
+            str(sim_file),
+            "--batches",
+            "0",
+            "1",
+            # Position error is always >= 0, so a negative threshold is
+            # guaranteed to be exceeded on frame 0 without needing a scene
+            # with diverging batch trajectories.
+            "--pos-threshold",
+            "-1",
+            "--fail-on-exceed",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 2
+    assert "pos_err" in capsys.readouterr().out  # normal output still printed
+
+
+def test_diff_fail_on_exceed_exits_0_when_within_threshold(monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "diff",
+            str(sim_file),
+            "--batches",
+            "0",
+            "1",
+            "--pos-threshold",
+            "1000",
+            "--fail-on-exceed",
+        ],
+    )
+    cli.main()  # must not raise SystemExit
+
+
+def test_diff_fail_on_exceed_requires_a_threshold(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "diff", str(sim_file), "--batches", "0", "1", "--fail-on-exceed"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "requires --pos-threshold" in capsys.readouterr().err
+
+
 def test_terrain_batches_flag_switches_to_point_diff_mode(
     capsys, monkeypatch, tmp_path
 ):

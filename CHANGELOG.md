@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per layer, so the delta reflects property differences under the path
   rather than trajectory divergence. Honors `--layer`/`--every` and the
   usual `--json`/`--csv` output modes.
+- `--fail-on-exceed` flag for `simview diff`: exits with code 2 (after
+  printing the normal report) when any diffed body's trajectory exceeds
+  `--pos-threshold`/`--rot-threshold-deg`, and 0 when within them --
+  distinct from the usage/parse-error exit 1, so scripts and CI can use an
+  exported scene as a regression tripwire.
 
 ## [3.6] - 2026-07-29
 
