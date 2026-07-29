@@ -51,6 +51,33 @@ instead of querying a single one — each layer then reports `value_a`,
 simview terrain scene.json --area --batches 0 1 --json   # ground truth vs. estimate, whole extent
 ```
 
+### Sampling terrain along a body's trajectory
+
+Pass `--along-body BODY` instead of `--point`/`--area` to sample terrain
+value(s) at each state's `(x, y)` position of a given body, instead of a
+fixed point or area — useful for checking what terrain properties a robot
+actually drove over. For example, a DRIFT-style scene with batches
+`[GT, baseline, pre-adaptation, post-adaptation]`, each batch with its own
+terrain and its own recorded trajectory of a body named `box`:
+
+```bash
+simview terrain scene.json --along-body box --batch 3 --json   # friction/stiffness under box's path, post-adaptation batch
+```
+
+Add `--batches A B` to compare two batches instead: both batches' terrains
+are sampled **along batch A's trajectory** (batch A is the reference path,
+typically ground truth), so the reported delta reflects a difference in
+terrain properties under the path, not the two batches' trajectories
+diverging from each other — use `simview diff` to measure that separately.
+
+```bash
+simview terrain scene.json --along-body box --batches 0 3 --json   # GT terrain vs. post-adaptation terrain, sampled along GT's path
+```
+
+`BODY` is matched the same way as `simview diff`'s `--body` (full label, or
+any single name inside a rigidly-grouped body). Add `--every N` to
+subsample frames.
+
 ## Comparing two batches' trajectories
 
 To check how far apart two batches' trajectories are — e.g. ground truth vs.

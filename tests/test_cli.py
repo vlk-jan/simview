@@ -1,10 +1,12 @@
 """Tests for the simview CLI (gameplan item 13: --version/--host/--port/
 --no-browser/--save-merged)."""
 
+import base64
 import csv
 import gzip
 import io
 import json
+import struct
 
 import pytest
 
@@ -17,6 +19,63 @@ import simview.__main__ as cli
 
 def _fail_if_called(*args, **kwargs):
     raise AssertionError("server should not be started when --save-merged is used")
+
+
+def _blob(values: list) -> str:
+    return (
+        "__b64__" + base64.b64encode(struct.pack(f"<{len(values)}f", *values)).decode()
+    )
+
+
+def _write_raw_scene(path, model: dict, states: list) -> None:
+    """Write a hand-built scene JSON straight to disk, bypassing
+    SimulationScene -- for --along-body tests that need terrain/trajectory
+    shapes build_scene() doesn't produce (e.g. diverging per-batch
+    trajectories)."""
+    path.write_text(json.dumps({"model": model, "states": states}))
+
+
+def _along_body_diff_scene(path) -> None:
+    """Two batches whose 'Box' trajectory and terrain both diverge: batch 1's
+    height grid is 2x batch 0's, and batch 1's path is the *reverse* of
+    batch 0's. Used to prove --along-body --batches samples along batch A's
+    path end-to-end through the CLI -- if it wrongly used batch B's
+    (reversed) path instead, the sampled x positions and deltas below would
+    come out reversed too."""
+    grid_a = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    grid_b = [v * 2 for v in grid_a]
+    terrain = {
+        "dimensions": {"sizeX": 2.0, "sizeY": 2.0, "resolutionX": 3, "resolutionY": 3},
+        "bounds": {
+            "minX": 0.0,
+            "maxX": 2.0,
+            "minY": 0.0,
+            "maxY": 2.0,
+            "minZ": 0.0,
+            "maxZ": 16.0,
+        },
+        "heightData": _blob(grid_a + grid_b),
+        "normals": [[[0, 0, 1]] * 3] * 3,
+        "isSingleton": False,
+        "frictionData": None,
+        "stiffnessData": None,
+    }
+    model = {"simBatches": 2, "terrain": terrain}
+
+    def _row(x):
+        return [x, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+    states = []
+    for t in range(3):
+        row_a = _row(float(t))
+        row_b = _row(float(2 - t))
+        states.append(
+            {
+                "time": t * 0.1,
+                "bodies": [{"name": "Box", "bodyTransform": _blob(row_a + row_b)}],
+            }
+        )
+    _write_raw_scene(path, model, states)
 
 
 def test_version_matches_package_metadata(capsys, monkeypatch):
@@ -290,13 +349,32 @@ def test_terrain_point_and_area_are_mutually_exclusive(capsys, monkeypatch, tmp_
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one of --point or --area" in capsys.readouterr().err
+    assert "exactly one of --point, --area, or --along-body" in capsys.readouterr().err
 
     monkeypatch.setattr(cli.sys, "argv", ["simview", "terrain", str(sim_file)])
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one of --point or --area" in capsys.readouterr().err
+    assert "exactly one of --point, --area, or --along-body" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--point",
+            "0",
+            "0",
+            "--along-body",
+            "Box",
+        ],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "exactly one of --point, --area, or --along-body" in capsys.readouterr().err
 
 
 def test_terrain_missing_file_errors(capsys, monkeypatch, tmp_path):
@@ -310,6 +388,211 @@ def test_terrain_missing_file_errors(capsys, monkeypatch, tmp_path):
         cli.main()
     assert exc_info.value.code == 1
     assert "not found" in capsys.readouterr().err
+
+
+def test_terrain_along_body_prints_text_by_default(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--along-body", "Box"],
+    )
+    cli.main()
+
+    out = capsys.readouterr().out
+    assert "Box" in out
+    assert "height" in out
+    assert not out.startswith("{")
+
+
+def test_terrain_along_body_json_flag_prints_valid_json(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--along-body", "Box", "--json"],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["body"] == "Box"
+    assert result["frame_indices"] == [0, 1, 2]
+    assert result["layers"]["height"]["values"] == pytest.approx([0.0, 0.0, 0.0])
+    assert result["layers"]["friction"]["summary"]["mean"] == pytest.approx(0.5)
+
+
+def test_terrain_along_body_csv_flag_produces_parseable_csv(
+    capsys, monkeypatch, tmp_path
+):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--along-body", "Box", "--csv"],
+    )
+    cli.main()
+
+    rows = list(csv.reader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0][:4] == ["frame", "time", "x", "y"]
+    assert len(rows) - 1 == 3  # build_scene() has 3 states
+
+
+def test_terrain_along_body_every_flag_subsamples(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--along-body",
+            "Box",
+            "--every",
+            "2",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["frame_indices"] == [0, 2]
+
+
+def test_terrain_along_body_not_found_errors(capsys, monkeypatch, tmp_path):
+    scene = build_scene(batch_size=1)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--along-body", "Nope"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_terrain_along_body_ambiguous_errors(capsys, monkeypatch, tmp_path):
+    terrain = {
+        "dimensions": {"sizeX": 2.0, "sizeY": 2.0, "resolutionX": 3, "resolutionY": 3},
+        "bounds": {
+            "minX": 0.0,
+            "maxX": 2.0,
+            "minY": 0.0,
+            "maxY": 2.0,
+            "minZ": 0.0,
+            "maxZ": 1.0,
+        },
+        "heightData": _blob([0.0] * 9),
+        "normals": [[[0, 0, 1]] * 3] * 3,
+        "isSingleton": True,
+        "frictionData": None,
+        "stiffnessData": None,
+    }
+    model = {"simBatches": 1, "terrain": terrain}
+    row = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+    states = [
+        {
+            "time": 0.0,
+            "bodies": [
+                {"name": ["A", "B"], "bodyTransform": row},
+                {"name": ["B", "C"], "bodyTransform": row},
+            ],
+        }
+    ]
+    sim_file = tmp_path / "sim.json"
+    _write_raw_scene(sim_file, model, states)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "terrain", str(sim_file), "--along-body", "B"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "ambiguous" in capsys.readouterr().err
+
+
+def test_terrain_along_body_batches_diff_samples_along_batch_a_path(
+    capsys, monkeypatch, tmp_path
+):
+    sim_file = tmp_path / "sim.json"
+    _along_body_diff_scene(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--along-body",
+            "Box",
+            "--batches",
+            "0",
+            "1",
+            "--json",
+        ],
+    )
+    cli.main()
+
+    result = json.loads(capsys.readouterr().out)
+    # Batch a's path is x=[0, 1, 2]; batch b's (unused) path is the reverse.
+    assert result["x"] == pytest.approx([0.0, 1.0, 2.0])
+    layer = result["layers"]["height"]
+    assert layer["value_a"] == pytest.approx([0.0, 1.0, 2.0])
+    assert layer["value_b"] == pytest.approx([0.0, 2.0, 4.0])
+    assert layer["delta"] == pytest.approx([0.0, 1.0, 2.0])
+
+
+def test_terrain_along_body_batches_diff_csv_flag(capsys, monkeypatch, tmp_path):
+    sim_file = tmp_path / "sim.json"
+    _along_body_diff_scene(sim_file)
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--along-body",
+            "Box",
+            "--batches",
+            "0",
+            "1",
+            "--csv",
+        ],
+    )
+    cli.main()
+
+    rows = list(csv.reader(io.StringIO(capsys.readouterr().out)))
+    assert rows[0] == [
+        "frame",
+        "time",
+        "x",
+        "y",
+        "height_a",
+        "height_b",
+        "height_delta",
+    ]
+    assert len(rows) - 1 == 3
 
 
 def test_diff_prints_text_summary_by_default(capsys, monkeypatch, tmp_path):

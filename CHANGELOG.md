@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `simview terrain <file> --along-body BODY`: sample terrain layer(s)
+  bilinear-interpolated at a body's per-frame (x, y) position — "what
+  terrain is under the robot's driven path". With `--batches A B`, both
+  batches' terrains are sampled along batch A's (reference, typically
+  ground-truth) trajectory and reported as `value_a`/`value_b`/`delta`
+  per layer, so the delta reflects property differences under the path
+  rather than trajectory divergence. Honors `--layer`/`--every` and the
+  usual `--json`/`--csv` output modes.
+
 ## [3.6] - 2026-07-29
 
 ### Added

@@ -14,6 +14,10 @@ import struct
 import pytest
 
 from simview.terrain import (
+    format_along_csv,
+    format_along_diff_csv,
+    format_along_diff_text,
+    format_along_text,
     format_area_csv,
     format_area_diff_csv,
     format_area_diff_text,
@@ -22,6 +26,8 @@ from simview.terrain import (
     format_point_diff_csv,
     format_point_diff_text,
     format_point_text,
+    query_along_body,
+    query_along_body_diff,
     query_area,
     query_area_diff,
     query_point,
@@ -364,3 +370,290 @@ def test_format_area_diff_csv_render():
     assert float(row[2]) == pytest.approx(4.0)
     assert float(row[3]) == pytest.approx(104.0)
     assert float(row[4]) == pytest.approx(100.0)
+
+
+# --- query_along_body / query_along_body_diff -------------------------------
+#
+# Reuses the 3x3 grid from _GRID_VALUES (extent [0, 2] x [0, 2], row=y,
+# col=x, y=0 row is [0, 1, 2]) so a body driving along y=0 from x=0 to x=2
+# samples height values 0, 1, 2 in order.
+
+
+def _along_transform(x, y=0.0, z=0.0):
+    return [x, y, z, 1.0, 0.0, 0.0, 0.0]
+
+
+def _along_states_single_batch(frames=3):
+    """Batch_size=1 states: 'Box' drives from x=0 to x=frames-1 along y=0."""
+    states = []
+    for t in range(frames):
+        states.append(
+            {
+                "time": t * 0.1,
+                "bodies": [
+                    {"name": "Box", "bodyTransform": _along_transform(float(t))}
+                ],
+            }
+        )
+    return states
+
+
+def _along_states_two_batch(frames=3):
+    """Batch 0 ('a') drives x=0..frames-1 along y=0; batch 1 ('b') drives the
+    *reverse* path (x=frames-1..0), so sampling along batch b's path instead
+    of batch a's would visibly give different x positions/values -- used to
+    prove query_along_body_diff's "batch_a is the reference path" contract."""
+    states = []
+    for t in range(frames):
+        row_a = _along_transform(float(t))
+        row_b = _along_transform(float(frames - 1 - t))
+        states.append(
+            {
+                "time": t * 0.1,
+                "bodies": [{"name": "Box", "bodyTransform": _blob(row_a + row_b)}],
+            }
+        )
+    return states
+
+
+def _along_model(batch_size=1, doubled_b=False):
+    if batch_size == 1:
+        height_data = _blob(_GRID_VALUES)
+    else:
+        grid_a = _GRID_VALUES
+        grid_b = (
+            [v * 2 for v in _GRID_VALUES]
+            if doubled_b
+            else [v + 100.0 for v in _GRID_VALUES]
+        )
+        height_data = _blob(grid_a + grid_b)
+    terrain = {
+        "dimensions": {"sizeX": 2.0, "sizeY": 2.0, "resolutionX": 3, "resolutionY": 3},
+        "bounds": {
+            "minX": 0.0,
+            "maxX": 2.0,
+            "minY": 0.0,
+            "maxY": 2.0,
+            "minZ": 0.0,
+            "maxZ": 16.0,
+        },
+        "heightData": height_data,
+        "normals": [[[0, 0, 1]] * 3] * 3,
+        "isSingleton": batch_size == 1,
+        "frictionData": None,
+        "stiffnessData": None,
+    }
+    return {"simBatches": batch_size, "terrain": terrain}
+
+
+def test_query_along_body_samples_height_along_trajectory():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    result = query_along_body(model, states, body="Box")
+    assert result["body"] == "Box"
+    assert result["frame_indices"] == [0, 1, 2]
+    assert result["x"] == pytest.approx([0.0, 1.0, 2.0])
+    assert result["layers"]["height"]["values"] == pytest.approx([0.0, 1.0, 2.0])
+    assert result["layers"]["height"]["clamped"] == [False, False, False]
+    summary = result["layers"]["height"]["summary"]
+    assert summary["mean"] == pytest.approx(1.0)
+    assert summary["min"] == pytest.approx(0.0)
+    assert summary["max"] == pytest.approx(2.0)
+    assert summary["clamped_count"] == 0
+
+
+def test_query_along_body_every_subsamples_frames():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch(frames=5)
+    result = query_along_body(model, states, body="Box", every=2)
+    assert result["frame_indices"] == [0, 2, 4]
+
+
+def test_query_along_body_clamped_out_of_extent_points():
+    model = _along_model(batch_size=1)
+    # x goes from -5 to -3, entirely outside the [0, 2] extent.
+    states = [
+        {
+            "time": t * 0.1,
+            "bodies": [
+                {"name": "Box", "bodyTransform": _along_transform(float(t) - 5.0)}
+            ],
+        }
+        for t in range(3)
+    ]
+    result = query_along_body(model, states, body="Box")
+    assert result["layers"]["height"]["clamped"] == [True, True, True]
+    assert result["layers"]["height"]["summary"]["clamped_count"] == 3
+
+
+def test_query_along_body_not_found_raises():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    with pytest.raises(ValueError, match="not found"):
+        query_along_body(model, states, body="Nope")
+
+
+def test_query_along_body_ambiguous_raises():
+    model = _along_model(batch_size=1)
+    states = [
+        {
+            "time": 0.0,
+            "bodies": [
+                {"name": ["A", "B"], "bodyTransform": _blob(_along_transform(0.0))},
+                {"name": ["B", "C"], "bodyTransform": _blob(_along_transform(0.0))},
+            ],
+        }
+    ]
+    with pytest.raises(ValueError, match="ambiguous"):
+        query_along_body(model, states, body="B")
+
+
+def test_query_along_body_no_terrain_raises():
+    states = _along_states_single_batch()
+    with pytest.raises(ValueError, match="no terrain"):
+        query_along_body({"simBatches": 1, "terrain": None}, states, body="Box")
+
+
+def test_query_along_body_missing_layer_raises():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    with pytest.raises(ValueError, match="not present"):
+        query_along_body(model, states, body="Box", layers="friction")
+
+
+def test_query_along_body_batch_out_of_range_raises():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    with pytest.raises(ValueError, match="out of range"):
+        query_along_body(model, states, body="Box", batch=5)
+
+
+def test_query_along_body_every_less_than_one_raises():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    with pytest.raises(ValueError, match="every must be"):
+        query_along_body(model, states, body="Box", every=0)
+
+
+def test_query_along_body_results_are_json_serializable():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    result = query_along_body(model, states, body="Box")
+    assert json.loads(json.dumps(result)) == result
+
+
+def test_format_along_text_and_csv_render():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    result = query_along_body(model, states, body="Box")
+    text = format_along_text(result)
+    assert "Box" in text
+    assert "height" in text
+
+    rows = list(csv.reader(io.StringIO(format_along_csv(result))))
+    assert rows[0] == ["frame", "time", "x", "y", "height"]
+    assert len(rows) - 1 == 3
+    assert float(rows[1][4]) == pytest.approx(0.0)
+
+
+def test_format_along_text_truncates_long_series():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch(frames=25)
+    result = query_along_body(model, states, body="Box")
+    text = format_along_text(result)
+    assert "more frame(s)" in text
+
+
+def test_format_along_text_no_sampled_frames():
+    # Body is a known name (so _resolve_body succeeds) but never has a
+    # decodable bodyTransform, so no frames get sampled.
+    model = _along_model(batch_size=1)
+    states = [{"time": 0.0, "bodies": [{"name": "Box"}]}]
+    result = query_along_body(model, states, body="Box")
+    assert result["frame_indices"] == []
+    text = format_along_text(result)
+    assert "never present" in text
+
+
+def test_query_along_body_diff_samples_along_batch_a_path():
+    # grid_b = 2 * grid_a, so along y=0 the delta at x=0,1,2 is 0,1,2 -- if
+    # the implementation wrongly sampled along batch b's (reversed) path
+    # instead, the x positions and deltas below would come out reversed.
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = _along_states_two_batch()
+    result = query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=1)
+    assert result["x"] == pytest.approx([0.0, 1.0, 2.0])  # batch a's path, not b's
+    layer = result["layers"]["height"]
+    assert layer["value_a"] == pytest.approx([0.0, 1.0, 2.0])
+    assert layer["value_b"] == pytest.approx([0.0, 2.0, 4.0])
+    assert layer["delta"] == pytest.approx([0.0, 1.0, 2.0])
+    stats = layer["stats"]
+    assert stats["mean_abs_delta"] == pytest.approx(1.0)
+    assert stats["min_abs_delta"] == pytest.approx(0.0)
+    assert stats["max_abs_delta"] == pytest.approx(2.0)
+    assert stats["clamped_count"] == 0
+
+
+def test_query_along_body_diff_batch_a_equals_b_raises():
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = _along_states_two_batch()
+    with pytest.raises(ValueError, match="must differ"):
+        query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=0)
+
+
+def test_query_along_body_diff_batch_out_of_range_raises():
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = _along_states_two_batch()
+    with pytest.raises(ValueError, match="out of range"):
+        query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=5)
+
+
+def test_query_along_body_diff_results_are_json_serializable():
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = _along_states_two_batch()
+    result = query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=1)
+    assert json.loads(json.dumps(result)) == result
+
+
+def test_format_along_diff_text_and_csv_render():
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = _along_states_two_batch()
+    result = query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=1)
+    text = format_along_diff_text(result)
+    assert "Box" in text
+    assert "batch_a=0" in text
+    assert "batch_b=1" in text
+
+    rows = list(csv.reader(io.StringIO(format_along_diff_csv(result))))
+    assert rows[0] == [
+        "frame",
+        "time",
+        "x",
+        "y",
+        "height_a",
+        "height_b",
+        "height_delta",
+    ]
+    assert len(rows) - 1 == 3
+    assert float(rows[1][4]) == pytest.approx(0.0)
+    assert float(rows[1][5]) == pytest.approx(0.0)
+    assert float(rows[3][4]) == pytest.approx(2.0)
+    assert float(rows[3][5]) == pytest.approx(4.0)
+    assert float(rows[3][6]) == pytest.approx(2.0)
+
+
+def test_format_along_diff_text_no_sampled_frames():
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = [{"time": 0.0, "bodies": [{"name": "Box"}]}]
+    result = query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=1)
+    assert result["frame_indices"] == []
+    text = format_along_diff_text(result)
+    assert "never present" in text
+
+
+def test_format_along_diff_text_truncates_long_series():
+    model = _along_model(batch_size=2, doubled_b=True)
+    states = _along_states_two_batch(frames=25)
+    result = query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=1)
+    text = format_along_diff_text(result)
+    assert "more frame(s)" in text

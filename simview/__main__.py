@@ -82,14 +82,18 @@ def run_info(path: Path, as_json: bool) -> None:
 
 
 def run_terrain(path: Path, args: argparse.Namespace) -> None:
-    """Print terrain value(s) at a point or over an area, from the scene JSON
-    at `path`, to stdout. With `--batches A B`, compares two batches instead
-    of querying a single one."""
+    """Print terrain value(s) at a point, over an area, or along a body's
+    trajectory, from the scene JSON at `path`, to stdout. With `--batches
+    A B`, compares two batches instead of querying a single one (for
+    `--along-body`, both batches' terrains are sampled along batch A's
+    trajectory -- see `query_along_body_diff`)."""
     from simview import terrain as terrain_mod
 
-    if (args.point is None) == (args.area is None):
+    mode_count = sum(v is not None for v in (args.point, args.area, args.along_body))
+    if mode_count != 1:
         logger.error(
-            "Error: 'simview terrain' requires exactly one of --point or --area."
+            "Error: 'simview terrain' requires exactly one of --point, --area, "
+            "or --along-body."
         )
         sys.exit(1)
     if args.area is not None and len(args.area) not in (0, 4):
@@ -106,40 +110,67 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
     diff_mode = args.batches is not None
 
     try:
-        model_data = terrain_mod.load_scene_model(path)
-        if diff_mode:
-            batch_a, batch_b = args.batches
-            if args.point is not None:
-                result = terrain_mod.query_point_diff(
+        if args.along_body is not None:
+            model_data, states_data = terrain_mod.load_scene(path)
+            if diff_mode:
+                batch_a, batch_b = args.batches
+                result = terrain_mod.query_along_body_diff(
                     model_data,
-                    args.point[0],
-                    args.point[1],
+                    states_data,
+                    args.along_body,
                     batch_a,
                     batch_b,
                     args.layer,
+                    args.every,
                 )
-                text = terrain_mod.format_point_diff_text(result)
-                csv_text = terrain_mod.format_point_diff_csv(result)
+                text = terrain_mod.format_along_diff_text(result)
+                csv_text = terrain_mod.format_along_diff_csv(result)
+            else:
+                result = terrain_mod.query_along_body(
+                    model_data,
+                    states_data,
+                    args.along_body,
+                    args.layer,
+                    args.batch,
+                    args.every,
+                )
+                text = terrain_mod.format_along_text(result)
+                csv_text = terrain_mod.format_along_csv(result)
+        else:
+            model_data = terrain_mod.load_scene_model(path)
+            if diff_mode:
+                batch_a, batch_b = args.batches
+                if args.point is not None:
+                    result = terrain_mod.query_point_diff(
+                        model_data,
+                        args.point[0],
+                        args.point[1],
+                        batch_a,
+                        batch_b,
+                        args.layer,
+                    )
+                    text = terrain_mod.format_point_diff_text(result)
+                    csv_text = terrain_mod.format_point_diff_csv(result)
+                else:
+                    bounds = tuple(args.area) if args.area else None
+                    result = terrain_mod.query_area_diff(
+                        model_data, bounds, batch_a, batch_b, args.layer, args.stride
+                    )
+                    text = terrain_mod.format_area_diff_text(result)
+                    csv_text = terrain_mod.format_area_diff_csv(result)
+            elif args.point is not None:
+                result = terrain_mod.query_point(
+                    model_data, args.point[0], args.point[1], args.layer, args.batch
+                )
+                text = terrain_mod.format_point_text(result)
+                csv_text = terrain_mod.format_point_csv(result)
             else:
                 bounds = tuple(args.area) if args.area else None
-                result = terrain_mod.query_area_diff(
-                    model_data, bounds, batch_a, batch_b, args.layer, args.stride
+                result = terrain_mod.query_area(
+                    model_data, bounds, args.layer, args.batch, args.stride
                 )
-                text = terrain_mod.format_area_diff_text(result)
-                csv_text = terrain_mod.format_area_diff_csv(result)
-        elif args.point is not None:
-            result = terrain_mod.query_point(
-                model_data, args.point[0], args.point[1], args.layer, args.batch
-            )
-            text = terrain_mod.format_point_text(result)
-            csv_text = terrain_mod.format_point_csv(result)
-        else:
-            bounds = tuple(args.area) if args.area else None
-            result = terrain_mod.query_area(
-                model_data, bounds, args.layer, args.batch, args.stride
-            )
-            text = terrain_mod.format_area_text(result)
-            csv_text = terrain_mod.format_area_csv(result)
+                text = terrain_mod.format_area_text(result)
+                csv_text = terrain_mod.format_area_csv(result)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
@@ -166,7 +197,6 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
     if args.json and args.csv:
         logger.error("Error: --json and --csv are mutually exclusive.")
         sys.exit(1)
-
     try:
         model_data, states_data = diff_mod.load_scene(path)
         result = diff_mod.compute_trajectory_diff(
@@ -249,12 +279,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Path(s) to simulation JSON file(s) to visualize, 'clear' to clear "
             "cache, 'info <file>' to print a structural summary of one scene "
-            "file, 'terrain <file>' to query terrain values at a point or over "
-            "an area, 'diff <file>' to compare two batches' trajectories, or "
-            "'render <file>' to headlessly save a PNG screenshot (needs the "
-            "'render' extra). Multiple visualize-mode files are merged into "
-            "one scene, each file's batches appended as extra batches (e.g. a "
-            "real-world recording plus a simulated rerun)."
+            "file, 'terrain <file>' to query terrain values at a point, over "
+            "an area, or along a body's trajectory, 'diff <file>' to compare "
+            "two batches' trajectories, or 'render <file>' to headlessly save "
+            "a PNG screenshot (needs the 'render' extra). Multiple "
+            "visualize-mode files are merged into one scene, each file's "
+            "batches appended as extra batches (e.g. a real-world recording "
+            "plus a simulated rerun)."
         ),
     )
     parser.add_argument(
@@ -287,7 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "With 'simview terrain <file>', query terrain value(s) at a single "
             "(x, y) point (bilinear-interpolated). Mutually exclusive with "
-            "--area."
+            "--area and --along-body."
         ),
     )
     parser.add_argument(
@@ -299,7 +330,23 @@ def build_parser() -> argparse.ArgumentParser:
             "With 'simview terrain <file>', query terrain values over a "
             "rectangular area: pass no values for the whole terrain extent, "
             "or exactly 4 values 'XMIN XMAX YMIN YMAX' for a sub-box. Mutually "
-            "exclusive with --point."
+            "exclusive with --point and --along-body."
+        ),
+    )
+    parser.add_argument(
+        "--along-body",
+        type=str,
+        default=None,
+        metavar="BODY",
+        help=(
+            "With 'simview terrain <file>', sample terrain value(s) "
+            "bilinear-interpolated at BODY's (x, y) position in every "
+            "sampled state (e.g. friction/stiffness under a robot's driven "
+            "path). BODY is matched the same way as 'simview diff' --body "
+            "(full label, or any single name inside a rigidly-grouped body). "
+            "With --batches A B, samples both batches' terrains along batch "
+            "A's trajectory instead and reports the delta per layer. "
+            "Mutually exclusive with --point and --area."
         ),
     )
     parser.add_argument(
@@ -333,10 +380,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar=("A", "B"),
         help=(
             "Two batch indices to compare. Required by 'simview diff <file>'. "
-            "With 'simview terrain <file> --point|--area', switches into "
-            "cross-batch diff mode (value_a/value_b/delta per layer) instead "
-            "of a single-batch query, and takes precedence over --batch if "
-            "both are given."
+            "With 'simview terrain <file> --point|--area|--along-body', "
+            "switches into cross-batch diff mode (value_a/value_b/delta per "
+            "layer) instead of a single-batch query, and takes precedence "
+            "over --batch if both are given. For --along-body, both batches' "
+            "terrains are sampled along batch A's trajectory."
         ),
     )
     parser.add_argument(
@@ -355,7 +403,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--every",
         type=int,
         default=1,
-        help="With 'simview diff <file>', sample every Nth frame (default: 1).",
+        help=(
+            "With 'simview diff <file>' or 'simview terrain <file> "
+            "--along-body', sample every Nth frame (default: 1)."
+        ),
     )
     parser.add_argument(
         "--pos-threshold",
