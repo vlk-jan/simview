@@ -522,7 +522,19 @@ class SimulationScene:
         friction_map: torch.Tensor | None = None,
         stiffness_map: torch.Tensor | None = None,
     ) -> None:
-        """Adds terrain to the simulation model."""
+        """Adds terrain to the simulation model.
+
+        Args:
+            heightmap (torch.Tensor): 2D or 3D tensor of terrain heights.
+            normals (torch.Tensor | None): 3D or 4D tensor of terrain normals. If None,
+                normals are automatically computed from the heightmap gradients.
+            x_lim (tuple[float, float] | None): (min, max) coordinates for the X axis.
+            y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
+            grid_res (float | None): Grid resolution. If x_lim and y_lim are omitted,
+                they will be automatically inferred assuming the grid is centered at 0.
+            friction_map (torch.Tensor | None): Optional friction coefficient map.
+            stiffness_map (torch.Tensor | None): Optional stiffness coefficient map.
+        """
         self.model.create_terrain(
             heightmap,
             normals=normals,
