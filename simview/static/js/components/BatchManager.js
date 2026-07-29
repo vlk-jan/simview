@@ -83,6 +83,9 @@ export class BatchManager {
     }
 
     async _persistBatchNames() {
+        // Static demo mode: no backend available to persist batch names.
+        // The rename still takes effect locally for the current session.
+        if (this.app.staticBase) return;
         try {
             const response = await fetch("/batch-names", {
                 method: "POST",

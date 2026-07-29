@@ -1,0 +1,144 @@
+name: Demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "simview/**"
+      - "demo/**"
+      - ".github/workflows/demo.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      # Base install only (no authoring/torch needed — we're just serving a file)
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Find demo data file
+        id: demo_file
+        run: |
+          if [ -f demo/demo.json.gz ]; then
+            echo "path=demo/demo.json.gz" >> "$GITHUB_OUTPUT"
+          elif [ -f demo/demo.json ]; then
+            echo "path=demo/demo.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "No demo data file found in demo/ — skipping demo deployment."
+            exit 1
+          fi
+
+      - name: Start SimView server (background)
+        run: |
+          uv run python -m simview "${{ steps.demo_file.outputs.path }}" \
+            --host 127.0.0.1 --port 5420 --no-browser &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+          # Poll until the server is ready (up to 30 s)
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5420/ > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Dump static demo files
+        run: |
+          mkdir -p _demo_out/blob
+
+          # --- index.html: fetch the Jinja2-rendered page and inject staticBase ---
+          # The server renders asset URLs as /static/... (absolute root-relative),
+          # so we preserve that prefix by placing the static files under
+          # _demo_out/static/ below. The staticBase injection must appear
+          # before main.js loads so SimView.run() picks it up.
+          curl -sf http://127.0.0.1:5420/ \
+            | sed \
+                -e 's|</head>|<script>window.__simviewStaticBase = ".";</script>\n</head>|' \
+                -e 's|"/static/|"./static/|g' \
+                -e "s|'/static/|'./static/|g" \
+            > _demo_out/index.html
+
+          # --- model.json and states.json ---
+          # The server sends them pre-gzipped; curl decompresses transparently
+          # when we omit --compressed (curl does it by default with Accept-Encoding).
+          curl -sf --compressed http://127.0.0.1:5420/model  > _demo_out/model.json
+          curl -sf --compressed http://127.0.0.1:5420/states > _demo_out/states.json
+
+          # --- blob files: extract all /blob/... URLs from both JSON files ---
+          python3 - <<'PYEOF'
+          import json, re, sys, urllib.request, pathlib
+
+          base = "http://127.0.0.1:5420"
+          out = pathlib.Path("_demo_out")
+          blob_urls = {}  # url_path -> blob_id (the last path segment)
+
+          for fname in ("model.json", "states.json"):
+              raw = (out / fname).read_bytes()
+              try:
+                  data = json.loads(raw)
+              except Exception as exc:
+                  print(f"Warning: could not JSON-parse {fname}: {exc}", file=sys.stderr)
+                  continue
+
+              # Walk the parsed tree to collect /blob/... strings
+              stack = [data]
+              while stack:
+                  node = stack.pop()
+                  if isinstance(node, dict):
+                      for v in node.values():
+                          if isinstance(v, str) and v.startswith("/blob/"):
+                              blob_id = v.rsplit("/", 1)[-1]
+                              blob_urls[v] = blob_id
+                          elif isinstance(v, (dict, list)):
+                              stack.append(v)
+                  elif isinstance(node, list):
+                      for v in node:
+                          if isinstance(v, str) and v.startswith("/blob/"):
+                              blob_id = v.rsplit("/", 1)[-1]
+                              blob_urls[v] = blob_id
+                          elif isinstance(v, (dict, list)):
+                              stack.append(v)
+
+          print(f"Found {len(blob_urls)} unique blob(s)", file=sys.stderr)
+          for url_path, blob_id in blob_urls.items():
+              dest = out / "blob" / blob_id
+              urllib.request.urlretrieve(base + url_path, dest)
+              print(f"  saved blob/{blob_id}  (from {url_path})", file=sys.stderr)
+          PYEOF
+
+      - name: Copy static assets (JS, CSS, lib, textures)
+        run: |
+          # The server renders asset URLs as /static/..., so we copy into
+          # _demo_out/static/ to preserve those root-relative paths.
+          mkdir -p _demo_out/static
+          cp -r simview/static/* _demo_out/static/
+
+      - name: Stop server
+        if: always()
+        run: kill "$SERVER_PID" 2>/dev/null || true
+
+      - name: Deploy demo to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _demo_out
+          destination_dir: demo
+          # keep_files: true preserves the rest of gh-pages (the MkDocs docs)
+          # so this job and the docs job never clobber each other.
+          keep_files: true

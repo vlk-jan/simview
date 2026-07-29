@@ -49,21 +49,38 @@ export class SimView {
         // null once closed/if never opened) and its "LIVE" badge element.
         this.liveSocket = null;
         this.liveBadge = null;
+        // Static demo mode: when window.__simviewStaticBase is set by the
+        // GitHub Pages demo index.html, all data fetches are redirected to
+        // flat static files (model.json, states.json, blob/N) instead of the
+        // Python backend API endpoints. Set to null in normal server mode.
+        this.staticBase = null;
     }
 
     static run() {
         const simView = new SimView();
+        // Static demo mode: the CI-generated index.html sets
+        // window.__simviewStaticBase = "." before this module loads so the
+        // viewer knows to fetch pre-dumped flat files instead of hitting the
+        // live Python backend.
+        if (typeof window.__simviewStaticBase === "string") {
+            simView.staticBase = window.__simviewStaticBase;
+            console.log(`SimView: static demo mode, base='${simView.staticBase}'`);
+        }
+        window.__debugSimView = simView;
         simView.initAndAnimate();
     }
 
     // Fetch the model and states over HTTP (both served pre-gzipped by the server,
     // transparently decompressed by the browser) and build the scene from them.
+    // In static demo mode (this.staticBase non-null) the same paths are
+    // redirected to pre-dumped flat files: model.json, states.json, blob/N.
     async loadData() {
         const splash = document.getElementById("loading-splash");
+        const base = this.staticBase;
         try {
             if (splash) splash.innerHTML = "<h1>Loading Model (HTTP)...</h1>";
             console.time("fetch_model");
-            const modelResponse = await fetch("/model");
+            const modelResponse = await fetch(base ? `${base}/model.json` : "/model");
             console.timeEnd("fetch_model");
             if (!modelResponse.ok)
                 throw new Error(`Failed to fetch model: ${modelResponse.status} ${modelResponse.statusText}`);
@@ -82,7 +99,7 @@ export class SimView {
 
             if (splash) splash.innerHTML = "<h1>Loading States (HTTP)...</h1>";
             console.time("fetch_states");
-            const statesResponse = await fetch("/states");
+            const statesResponse = await fetch(base ? `${base}/states.json` : "/states");
             console.timeEnd("fetch_states");
             if (!statesResponse.ok)
                 throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
@@ -135,14 +152,23 @@ export class SimView {
     // in parallel and replaces each in place with its decoded Float32Array --
     // sequential awaits here would serialize what's otherwise an
     // embarrassingly parallel set of independent HTTP requests.
+    //
+    // In static demo mode (this.staticBase non-null), blob URLs are rewritten
+    // from /blob/{token}/{id} → {staticBase}/blob/{id} so they resolve against
+    // the pre-dumped flat files deployed alongside the demo page.
     async fetchBlobs(obj) {
+        const base = this.staticBase;
         const refs = [];
         const collect = (node) => {
             if (!node || typeof node !== 'object') return;
             for (const key of Object.keys(node)) {
                 const val = node[key];
                 if (typeof val === 'string' && val.startsWith('/blob/')) {
-                    refs.push({ container: node, key, url: val });
+                    // Static mode: /blob/{token}/{id} → {base}/blob/{id}
+                    const url = base
+                        ? `${base}/blob/${val.split("/").pop()}`
+                        : val;
+                    refs.push({ container: node, key, url });
                 } else if (typeof val === 'object') {
                     collect(val);
                 }

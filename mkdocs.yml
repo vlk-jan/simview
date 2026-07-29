@@ -62,7 +62,7 @@ plugins:
 
 nav:
   - Home: index.md
-  - Live Demo: https://vlk-jan.github.io/assets/demos/simview/
+  - Live Demo: https://vlk-jan.github.io/simview/demo/
   - Usage:
       - Quick Start & Installation: usage/getting-started.md
       - CLI Utilities: usage/cli.md
