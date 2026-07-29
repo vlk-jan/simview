@@ -96,6 +96,32 @@ def test_summarize_scene_basic_valid_scene(tmp_path):
     assert summary["warnings"] == []
 
 
+def test_summarize_scene_reports_metadata(tmp_path):
+    model = _minimal_model(scalar_names=["energy"])
+    model["metadata"] = {"engine": "torch", "adapt_heads": ["friction", "stiffness"]}
+    path = _write_scene(tmp_path, model, _basic_states())
+
+    summary = summarize_scene(path)
+
+    assert summary["model"]["metadata"] == {
+        "engine": "torch",
+        "adapt_heads": ["friction", "stiffness"],
+    }
+    text = format_text(summary)
+    assert "Metadata" in text
+    assert "engine: torch" in text
+
+
+def test_summarize_scene_metadata_absent_when_unset(tmp_path):
+    model = _minimal_model(scalar_names=["energy"])
+    path = _write_scene(tmp_path, model, _basic_states())
+
+    summary = summarize_scene(path)
+
+    assert summary["model"]["metadata"] is None
+    assert "Metadata" not in format_text(summary)
+
+
 def test_summarize_scene_gzipped_file(tmp_path):
     model = _minimal_model(scalar_names=["energy"])
     path = _write_scene(tmp_path, model, _basic_states(), gz=True)

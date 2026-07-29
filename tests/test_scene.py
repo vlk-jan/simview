@@ -450,3 +450,21 @@ def test_rigid_body_add_trajectory_raises():
     quat[..., 0] = 1.0
     with pytest.raises(ValueError, match="rigidly attached"):
         scene.add_trajectory([0.0, 0.1], [BodyTrajectory("wheel", pos, quat)])
+
+
+def test_scene_constructor_metadata_reaches_model():
+    metadata = {"engine": "torch", "checkpoint": "ckpt_last.pth"}
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1, metadata=metadata)
+    assert scene.model.metadata == metadata
+
+
+def test_scene_metadata_set_after_construction_reaches_to_json():
+    metadata = {"engine": "torch", "checkpoint": "ckpt_last.pth"}
+    scene = _base_scene(batch_size=1)
+    scene.model.metadata = metadata
+    assert scene.model.to_json()["metadata"] == metadata
+
+
+def test_scene_default_metadata_is_none():
+    scene = _base_scene(batch_size=1)
+    assert scene.model.metadata is None

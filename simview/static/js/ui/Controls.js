@@ -373,6 +373,21 @@ export class UIControls {
 
         this.cameraControls = cameraControls;
 
+        if (this.app.metadata && Object.keys(this.app.metadata).length > 0) {
+            this.metadataFolder = this.gui.addFolder("Scene Info");
+            const metadataDisplay = {};
+            for (const [key, value] of Object.entries(this.app.metadata)) {
+                const text =
+                    typeof value === "string" ? value : JSON.stringify(value);
+                // Long values (e.g. a full args dict) would otherwise blow up
+                // the GUI row width -- truncate for display only.
+                metadataDisplay[key] =
+                    text.length > 200 ? `${text.slice(0, 200)}...` : text;
+                this.metadataFolder.add(metadataDisplay, key).disable();
+            }
+            this.metadataFolder.open();
+        }
+
         return this.gui;
     }
 

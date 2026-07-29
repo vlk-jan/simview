@@ -20,6 +20,10 @@ produces.
 - **`scalarNames`** *(array[string])* — names of per-batch scalar time-series (e.g. `"energy"`).
 - **`dt`** *(float)* — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.
 - **`collapse`** *(boolean)* — UI hint to start with the body-state window collapsed.
+- **`metadata`** *(object, optional)* — free-form, JSON-serializable run provenance (e.g.
+  engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
+  read-only in `simview info` and the browser's "Scene Info" GUI folder so a scene saved
+  months ago stays self-describing.
 - **`bodies`** *(array)* — dynamic bodies. Each entry:
   - **`name`** *(string)* — unique identifier, referenced from each state.
   - **`shape`** *(object)* — geometry, keyed by a **string** `type`:

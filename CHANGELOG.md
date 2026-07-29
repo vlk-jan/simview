@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SimulationScene`/`SimViewModel` now accept an optional free-form `metadata`
+  dict (e.g. engine name, checkpoint path, git commit, CLI args) carried
+  through to the saved JSON, `simview info`, and a read-only "Scene Info"
+  panel in the browser, so a scene stays self-describing long after it was
+  generated.
 - `scene.create_terrain()` now auto-computes normals from the heightmap gradients if `normals` is omitted.
 - `scene.create_terrain()` now accepts `grid_res` to auto-infer spatial `x_lim`/`y_lim` constraints instead of requiring manual definition.
 

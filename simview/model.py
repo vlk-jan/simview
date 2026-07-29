@@ -488,6 +488,10 @@ class SimViewModel:
     bodies: dict[str, SimViewBody] = field(default_factory=dict)
     static_objects: dict[str, SimViewStaticObject] = field(default_factory=dict)
     batch_names: list[str] | None = None
+    # Free-form, JSON-serializable run provenance (engine name, checkpoint path,
+    # git commit, CLI args, ...) with no meaning to the viewer itself -- just
+    # carried through so a scene saved months ago is still self-describing.
+    metadata: dict[str, Any] | None = None
 
     def __post_init__(self):
         if self.batch_names is not None and len(self.batch_names) != self.batch_size:
@@ -674,6 +678,8 @@ class SimViewModel:
         }
         if self.batch_names is not None:
             r["batchNames"] = self.batch_names
+        if self.metadata is not None:
+            r["metadata"] = self.metadata
         return r
 
     @classmethod
@@ -717,6 +723,7 @@ class SimViewModel:
             bodies=bodies,
             static_objects=static_objects,
             batch_names=d.get("batchNames"),
+            metadata=d.get("metadata"),
         )
 
     @property

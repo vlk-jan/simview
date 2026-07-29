@@ -83,3 +83,10 @@ When a scene has 2 or more batches, a toggleable "Batches" legend appears in the
 bottom-right corner, listing each batch's color, index, and name. Click a row to focus
 that batch, or click a name to rename it in place — renames persist next to the input
 file(s), so they survive a reload or server restart.
+
+## Scene Info
+
+When the scene JSON includes a `model.metadata` object, a read-only "Scene Info" panel
+appears in the GUI listing each key/value pair — e.g. the engine, checkpoint path, git
+commit, or CLI args a run was produced with — so a scene saved months ago is still
+self-describing. `simview info <file>` prints the same fields on the command line.

@@ -325,6 +325,11 @@ export class SimView {
         try {
             this.disposeOfAll();
 
+            // Free-form run provenance carried through from the Python side
+            // (see SimViewModel.metadata) -- no meaning to the viewer itself,
+            // just displayed read-only in the "Scene Info" GUI folder.
+            this.metadata = model.metadata ?? null;
+
             this.batchManager = new BatchManager(this, model);
             this.bodies = new Map();
 

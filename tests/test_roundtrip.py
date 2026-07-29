@@ -166,6 +166,19 @@ def test_model_to_json_from_dict_roundtrip():
     assert restored.to_json() == model.to_json()
 
 
+def test_model_to_json_omits_metadata_when_unset():
+    scene = build_scene(batch_size=2)
+    assert "metadata" not in scene.model.to_json()
+
+
+def test_model_with_metadata_to_json_from_dict_roundtrip():
+    scene = build_scene(batch_size=2)
+    scene.model.metadata = {"engine": "kinematic", "adapt_heads": ["friction"]}
+    restored = SimViewModel.from_dict(scene.model.to_json())
+    assert restored.to_json() == scene.model.to_json()
+    assert restored.metadata == {"engine": "kinematic", "adapt_heads": ["friction"]}
+
+
 def test_model_with_parent_child_bodies_to_json_from_dict_roundtrip():
     scene = build_scene(batch_size=1)
     scene.create_body(

@@ -165,10 +165,17 @@ class SimulationScene:
         bodies: dict[str, SimViewBody] | None = None,
         static_objects: dict[str, SimViewStaticObject] | None = None,
         batch_names: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """
         Initializes the simulation data container.
         Manages the SimViewModel and the time-series states.
+
+        `metadata` is free-form, JSON-serializable run provenance (e.g. engine
+        name, checkpoint path, git commit, CLI args) with no meaning to the
+        viewer -- it's carried through to `simview info` and the browser so a
+        saved scene stays self-describing. Can also be set/updated later via
+        `self.model.metadata`.
         """
         self.model = SimViewModel(
             batch_size=batch_size,
@@ -179,6 +186,7 @@ class SimulationScene:
             bodies=bodies if bodies is not None else {},
             static_objects=static_objects if static_objects is not None else {},
             batch_names=batch_names,
+            metadata=metadata,
         )
         self.states: list[dict] = []
 
@@ -208,6 +216,7 @@ class SimulationScene:
             bodies=model.bodies,
             static_objects=model.static_objects,
             batch_names=model.batch_names,
+            metadata=model.metadata,
         )
         scene.states = list(states)
         return scene

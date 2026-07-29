@@ -142,6 +142,7 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
         "scalar_names": model.get("scalarNames") or [],
         "dt": model.get("dt"),
         "collapse": model.get("collapse"),
+        "metadata": model.get("metadata"),
         "terrain": _summarize_terrain(terrain) if terrain is not None else None,
         "bodies": {
             "count": len(bodies),
@@ -444,6 +445,12 @@ def format_text(summary: dict) -> str:
         lines.append(f"  Batches: {model['batch_size']} (names: {names_str})")
         lines.append(f"  Scalars: {', '.join(model['scalar_names']) or '(none)'}")
         lines.append(f"  dt: {model['dt']}   Collapse: {model['collapse']}")
+
+        metadata = model["metadata"]
+        if metadata:
+            lines.append("\nMetadata")
+            for key, value in metadata.items():
+                lines.append(f"  {key}: {value}")
 
         terrain = model["terrain"]
         if terrain is None:
