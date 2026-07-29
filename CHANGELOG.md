@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6] - 2026-07-29
+
 ### Added
 
 - `SimulationScene`/`SimViewModel` now accept an optional free-form `metadata`
@@ -150,7 +152,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.5...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.6...HEAD
+[3.6]: https://github.com/vlk-jan/simview/compare/v3.5...v3.6
 [3.5]: https://github.com/vlk-jan/simview/compare/v3.4...v3.5
 [3.4]: https://github.com/vlk-jan/simview/compare/v3.3...v3.4
 [3.3]: https://github.com/vlk-jan/simview/compare/v3.2...v3.3
