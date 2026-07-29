@@ -64,15 +64,16 @@ jobs:
           mkdir -p _demo_out/blob
 
           # --- index.html: fetch the Jinja2-rendered page and inject staticBase ---
-          # The server renders asset URLs as /static/... (absolute root-relative),
-          # so we preserve that prefix by placing the static files under
-          # _demo_out/static/ below. The staticBase injection must appear
-          # before main.js loads so SimView.run() picks it up.
+          # Starlette's url_for() renders asset URLs as fully absolute
+          # (http://127.0.0.1:5420/static/...), not root-relative, so we rewrite
+          # that exact CI-internal origin away, preserving the /static/ prefix
+          # by placing the static files under _demo_out/static/ below. The
+          # staticBase injection must appear before main.js loads so
+          # SimView.run() picks it up.
           curl -sf http://127.0.0.1:5420/ \
             | sed \
                 -e 's|</head>|<script>window.__simviewStaticBase = ".";</script>\n</head>|' \
-                -e 's|"/static/|"./static/|g' \
-                -e "s|'/static/|'./static/|g" \
+                -e 's|http://127.0.0.1:5420/static/|./static/|g' \
             > _demo_out/index.html
 
           # --- model.json and states.json ---
