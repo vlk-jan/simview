@@ -34,3 +34,71 @@ button:active {
   z-index: 10000;
   font-family: sans-serif;
 }
+
+/* Metadata (Scene Info) value cells.
+   We replace lil-gui's <input> with a <div> so the full value can be shown
+   directly instead of requiring a click/scroll to read past a single-line
+   truncation. lil-gui's box look (background/height/padding) comes from an
+   `input` tag selector, which no longer matches a <div>, so it has to be
+   reconstructed here explicitly rather than assumed to carry over. The
+   `.lil-gui .controller` prefix also raises specificity above the
+   `.lil-gui, .lil-gui *` reset that lil-gui injects at runtime (a plain
+   `.simview-meta-input` rule ties with it on specificity and loses on
+   source order, since lil-gui's <style> is inserted after this stylesheet). */
+.lil-gui .controller .simview-meta-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--widget-height);
+  background: var(--widget-color);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: inherit;
+  border-radius: var(--widget-border-radius);
+  padding: 3px 5px;
+  line-height: 1.4;
+  /* Wrap and grow instead of truncating to one line: the whole value is
+     always visible in the field itself, no click or scroll needed to read
+     it. overflow-wrap handles long unbroken tokens (paths, ids) that a
+     plain wrap wouldn't break on. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* make text selectable */
+  user-select: text;
+  -webkit-user-select: text;
+  /* pointer signals click-to-copy */
+  cursor: pointer;
+  /* muted look (similar to disabled opacity) */
+  opacity: 0.75;
+}
+
+.lil-gui .controller .simview-meta-input:hover {
+  opacity: 1;
+  background: var(--hover-color);
+}
+
+/* Metadata key labels. lil-gui's own `.name` rule is `white-space:pre` with
+   no wrap/scroll/ellipsis, so a long key just overflows the panel with no
+   way to read the rest of it -- let it wrap like the value cell above. */
+.lil-gui .controller .simview-meta-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  /* lil-gui sets flex-shrink:0 and a min-width on .name, so as a flex item
+     it refuses to shrink below its content's single-line width regardless
+     of white-space -- pin it to a definite, shrinkable width so wrapping
+     actually has something to wrap within. */
+  flex-shrink: 1;
+  min-width: 0;
+  width: var(--name-width);
+}
+
+/* Brief green flash on successful copy */
+@keyframes simview-copy-flash {
+  0%   { background: #2a7a4a; color: #fff; }
+  100% { background: var(--widget-color); color: var(--text-color); }
+}
+
+.lil-gui .controller .simview-meta-copied {
+  animation: simview-copy-flash 700ms ease-out forwards;
+}

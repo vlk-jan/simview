@@ -372,21 +372,98 @@ export class UIControls {
             .name("Copy view link");
 
         this.cameraControls = cameraControls;
+        cameraFolder.close();
 
         if (this.app.metadata && Object.keys(this.app.metadata).length > 0) {
             this.metadataFolder = this.gui.addFolder("Scene Info");
-            const metadataDisplay = {};
+
+            // Make a lil-gui string controller read-only, fully readable, and
+            // click-to-copy. We deliberately do NOT call .disable() because
+            // lil-gui injects `pointer-events:none !important` on the whole
+            // .disabled row, blocking selection and click handlers.
+            //
+            // We also replace the <input> with a wrapping <div>: a single-line
+            // <input> can only show as much text as its width allows, but a
+            // <div> can wrap and grow so the whole value is always visible
+            // without needing to scroll or copy it out to read it.
+            const makeReadonlyCopyable = (ctrl, fullText) => {
+                // Revert any edit attempt the user manages to trigger
+                ctrl.onChange(() => ctrl.setValue(fullText));
+
+                const input = ctrl.domElement.querySelector("input");
+                if (!input) return;
+
+                // Build a <div> that looks like the input but is scrollable
+                const div = document.createElement("div");
+                div.className = input.className + " simview-meta-input";
+                div.title = "Click to copy";
+                div.textContent = fullText;
+
+                // Copy the inline styles lil-gui may have set on the input
+                div.style.cssText = input.style.cssText;
+
+                // Replace input in the DOM
+                input.parentNode.replaceChild(div, input);
+
+                // lil-gui's name label is `white-space:pre` with no wrap or
+                // scroll, so a long key just silently overflows the panel
+                // with no way to read the rest of it. Let it wrap instead.
+                const name = ctrl.domElement.querySelector(".name");
+                if (name) name.classList.add("simview-meta-name");
+
+                div.addEventListener("click", () => {
+                    navigator.clipboard.writeText(fullText).then(() => {
+                        div.classList.remove("simview-meta-copied");
+                        void div.offsetWidth; // force reflow to re-trigger animation
+                        div.classList.add("simview-meta-copied");
+                    }).catch(() => {
+                        // Fallback: select all text in the div
+                        const sel = window.getSelection();
+                        const range = document.createRange();
+                        range.selectNodeContents(div);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    });
+                });
+            };
+
+            // Helper: add one key/value row to a lil-gui folder.
+            // Plain objects are expanded into a nested sub-folder so every
+            // individual value is fully visible (no truncation needed).
+            const addMetaEntry = (folder, key, value) => {
+                if (
+                    value !== null &&
+                    typeof value === "object" &&
+                    !Array.isArray(value)
+                ) {
+                    // Nested object → sub-folder
+                    const sub = folder.addFolder(key);
+                    const subDisplay = {};
+                    for (const [sk, sv] of Object.entries(value)) {
+                        const fullText =
+                            typeof sv === "string" ? sv : JSON.stringify(sv);
+                        subDisplay[sk] = fullText;
+                        const ctrl = sub.add(subDisplay, sk);
+                        makeReadonlyCopyable(ctrl, fullText);
+                    }
+                    sub.open();
+                } else {
+                    const display = {};
+                    const fullText =
+                        typeof value === "string" ? value : JSON.stringify(value);
+                    display[key] = fullText;
+                    const ctrl = folder.add(display, key);
+                    makeReadonlyCopyable(ctrl, fullText);
+                }
+            };
+
             for (const [key, value] of Object.entries(this.app.metadata)) {
-                const text =
-                    typeof value === "string" ? value : JSON.stringify(value);
-                // Long values (e.g. a full args dict) would otherwise blow up
-                // the GUI row width -- truncate for display only.
-                metadataDisplay[key] =
-                    text.length > 200 ? `${text.slice(0, 200)}...` : text;
-                this.metadataFolder.add(metadataDisplay, key).disable();
+                addMetaEntry(this.metadataFolder, key, value);
             }
-            this.metadataFolder.open();
+            this.metadataFolder.close();
         }
+
+
 
         return this.gui;
     }
