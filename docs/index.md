@@ -34,7 +34,7 @@ never need `torch` installed.
 
 | I want to... | Go to |
 |---|---|
-| Try it in the browser right now, no install | [Live Demo](https://vlk-jan.github.io/assets/demos/simview/) |
+| Try it in the browser right now, no install | [Live Demo](https://vlk-jan.github.io/simview/demo/) |
 | Install SimView and view/author my first scene | [Quick Start & Installation](usage/getting-started.md) |
 | Use the `simview` CLI (inspect, query terrain, diff batches, render, merge) | [CLI Utilities](usage/cli.md) |
 | Stream simulation state live as it runs | [Live Streaming](usage/live-streaming.md) |
