@@ -26,6 +26,7 @@ export const FREQ_CONFIG = {
     bodyStateWindow: 30,
     playbackControls: 20,
     errorMetrics: 20,
+    terrainProfile: 20,
 };
 
 export const CONTROLS_CONFIG = {

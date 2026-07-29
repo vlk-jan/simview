@@ -11,6 +11,7 @@ export class AnalysisPanel {
         this.mode = "scalars";
         this.scalarPlotter = null;
         this.errorMetrics = null;
+        this.terrainProfile = null;
         this.modeTabElements = {};
 
         this._injectStyles();
@@ -132,15 +133,19 @@ export class AnalysisPanel {
         this.modeTabBar.className = "analysis-mode-tab-bar";
         this.modeTabElements.scalars = this._addModeTab("Scalars", "scalars");
         this.modeTabElements.errorMetrics = this._addModeTab("Error Metrics", "errorMetrics");
+        this.modeTabElements.terrain = this._addModeTab("Terrain", "terrain");
 
         this.scalarsSection = document.createElement("div");
         this.scalarsSection.className = "analysis-section";
         this.errorMetricsSection = document.createElement("div");
         this.errorMetricsSection.className = "analysis-section";
+        this.terrainSection = document.createElement("div");
+        this.terrainSection.className = "analysis-section";
 
         this.content.appendChild(this.modeTabBar);
         this.content.appendChild(this.scalarsSection);
         this.content.appendChild(this.errorMetricsSection);
+        this.content.appendChild(this.terrainSection);
         this.container.appendChild(this.header);
         this.container.appendChild(this.content);
         document.body.appendChild(this.container);
@@ -168,20 +173,45 @@ export class AnalysisPanel {
         this._refreshLayout();
     }
 
+    attachTerrainProfile(terrainProfile) {
+        this.terrainProfile = terrainProfile;
+        this.terrainSection.appendChild(terrainProfile.content);
+        this._refreshLayout();
+    }
+
+    // Sections currently attached, in tab order -- drives the tab bar
+    // (shown whenever >= 2 are attached, with individual tabs for any
+    // sections not attached hidden), the title fallback (the lone
+    // section's own title when only one is attached), and which mode a
+    // stale `this.mode` falls back to if its section gets detached.
+    _sections() {
+        return [
+            { key: "scalars", instance: this.scalarPlotter, title: "Scalars" },
+            { key: "errorMetrics", instance: this.errorMetrics, title: "Error Metrics" },
+            { key: "terrain", instance: this.terrainProfile, title: "Terrain" },
+        ];
+    }
+
     _refreshLayout() {
-        const hasScalars = !!this.scalarPlotter;
-        const hasErrorMetrics = !!this.errorMetrics;
-        const showModeBar = hasScalars && hasErrorMetrics;
+        const sections = this._sections();
+        const attached = sections.filter((s) => !!s.instance);
+        const showModeBar = attached.length >= 2;
         this.modeTabBar.classList.toggle("visible", showModeBar);
 
-        if (!hasScalars) this.mode = "errorMetrics";
-        else if (!hasErrorMetrics) this.mode = "scalars";
+        for (const section of sections) {
+            const tab = this.modeTabElements[section.key];
+            if (tab) tab.style.display = section.instance ? "" : "none";
+        }
+
+        if (!attached.some((s) => s.key === this.mode)) {
+            this.mode = attached[0] ? attached[0].key : this.mode;
+        }
 
         this.titleEl.textContent = showModeBar
             ? "Analysis"
-            : hasErrorMetrics
-              ? "Error Metrics"
-              : "Scalars";
+            : attached[0]
+              ? attached[0].title
+              : "Analysis";
 
         this._applyMode();
     }
@@ -192,23 +222,14 @@ export class AnalysisPanel {
             "visible",
             this.mode === "errorMetrics"
         );
-        if (this.modeTabElements.scalars) {
-            this.modeTabElements.scalars.classList.toggle(
-                "active",
-                this.mode === "scalars"
-            );
-        }
-        if (this.modeTabElements.errorMetrics) {
-            this.modeTabElements.errorMetrics.classList.toggle(
-                "active",
-                this.mode === "errorMetrics"
-            );
-        }
-        if (this.scalarPlotter) {
-            this.scalarPlotter.setVisible(this.isExpanded && this.mode === "scalars");
-        }
-        if (this.errorMetrics) {
-            this.errorMetrics.setVisible(this.isExpanded && this.mode === "errorMetrics");
+        this.terrainSection.classList.toggle("visible", this.mode === "terrain");
+
+        for (const section of this._sections()) {
+            const tab = this.modeTabElements[section.key];
+            if (tab) tab.classList.toggle("active", this.mode === section.key);
+            if (section.instance) {
+                section.instance.setVisible(this.isExpanded && this.mode === section.key);
+            }
         }
     }
 

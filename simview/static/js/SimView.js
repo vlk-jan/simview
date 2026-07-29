@@ -12,6 +12,7 @@ import { StaticObject } from "./objects/StaticObject.js";
 import { Legend } from "./ui/Legend.js";
 import { BatchLegend } from "./ui/BatchLegend.js";
 import { ErrorMetrics } from "./ui/ErrorMetrics.js";
+import { TerrainProfile } from "./ui/TerrainProfile.js";
 import { AnalysisPanel } from "./ui/AnalysisPanel.js";
 import { InteractionController } from "./components/InteractionController.js";
 import { buildBodyMeta, resolveStateBodies, topoSortBodies } from "./utils/bodyTransforms.js";
@@ -33,6 +34,7 @@ export class SimView {
         this.animationController = null;
         this.scalarPlotter = null;
         this.errorMetrics = null;
+        this.terrainProfile = null;
         this.analysisPanel = null;
         this.legend = null;
         this.batchLegend = null;
@@ -372,7 +374,10 @@ export class SimView {
             }
             const hasScalars = model.scalarNames && model.scalarNames.length > 0;
             const hasErrorMetrics = this.batchManager.simBatches >= 2;
-            if (hasScalars || hasErrorMetrics) {
+            // Terrain tab needs an actual body path to sample against, so it's
+            // skipped for a scene with terrain but no bodies.
+            const hasTerrainProfile = !!this.terrain && this.bodies && this.bodies.size > 0;
+            if (hasScalars || hasErrorMetrics || hasTerrainProfile) {
                 this.analysisPanel = new AnalysisPanel(this);
             }
             if (hasScalars) {
@@ -386,6 +391,10 @@ export class SimView {
             if (hasErrorMetrics) {
                 this.errorMetrics = new ErrorMetrics(this);
                 this.analysisPanel.attachErrorMetrics(this.errorMetrics);
+            }
+            if (hasTerrainProfile) {
+                this.terrainProfile = new TerrainProfile(this);
+                this.analysisPanel.attachTerrainProfile(this.terrainProfile);
             }
             this.interactionController = new InteractionController(this);
             this.uiControls = new UIControls(this);
@@ -514,6 +523,10 @@ export class SimView {
             this.errorMetrics.dispose();
             this.errorMetrics = null;
         }
+        if (this.terrainProfile) {
+            this.terrainProfile.dispose();
+            this.terrainProfile = null;
+        }
         if (this.analysisPanel) {
             this.analysisPanel.dispose();
             this.analysisPanel = null;
@@ -552,6 +565,9 @@ export class SimView {
         }
         if (this.errorMetrics) {
             this.errorMetrics.animate(now);
+        }
+        if (this.terrainProfile) {
+            this.terrainProfile.animate(now);
         }
 
         // 3. Render the scene

@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per layer, so the delta reflects property differences under the path
   rather than trajectory divergence. Honors `--layer`/`--every` and the
   usual `--json`/`--csv` output modes.
+- "Terrain" tab in the browser Analysis panel: plots a terrain layer
+  (height/friction/stiffness) sampled under a body's path over time, one
+  series per batch, with layer/body pickers, a path picker ("own path"
+  per batch, or every batch's terrain along one reference batch's path —
+  e.g. ground truth's), playback-synced reveal, click-to-seek, and CSV
+  export. The browser-side counterpart of `simview terrain --along-body`.
 - `--fail-on-exceed` flag for `simview diff`: exits with code 2 (after
   printing the normal report) when any diffed body's trajectory exceeds
   `--pos-threshold`/`--rot-threshold-deg`, and 0 when within them --

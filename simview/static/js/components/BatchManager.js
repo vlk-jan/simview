@@ -79,6 +79,7 @@ export class BatchManager {
         this._persistBatchNames();
         if (this.app.batchLegend) this.app.batchLegend.refresh();
         if (this.app.errorMetrics) this.app.errorMetrics.refreshBatchLabels();
+        if (this.app.terrainProfile) this.app.terrainProfile.refreshBatchLabels();
     }
 
     async _persistBatchNames() {
