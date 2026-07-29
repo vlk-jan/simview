@@ -524,14 +524,35 @@ class SimViewModel:
     def create_terrain(
         self,
         heightmap: torch.Tensor,
-        normals: torch.Tensor,
-        x_lim: tuple[float, float],
-        y_lim: tuple[float, float],
+        normals: torch.Tensor | None = None,
+        x_lim: tuple[float, float] | None = None,
+        y_lim: tuple[float, float] | None = None,
+        grid_res: float | None = None,
         friction_map: torch.Tensor | None = None,
         stiffness_map: torch.Tensor | None = None,
     ) -> None:
         if heightmap.ndim == 2:
             heightmap = heightmap.unsqueeze(0)  # add batch dim
+
+        if x_lim is None or y_lim is None:
+            if grid_res is None:
+                raise ValueError("Must provide either (x_lim, y_lim) or grid_res")
+            H_dim, W_dim = heightmap.shape[-2:]
+            x_lim = x_lim or (-W_dim * grid_res / 2.0, W_dim * grid_res / 2.0)
+            y_lim = y_lim or (-H_dim * grid_res / 2.0, H_dim * grid_res / 2.0)
+
+        if normals is None:
+            H_dim, W_dim = heightmap.shape[-2:]
+            res_x = (x_lim[1] - x_lim[0]) / W_dim
+            res_y = (y_lim[1] - y_lim[0]) / H_dim
+            dzdy, dzdx = torch.gradient(heightmap, spacing=(res_y, res_x), dim=(-2, -1))
+            nx = -dzdx
+            ny = -dzdy
+            nz = torch.ones_like(nx)
+            normals = torch.stack([nx, ny, nz], dim=-3)
+            normals = normals / torch.linalg.norm(normals, dim=-3, keepdim=True)
+            normals = normals.to(dtype=heightmap.dtype)
+
         if normals.ndim == 3:  # channels first
             normals = normals.unsqueeze(0)  # add batch dim
         if friction_map is not None and friction_map.ndim == 2:
