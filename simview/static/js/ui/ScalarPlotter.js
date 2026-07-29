@@ -515,8 +515,12 @@ export class ScalarPlotter {
                     i === batchIndex ? 1 : SCALAR_PLOTTER_CONFIG.inactiveBatchOpacity;
                 const baseColor = this.app.batchManager.getColorForBatch(i);
                 const rgbaColor = this._hexToRgba(baseColor, opacity);
-                activeChart.series[i + 1].stroke = rgbaColor;
-                activeChart.series[i + 1]._stroke = rgbaColor;
+                // uPlot normalizes series.stroke into a function at series-init
+                // time and re-invokes it (`s.stroke(self, si)`) on every draw
+                // (see cacheStrokeFill in uPlot.esm.js) -- overwriting it with
+                // a raw string here breaks that on the very next redraw
+                // ("s.stroke is not a function"). Wrap it back into a function.
+                activeChart.series[i + 1].stroke = () => rgbaColor;
             }
         };
     }

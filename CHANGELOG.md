@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   distinct from the usage/parse-error exit 1, so scripts and CI can use an
   exported scene as a regression tripwire.
 
+### Fixed
+
+- Focusing a batch while a Scalars plot was open threw
+  `s.stroke is not a function` on the next redraw (uPlot expects
+  `series.stroke` to stay a function; the focus handler was overwriting it
+  with a color string).
+
 ## [3.6] - 2026-07-29
 
 ### Added
