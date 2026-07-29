@@ -1140,6 +1140,32 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   generated.</li>
 <li><code>scene.create_terrain()</code> now auto-computes normals from the heightmap gradients if <code>normals</code> is omitted.</li>
 <li><code>scene.create_terrain()</code> now accepts <code>grid_res</code> to auto-infer spatial <code>x_lim</code>/<code>y_lim</code> constraints instead of requiring manual definition.</li>
+<li><code>simview terrain &lt;file&gt; --along-body BODY</code>: sample terrain layer(s)
+  bilinear-interpolated at a body's per-frame (x, y) position — "what
+  terrain is under the robot's driven path". With <code>--batches A B</code>, both
+  batches' terrains are sampled along batch A's (reference, typically
+  ground-truth) trajectory and reported as <code>value_a</code>/<code>value_b</code>/<code>delta</code>
+  per layer, so the delta reflects property differences under the path
+  rather than trajectory divergence. Honors <code>--layer</code>/<code>--every</code> and the
+  usual <code>--json</code>/<code>--csv</code> output modes.</li>
+<li>"Terrain" tab in the browser Analysis panel: plots a terrain layer
+  (height/friction/stiffness) sampled under a body's path over time, one
+  series per batch, with layer/body pickers, a path picker ("own path"
+  per batch, or every batch's terrain along one reference batch's path —
+  e.g. ground truth's), playback-synced reveal, click-to-seek, and CSV
+  export. The browser-side counterpart of <code>simview terrain --along-body</code>.</li>
+<li><code>--fail-on-exceed</code> flag for <code>simview diff</code>: exits with code 2 (after
+  printing the normal report) when any diffed body's trajectory exceeds
+  <code>--pos-threshold</code>/<code>--rot-threshold-deg</code>, and 0 when within them --
+  distinct from the usage/parse-error exit 1, so scripts and CI can use an
+  exported scene as a regression tripwire.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li>Focusing a batch while a Scalars plot was open threw
+  <code>s.stroke is not a function</code> on the next redraw (uPlot expects
+  <code>series.stroke</code> to stay a function; the focus handler was overwriting it
+  with a color string).</li>
 </ul>
 <h2 id="35-2026-07-28"><a href="https://github.com/vlk-jan/simview/compare/v3.4...v3.5">3.5</a> - 2026-07-28</h2>
 <h3 id="added_1">Added</h3>
@@ -1220,7 +1246,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
   covered by an e2e test.</li>
 </ul>
-<h3 id="fixed">Fixed</h3>
+<h3 id="fixed_1">Fixed</h3>
 <ul>
 <li>Unblock CI: guard the optional <code>numpy</code> import and add <code>--no-launch</code> to
   <code>example.py</code>.</li>
@@ -1242,7 +1268,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   repack), backed by a <code>Float32Array</code> <code>StateStore</code>, for much cheaper playback of
   long recordings.</li>
 </ul>
-<h3 id="fixed_1">Fixed</h3>
+<h3 id="fixed_2">Fixed</h3>
 <ul>
 <li>Binary-search seek for non-uniform timelines, parallel blob fetches, and
   versioned immutable blob URLs.</li>
