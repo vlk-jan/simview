@@ -10,10 +10,11 @@ const LAYER_LABELS = { height: "Height", friction: "Friction", stiffness: "Stiff
 // under a body's path over time, one uPlot series per batch, so a
 // divergence onset (e.g. in Error Metrics) can be correlated with a
 // terrain-property difference under the body at that time -- the DRIFT
-// use case is plotting each batch's terrain under GT's own path. Structure
-// mirrors ScalarPlotter (single shared x-axis, progressive reveal tied to
-// playback, CSV export); controls are selects like ErrorMetrics since the
-// picked layer/body/path -- not a fixed tab -- decides what's plotted.
+// use case is plotting each batch's terrain under GT's own path. The whole
+// trajectory is plotted immediately (not revealed progressively as playback
+// advances), with a moving marker line for the current time -- mirrors
+// ErrorMetrics's chart pattern; controls are selects like ErrorMetrics since
+// the picked layer/body/path -- not a fixed tab -- decides what's plotted.
 export class TerrainProfile {
     static styleId = "terrain-profile-styles";
 
@@ -35,10 +36,9 @@ export class TerrainProfile {
 
         this.times = [];
         this.fullSeries = []; // per batch: {x: time, y: value}[], the complete precomputed series
-        this.currentEndIndex = 0;
+        this.markerTime = null;
         this.chart = null;
         this.resizeObserver = null;
-        this.seriesRenderCallback = null;
         this.minRenderDelay = 1000 / (FREQ_CONFIG.terrainProfile || FREQ_CONFIG.scalarPlotter);
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
 
@@ -224,10 +224,7 @@ export class TerrainProfile {
             this._recompute();
         } else {
             this._resizeChart();
-            if (this.app.animationController) {
-                this.setEndIndex(this.app.animationController.getCurrentStateIndex(), true);
-            }
-            this._renderChart();
+            this._updateMarker(true);
         }
     }
 
@@ -292,9 +289,7 @@ export class TerrainProfile {
         }
 
         this._buildChart();
-        const idx = this.app.animationController ? this.app.animationController.getCurrentStateIndex() : 0;
-        this.setEndIndex(idx, true);
-        this._renderChart();
+        this._updateMarker(true);
     }
 
     _chartInterval(min, max) {
@@ -333,6 +328,7 @@ export class TerrainProfile {
         max += limOffset;
 
         const seriesConfigs = [{}];
+        const dataArrays = [this.times];
         for (let i = 0; i < numBatches; i++) {
             seriesConfigs.push({
                 label: this.app.batchManager.getBatchName(i),
@@ -340,6 +336,8 @@ export class TerrainProfile {
                 width: 1,
                 points: { show: false },
             });
+            const batchSeries = this.fullSeries[i] || [];
+            dataArrays.push(batchSeries.map((p) => p.y));
         }
 
         const rect = this.plotDiv.getBoundingClientRect();
@@ -350,7 +348,7 @@ export class TerrainProfile {
                 padding: [8, 8, 0, 8],
                 series: seriesConfigs,
                 scales: {
-                    x: { time: false, min: this.times[0], max: this.times[this.times.length - 1] },
+                    x: { time: false },
                     y: { min, max },
                 },
                 axes: [
@@ -377,10 +375,11 @@ export class TerrainProfile {
                     points: { show: false },
                 },
                 hooks: {
+                    draw: [(u) => this._drawMarker(u)],
                     setCursor: [(u) => this._updateTooltip(u)],
                 },
             },
-            [[], ...new Array(numBatches).fill([])],
+            dataArrays,
             this.plotDiv
         );
 
@@ -397,6 +396,23 @@ export class TerrainProfile {
 
         this.resizeObserver = new ResizeObserver(() => this._resizeChart());
         this.resizeObserver.observe(this.plotDiv);
+    }
+
+    // Draws the current playback time as a vertical marker line over the
+    // finished plot, mirroring ErrorMetrics._drawMarker.
+    _drawMarker(u) {
+        if (this.markerTime === null) return;
+        const x = u.valToPos(this.markerTime, "x", true);
+        if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
+        const ctx = u.ctx;
+        ctx.save();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, u.bbox.top);
+        ctx.lineTo(x, u.bbox.top + u.bbox.height);
+        ctx.stroke();
+        ctx.restore();
     }
 
     _createTooltip() {
@@ -463,33 +479,17 @@ export class TerrainProfile {
         this.chart.setSize({ width: rect.width, height: rect.height });
     }
 
-    // Reveals the precomputed series up to `newEndIndex`, mirroring
-    // ScalarPlotter's progressive-reveal-tied-to-playback cursor sync --
-    // cheap (a slice of already-sampled data), unlike _recompute.
-    setEndIndex(newEndIndex, force = false) {
-        if (this.times.length === 0) return;
-        const clamped = Math.max(0, Math.min(newEndIndex, this.times.length - 1));
-        if (this.currentEndIndex === clamped && !force) return;
-        this.currentEndIndex = clamped;
-        if (!this.chart) return;
-
-        this.seriesRenderCallback = () => {
-            const numPoints = this.currentEndIndex + 1;
-            const xValues = this.times.slice(0, numPoints);
-            const data = [xValues];
-            for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-                const batchSeries = this.fullSeries[i] || [];
-                data.push(batchSeries.slice(0, numPoints).map((p) => p.y));
-            }
-            this.chart.setData(data, false);
-        };
-    }
-
-    _renderChart() {
-        if (!this.chart || !this.seriesRenderCallback) return;
-        this.seriesRenderCallback();
-        this.seriesRenderCallback = null;
-        this.chart.redraw(false, true);
+    // Moves the current-time marker line to match playback, redrawing only
+    // the cheap marker overlay (not the series paths) when it actually
+    // shifts -- mirrors ErrorMetrics._updateReadoutAndMarker.
+    _updateMarker(force = false) {
+        if (!this.chart || this.times.length === 0 || !this.app.animationController) return;
+        const idx = this.app.animationController.getCurrentStateIndex();
+        const clamped = Math.max(0, Math.min(idx, this.times.length - 1));
+        const time = this.times[clamped];
+        if (this.markerTime === time && !force) return;
+        this.markerTime = time;
+        this.chart.redraw(false, false);
     }
 
     // Downloads the current selection's full series as CSV: time, then one
@@ -525,10 +525,7 @@ export class TerrainProfile {
         if (!this.isExpanded) return;
         if (now - this.lastRenderTime < this.minRenderDelay) return;
         this.lastRenderTime = now;
-        if (this.app.animationController) {
-            this.setEndIndex(this.app.animationController.getCurrentStateIndex());
-        }
-        this._renderChart();
+        this._updateMarker();
     }
 
     dispose() {
