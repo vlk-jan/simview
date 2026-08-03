@@ -193,6 +193,14 @@ export const SELECTION_CONFIG = {
     },
 };
 
+export const RAYCAST_CONFIG = {
+    // THREE.Raycaster's default Points.threshold is 1 world unit -- far too
+    // generous at BODY_CONFIG.points.size (0.1), where it would make every
+    // click ambiguous among many nearby points instead of picking the one
+    // actually under the cursor.
+    pointsThreshold: 0.15,
+};
+
 export const BATCH_PALETTE_GENERATION_CONFIG = {
     colors: ["#00429d", "#96ffea", "#ff40e0", "#ffffe0", "#ff005e", "#93003a"],
     correctLightness: true,

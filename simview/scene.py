@@ -530,6 +530,7 @@ class SimulationScene:
         grid_res: float | None = None,
         friction_map: torch.Tensor | None = None,
         stiffness_map: torch.Tensor | None = None,
+        embedding_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the simulation model.
 
@@ -543,6 +544,9 @@ class SimulationScene:
                 they will be automatically inferred assuming the grid is centered at 0.
             friction_map (torch.Tensor | None): Optional friction coefficient map.
             stiffness_map (torch.Tensor | None): Optional stiffness coefficient map.
+            embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
+                (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
+                enabling the viewer's click-to-similarity "features" color mode.
         """
         self.model.create_terrain(
             heightmap,
@@ -552,11 +556,39 @@ class SimulationScene:
             grid_res=grid_res,
             friction_map=friction_map,
             stiffness_map=stiffness_map,
+            embedding_map=embedding_map,
         )
 
     def add_terrain_object(self, terrain: SimViewTerrain) -> None:
         """Adds a pre-configured SimViewTerrain object to the model."""
         self.model.add_terrain(terrain)
+
+    def create_pointcloud(
+        self,
+        body_name: str,
+        points: torch.Tensor,
+        color: torch.Tensor | None = None,
+        embedding: torch.Tensor | None = None,
+        **kwargs,
+    ) -> None:
+        """Creates and adds a pointcloud body to the simulation model.
+
+        Args:
+            body_name (str): Unique name for this body.
+            points (torch.Tensor): (N, 3) point positions.
+            color (torch.Tensor | None): Optional (N, 3) per-point RGB in [0, 1]
+                for static vertex-colored rendering.
+            embedding (torch.Tensor | None): Optional (N, K) per-point feature
+                vector (e.g. a reduced-dim PCA projection) enabling the
+                viewer's click-to-similarity color mode.
+        """
+        if body_name in self.model.bodies:
+            raise ValueError(f"Dynamic body {body_name} already exists")
+        self.model.add_body(
+            SimViewBody.create_pointcloud(
+                body_name, points, color=color, embedding=embedding, **kwargs
+            )
+        )
 
     def create_body(
         self,

@@ -70,6 +70,13 @@ class SimViewTerrain:
     is_singleton: bool
     friction_data: list[list[float]] | str | None = None
     stiffness_data: list[list[float]] | str | None = None
+    # Per-cell K-wide feature vector (e.g. a reduced-dim PCA projection of a
+    # learned backbone's features), stored the same way as `normals` (width
+    # inferred client-side from flat length, not shipped explicitly). Used by
+    # the viewer's "features" color mode: cosine similarity to a clicked cell,
+    # computed entirely in-browser -- not a scalar field like friction/
+    # stiffness, so it has no min/max bounds (similarity is always [-1, 1]).
+    embedding_data: list[list[float]] | str | None = None
     # Value ranges used by the viewer to normalize the color map (analogous to
     # min_z/max_z for height). None when the corresponding data is absent.
     min_friction: float | None = None
@@ -108,6 +115,7 @@ class SimViewTerrain:
             "isSingleton": self.is_singleton,
             "frictionData": self.friction_data,
             "stiffnessData": self.stiffness_data,
+            "embeddingData": self.embedding_data,
         }
 
     @classmethod
@@ -144,6 +152,7 @@ class SimViewTerrain:
             is_singleton=is_singleton,
             friction_data=d.get("frictionData"),
             stiffness_data=d.get("stiffnessData"),
+            embedding_data=d.get("embeddingData"),
             min_friction=bounds.get("minFriction"),
             max_friction=bounds.get("maxFriction"),
             min_stiffness=bounds.get("minStiffness"),
@@ -159,6 +168,7 @@ class SimViewTerrain:
         is_singleton: bool,
         friction_map: torch.Tensor | None = None,
         stiffness_map: torch.Tensor | None = None,
+        embedding_map: torch.Tensor | None = None,
     ) -> "SimViewTerrain":
         if heightmap.ndim != 3:
             raise ValueError(
@@ -212,6 +222,16 @@ class SimViewTerrain:
             min_stiffness = stiffness_map.min().item()
             max_stiffness = stiffness_map.max().item()
 
+        embedding_data_list = None
+        if embedding_map is not None:
+            if embedding_map.ndim != 4:
+                raise ValueError(
+                    f"Embedding map must include a batch dimension (ndim=4); got ndim={embedding_map.ndim}."
+                )
+            embedding_data_list = _encode_blob(
+                rearrange(embedding_map, "b k d1 d2 -> b (d1 d2) k").cpu().numpy()
+            )
+
         return SimViewTerrain(
             extent_x=extent_x,
             extent_y=extent_y,
@@ -228,6 +248,7 @@ class SimViewTerrain:
             is_singleton=is_singleton,
             friction_data=friction_data_list,
             stiffness_data=stiffness_data_list,
+            embedding_data=embedding_data_list,
             min_friction=min_friction,
             max_friction=max_friction,
             min_stiffness=min_stiffness,
@@ -335,7 +356,35 @@ class SimViewBody:
         )
 
     @staticmethod
-    def create_pointcloud(name: str, points: torch.Tensor, **kwargs) -> "SimViewBody":
+    def create_pointcloud(
+        name: str,
+        points: torch.Tensor,
+        color: torch.Tensor | None = None,
+        embedding: torch.Tensor | None = None,
+        **kwargs,
+    ) -> "SimViewBody":
+        """`color` (N, 3) in [0, 1] is an optional static per-point RGB color,
+        used by the viewer for vertex-colored rendering. `embedding` (N, K) is
+        an optional per-point K-wide feature vector (e.g. a reduced-dim PCA
+        projection of a learned backbone's features) enabling the viewer's
+        click-to-similarity color mode: cosine similarity to a clicked point,
+        computed entirely in-browser from this data. Both round-trip through
+        the existing generic `__b64__` blob mechanism -- no new wire format."""
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"points must have shape (N, 3); got {tuple(points.shape)}.")
+        N = points.shape[0]
+        if color is not None:
+            if tuple(color.shape) != (N, 3):
+                raise ValueError(
+                    f"color must have shape ({N}, 3) matching points; got {tuple(color.shape)}."
+                )
+            kwargs["color"] = color
+        if embedding is not None:
+            if embedding.ndim != 2 or embedding.shape[0] != N:
+                raise ValueError(
+                    f"embedding must have shape ({N}, K) matching points; got {tuple(embedding.shape)}."
+                )
+            kwargs["embedding"] = embedding
         return SimViewBody.create(
             name, BodyShapeType.POINTCLOUD, points=points, **kwargs
         )
@@ -534,6 +583,7 @@ class SimViewModel:
         grid_res: float | None = None,
         friction_map: torch.Tensor | None = None,
         stiffness_map: torch.Tensor | None = None,
+        embedding_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the internal simulation model.
 
@@ -547,6 +597,9 @@ class SimViewModel:
                 they will be automatically inferred assuming the grid is centered at 0.
             friction_map (torch.Tensor | None): Optional friction coefficient map.
             stiffness_map (torch.Tensor | None): Optional stiffness coefficient map.
+            embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
+                (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
+                enabling the viewer's click-to-similarity "features" color mode.
         """
         if heightmap.ndim == 2:
             heightmap = heightmap.unsqueeze(0)  # add batch dim
@@ -578,6 +631,8 @@ class SimViewModel:
             friction_map = friction_map.unsqueeze(0)
         if stiffness_map is not None and stiffness_map.ndim == 2:
             stiffness_map = stiffness_map.unsqueeze(0)
+        if embedding_map is not None and embedding_map.ndim == 3:  # channels first
+            embedding_map = embedding_map.unsqueeze(0)
 
         # Each field's batch dim must be either 1 (shared across all batches) or
         # exactly batch_size (per-batch). Anything else is a mistake, and the old
@@ -588,6 +643,7 @@ class SimViewModel:
             "normals": normals,
             "friction_map": friction_map,
             "stiffness_map": stiffness_map,
+            "embedding_map": embedding_map,
         }
         for name, tensor in provided.items():
             if tensor is not None and tensor.shape[0] not in (1, self.batch_size):
@@ -613,6 +669,8 @@ class SimViewModel:
                 friction_map = friction_map.repeat(self.batch_size, 1, 1)
             if stiffness_map is not None and stiffness_map.shape[0] == 1:
                 stiffness_map = stiffness_map.repeat(self.batch_size, 1, 1)
+            if embedding_map is not None and embedding_map.shape[0] == 1:
+                embedding_map = embedding_map.repeat(self.batch_size, 1, 1, 1)
 
         self.terrain = SimViewTerrain.create(
             heightmap=heightmap,
@@ -622,6 +680,7 @@ class SimViewModel:
             is_singleton=is_singleton,
             friction_map=friction_map,
             stiffness_map=stiffness_map,
+            embedding_map=embedding_map,
         )
 
     def create_body(

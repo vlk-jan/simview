@@ -6,7 +6,10 @@ import {
     createPoints,
     createContactPoints,
     createArrow,
+    toFlatFloat32Array,
 } from "./utils.js";
+import { getCallableFromColorMapName } from "./colormap.js";
+import { cosineSimilarityToQuery } from "./similarity.js";
 
 export class Body {
     constructor(bodyData, app) {
@@ -221,8 +224,29 @@ export class Body {
     createBatchGroups(bodyData) {
         const shape = bodyData.shape;
 
+        // Per-point static color (shape.color) and similarity embedding
+        // (shape.embedding), both optional -- see SimViewBody.create_pointcloud.
+        // embeddingDim is inferred from the flat length (same implicit-width
+        // convention Terrain.js uses for its per-cell embedding channel)
+        // rather than shipped explicitly.
+        this.pointCount = 0;
+        this.pointColors = null;
+        this.pointEmbedding = null;
+        this.embeddingDim = 0;
+        this.selectedPointIndex = null;
+
         // Initialize instanced representations
         if (shape.points && shape.points.length > 0) {
+            this.pointCount = toFlatFloat32Array(shape.points).length / 3;
+            if (shape.color) {
+                this.pointColors = toFlatFloat32Array(shape.color);
+            }
+            if (shape.embedding) {
+                this.pointEmbedding = toFlatFloat32Array(shape.embedding);
+                this.embeddingDim = this.pointCount
+                    ? this.pointEmbedding.length / this.pointCount
+                    : 0;
+            }
             this.representations["points"] = this.createInstancedRepresentation(
                 "points",
                 shape.points,
@@ -282,9 +306,13 @@ export class Body {
         if (type === "points") {
             const pointsList = [];
             for (let i = 0; i < this.simBatches; i++) {
-                const points = createPoints(source, config);
+                const points = createPoints(source, config, true, this.pointColors);
                 if (points) {
                     points.visible = this.app.uiState.bodyVisualizationMode === "points";
+                    // Lets InteractionController resolve a raycast hit back to
+                    // this body/batch without a reverse lookup.
+                    points.userData.bodyName = this.name;
+                    points.userData.batchIndex = i;
                     this.group.add(points);
                     pointsList.push(points);
                 }
@@ -547,6 +575,62 @@ export class Body {
                 obj.forEach((o) => (o.visible = type === mode));
             }
         }
+    }
+
+    // Pushes a flat (N*3) RGB array into every batch's points geometry,
+    // allocating the "color" BufferAttribute (and enabling vertexColors) on
+    // first use -- mirrors Terrain.js's per-vertex color update pattern,
+    // just targeting THREE.Points/PointsMaterial instead of Mesh/MeshPhongMaterial.
+    setPointColors(colorsFlat) {
+        for (const points of this.representations.points ?? []) {
+            if (!points) continue;
+            let attr = points.geometry.getAttribute("color");
+            if (!attr) {
+                attr = new THREE.Float32BufferAttribute(
+                    new Float32Array(colorsFlat.length),
+                    3
+                );
+                points.geometry.setAttribute("color", attr);
+                points.material.vertexColors = true;
+                points.material.needsUpdate = true;
+            }
+            attr.array.set(colorsFlat);
+            attr.needsUpdate = true;
+        }
+    }
+
+    // Recolors every point by cosine similarity (in the shipped top-K
+    // embedding space) to `queryIndex`'s embedding. O(N*K); for N~15-20k
+    // points and K~50 that's ~1M flops, trivial to redo on every click.
+    // Cosine [-1,1] -> [0,1] -> colormap, same convention Terrain's "diff"
+    // mode already uses for a signed value.
+    recolorBySimilarity(queryIndex, cmapName = "coolwarm") {
+        if (!this.pointEmbedding || !this.embeddingDim) return;
+        const similarities = cosineSimilarityToQuery(
+            this.pointEmbedding,
+            queryIndex,
+            this.embeddingDim,
+            this.pointCount
+        );
+
+        const cmap = getCallableFromColorMapName(cmapName);
+        const colors = new Float32Array(this.pointCount * 3);
+        for (let i = 0; i < this.pointCount; i++) {
+            const value = 0.5 + 0.5 * Math.max(-1, Math.min(1, similarities[i]));
+            const c = cmap(value);
+            colors[i * 3] = c.r;
+            colors[i * 3 + 1] = c.g;
+            colors[i * 3 + 2] = c.b;
+        }
+        this.setPointColors(colors);
+        this.selectedPointIndex = queryIndex;
+    }
+
+    // Restores the static PCA-RGB coloring (or clears to no color data if
+    // this body never had any), undoing recolorBySimilarity.
+    resetPointColors() {
+        if (this.pointColors) this.setPointColors(this.pointColors);
+        this.selectedPointIndex = null;
     }
 
     toggleContactPoints(visible) {

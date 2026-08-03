@@ -146,6 +146,30 @@ export class UIControls {
                     this.updateSmoothInterpolation(value);
                 });
 
+            // Only shown when at least one body ships a per-point similarity
+            // embedding (see Body.js's pointEmbedding / recolorBySimilarity).
+            // Clicking a point already switches into "similarity" coloring
+            // implicitly (InteractionController's #handlePointClick); this
+            // dropdown's main job is letting you switch back to the static
+            // PCA-RGB view without another click.
+            const bodiesWithEmbedding = [...this.app.bodies.values()].filter(
+                (body) => body.pointEmbedding
+            );
+            if (bodiesWithEmbedding.length > 0) {
+                const pointColorControls = {
+                    pointColorMode: this.app.uiState.pointColorMode || "pca",
+                };
+                this.bodyFolder
+                    .add(pointColorControls, "pointColorMode", ["pca", "similarity"])
+                    .name("Point Color Mode")
+                    .onChange((value) => {
+                        this.app.uiState.pointColorMode = value;
+                        if (value === "pca") {
+                            bodiesWithEmbedding.forEach((body) => body.resetPointColors());
+                        }
+                    });
+            }
+
             // Only create toggles for attributes actually present in the loaded data
             const attributeControls = [
                 { property: "showContacts", name: "Show Contacts (C)", type: "contacts" },
