@@ -1,16 +1,18 @@
 export class Legend {
     constructor(app) {
         this.app = app;
-        this.container = this.createContainer();
+        this.container = this.createContainer("terrain-legend", "20px");
+        this.pointContainer = this.createContainer("point-legend", "90px");
         document.body.appendChild(this.container);
+        document.body.appendChild(this.pointContainer);
         this.update();
     }
 
-    createContainer() {
+    createContainer(id, bottomOffset) {
         const container = document.createElement("div");
-        container.id = "terrain-legend";
+        container.id = id;
         container.style.position = "absolute";
-        container.style.bottom = "20px";
+        container.style.bottom = bottomOffset;
         container.style.left = "20px";
         container.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
         container.style.color = "white";
@@ -28,12 +30,16 @@ export class Legend {
     }
 
     update() {
+        this.#updateTerrainLegend();
+        this.#updatePointLegend();
+    }
+
+    #updateTerrainLegend() {
         if (!this.app.terrain) {
             this.container.style.display = "none";
             return;
         }
 
-        this.container.style.display = "flex";
         const mode = this.app.uiState.terrainColorMode || "height";
         const cmapName =
             mode === "diff" || mode === "features"
@@ -83,16 +89,49 @@ export class Legend {
             mode === "stiffness" ||
             (mode === "diff" && this.app.uiState.terrainDiffLayer === "stiffness");
         const decimals = isStiffnessScale && maxVal > 1000 ? 0 : 2;
-        this.container.innerHTML = `
+
+        this.container.style.display = "flex";
+        this.#renderGradient(this.container, title, unit, minVal, maxVal, decimals, cmapName);
+    }
+
+    // Shown whenever at least one body is currently colored by similarity to
+    // a clicked point (Body.js's selectedPointIndex, set by
+    // recolorBySimilarity / cleared by resetPointColors) -- otherwise a
+    // click recolors the whole point cloud with no visible indication of
+    // what the colors now mean, and no way to read a value off them.
+    #updatePointLegend() {
+        const anySimilarity =
+            this.app.bodies &&
+            [...this.app.bodies.values()].some((body) => body.selectedPointIndex != null);
+        if (!anySimilarity || !this.app.terrain) {
+            this.pointContainer.style.display = "none";
+            return;
+        }
+        this.pointContainer.style.display = "flex";
+        // Fixed coolwarm/[-1,1], matching Body.recolorBySimilarity's own
+        // hardcoded colormap and cosine-similarity range.
+        this.#renderGradient(
+            this.pointContainer,
+            "Cosine similarity to clicked point",
+            "",
+            -1,
+            1,
+            2,
+            "coolwarm"
+        );
+    }
+
+    #renderGradient(container, title, unit, minVal, maxVal, decimals, cmapName) {
+        container.innerHTML = `
             <div style="font-weight: bold; margin-bottom: 5px; text-align: center;">${title} ${unit ? `(${unit})` : ""}</div>
-            <div id="legend-gradient" style="height: 20px; width: 100%; margin-bottom: 5px; border: 1px solid white;"></div>
+            <div class="legend-gradient" style="height: 20px; width: 100%; margin-bottom: 5px; border: 1px solid white;"></div>
             <div style="display: flex; justify-content: space-between;">
                 <span>${minVal.toFixed(decimals)}</span>
                 <span>${maxVal.toFixed(decimals)}</span>
             </div>
         `;
 
-        const gradientDiv = this.container.querySelector("#legend-gradient");
+        const gradientDiv = container.querySelector(".legend-gradient");
         const callableColormap = this.app.terrain.getCallableFromColorMapName(cmapName);
 
         // Generate CSS gradient
@@ -108,6 +147,9 @@ export class Legend {
     dispose() {
         if (this.container && this.container.parentElement) {
             this.container.parentElement.removeChild(this.container);
+        }
+        if (this.pointContainer && this.pointContainer.parentElement) {
+            this.pointContainer.parentElement.removeChild(this.pointContainer);
         }
     }
 }

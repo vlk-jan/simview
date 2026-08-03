@@ -163,4 +163,83 @@ describe("Body pointcloud color/embedding", () => {
             }
         });
     });
+
+    describe("recolorBySimilarity / resetPointColors sync the GUI dropdown and legend", () => {
+        // Fake lil-gui controller: just enough surface (getValue/setValue) for
+        // Body.js to drive it the same way Terrain.setFeatureQueryAt does.
+        function fakeController(initial = "pca") {
+            return {
+                value: initial,
+                getValue() {
+                    return this.value;
+                },
+                setValue(v) {
+                    this.value = v;
+                },
+            };
+        }
+
+        it("recolorBySimilarity switches the 'pointColorMode' controller to 'similarity'", () => {
+            const controller = fakeController("pca");
+            const app = fakeApp();
+            app.uiControls = { findController: (name) => (name === "pointColorMode" ? controller : null) };
+            const body = new Body(makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }), app);
+
+            body.recolorBySimilarity(0);
+
+            expect(controller.getValue()).toBe("similarity");
+        });
+
+        it("recolorBySimilarity does not touch the controller if it's already 'similarity'", () => {
+            const controller = fakeController("similarity");
+            let setValueCalls = 0;
+            controller.setValue = function (v) {
+                setValueCalls++;
+                this.value = v;
+            };
+            const app = fakeApp();
+            app.uiControls = { findController: () => controller };
+            const body = new Body(makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }), app);
+
+            body.recolorBySimilarity(0);
+
+            expect(setValueCalls).toBe(0);
+        });
+
+        it("recolorBySimilarity tolerates a missing uiControls (e.g. no GUI at all)", () => {
+            const app = fakeApp(); // no uiControls
+            const body = new Body(makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }), app);
+            expect(() => body.recolorBySimilarity(0)).not.toThrow();
+        });
+
+        it("recolorBySimilarity calls legend.update() when a legend exists", () => {
+            let updateCalls = 0;
+            const app = fakeApp();
+            app.legend = { update: () => updateCalls++ };
+            const body = new Body(makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }), app);
+
+            body.recolorBySimilarity(0);
+
+            expect(updateCalls).toBe(1);
+        });
+
+        it("resetPointColors calls legend.update() too", () => {
+            let updateCalls = 0;
+            const app = fakeApp();
+            app.legend = { update: () => updateCalls++ };
+            const body = new Body(makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }), app);
+            body.recolorBySimilarity(0);
+            updateCalls = 0; // reset after the recolor's own call
+
+            body.resetPointColors();
+
+            expect(updateCalls).toBe(1);
+        });
+
+        it("resetPointColors tolerates a missing legend", () => {
+            const app = fakeApp(); // no legend
+            const body = new Body(makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }), app);
+            expect(() => body.resetPointColors()).not.toThrow();
+        });
+    });
 });

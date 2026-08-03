@@ -624,6 +624,18 @@ export class Body {
         }
         this.setPointColors(colors);
         this.selectedPointIndex = queryIndex;
+
+        // Route through the lil-gui "pointColorMode" controller when one
+        // exists, so the dropdown reflects that this body is now showing
+        // similarity colors (mirrors Terrain.setFeatureQueryAt's identical
+        // pattern) -- otherwise a click silently recolors the body with no
+        // visible indication of what mode it's now in. Guarded so repeated
+        // clicks (already in "similarity") don't keep re-triggering onChange.
+        const controller = this.app.uiControls?.findController?.("pointColorMode");
+        if (controller && controller.getValue() !== "similarity") {
+            controller.setValue("similarity");
+        }
+        if (this.app.legend) this.app.legend.update();
     }
 
     // Restores the static PCA-RGB coloring (or clears to no color data if
@@ -631,6 +643,7 @@ export class Body {
     resetPointColors() {
         if (this.pointColors) this.setPointColors(this.pointColors);
         this.selectedPointIndex = null;
+        if (this.app.legend) this.app.legend.update();
     }
 
     toggleContactPoints(visible) {
