@@ -139,6 +139,17 @@ export class InteractionController {
             }
         }
 
+        // Clicking is otherwise a no-op: there's nothing to probe (terrain
+        // tooltip) or recolor (point similarity) unless the user has
+        // explicitly opted into one of those two modes -- avoids any click
+        // side effect (selecting a body, raycasting at all) while just
+        // orbiting/navigating the scene. Toggling "Data Probe" off already
+        // clears any existing tooltip itself (Controls.js), so there's
+        // nothing left to clean up here.
+        const probeActive = !!this.app.uiState?.terrainProbe;
+        const similarityActive = this.app.uiState?.pointColorMode === "similarity";
+        if (!probeActive && !similarityActive) return;
+
         this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
         const intersects = this.raycaster.intersectObjects(
             // this.app.bodies is a Map (SimView.js), not a plain object --

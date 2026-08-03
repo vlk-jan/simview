@@ -207,6 +207,56 @@ describe("InteractionController.onClick", () => {
         expect(body.recolorCalls).toEqual([3]);
     });
 
+    it("does nothing at all (no raycast, no selection) when neither probe nor similarity is active", () => {
+        const pointsObj = { isPoints: true, userData: { bodyName: "pts" } };
+        const body = fakePointsBody("pts", pointsObj);
+        const bodies = new Map([["pts", body]]);
+        const app = fakeApp({ bodies, terrainProbe: false, pointColorMode: "pca" });
+        const controller = new InteractionController(app);
+        let raycastCalled = false;
+        controller.raycaster.setFromCamera = () => {
+            raycastCalled = true;
+        };
+        controller.raycaster.intersectObjects = () => [{ object: pointsObj, index: 0, point: { x: 0, y: 0, z: 0 } }];
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(raycastCalled).toBe(false);
+        expect(controller.selectedObject).toBeNull();
+        expect(body.recolorCalls).toEqual([]);
+    });
+
+    it("proceeds (probe only) when probe is active even if pointColorMode is 'pca'", () => {
+        const surfaceObj = { name: "surface", parent: null };
+        const terrain = { group: {}, getPropertiesAt: () => null };
+        const app = fakeApp({ terrain, terrainProbe: true, pointColorMode: "pca" });
+        const controller = new InteractionController(app);
+        let raycastCalled = false;
+        controller.raycaster.setFromCamera = () => {
+            raycastCalled = true;
+        };
+        controller.raycaster.intersectObjects = () => [];
+        controller.raycaster.intersectObject = () => [{ object: surfaceObj, point: { x: 0, y: 0, z: 0 } }];
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(raycastCalled).toBe(true);
+    });
+
+    it("proceeds (similarity only) when similarity is active even if probe is off", () => {
+        const pointsObj = { isPoints: true, userData: { bodyName: "pts" } };
+        const body = fakePointsBody("pts", pointsObj);
+        const app = fakeApp({ bodies: new Map([["pts", body]]), terrainProbe: false, pointColorMode: "similarity" });
+        const controller = new InteractionController(app);
+        stubRaycaster(controller, {
+            objectHits: [{ object: pointsObj, index: 2, point: { x: 0, y: 0, z: 0 } }],
+        });
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(body.recolorCalls).toEqual([2]);
+    });
+
     it("does nothing when the click was actually a drag (>5px movement)", () => {
         const pointsObj = { isPoints: true, userData: { bodyName: "pts" } };
         const body = fakePointsBody("pts", pointsObj);
