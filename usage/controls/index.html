@@ -673,6 +673,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#point-cloud-and-terrain-similarity-coloring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point Cloud and Terrain Similarity Coloring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#trajectory-trails" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1284,6 +1295,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#point-cloud-and-terrain-similarity-coloring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Point Cloud and Terrain Similarity Coloring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#trajectory-trails" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1390,6 +1412,16 @@
 <li><strong><code>P</code></strong>: Toggle Terrain Data Probe (interactive tooltip on hover)</li>
 </ul>
 <p>You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.</p>
+<h2 id="point-cloud-and-terrain-similarity-coloring">Point Cloud and Terrain Similarity Coloring</h2>
+<p>Point-cloud bodies and terrain cells can each carry an optional per-point/per-cell
+feature embedding (see <code>create_pointcloud(embedding=)</code> / <code>create_terrain(embedding_map=)</code>
+in the <a href="../../dev/json-format/">JSON format</a>). When present, clicking a point (with
+"Point Color Mode" already set to "similarity" in the Body Options panel) or a terrain
+cell (with "Data Probe" off and terrain "features" color mode already selected)
+recolors the whole cloud/grid by cosine similarity to the clicked location — computed
+entirely client-side, no backend round-trip. A colormap legend (coolwarm, [-1, 1])
+appears alongside the existing terrain legend to read values off the result. Clicking
+without the matching mode active is an ordinary object selection and has no other effect.</p>
 <h2 id="trajectory-trails">Trajectory Trails</h2>
 <p>Toggling trails (<code>G</code>, or "Show Trails" in the Body Options panel) draws each body's
 path from the start of the simulation up to the current playback time, one line per

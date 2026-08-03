@@ -1408,7 +1408,11 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
   interpolation), <code>BatchManager</code> (per-batch color/focus/visibility), <code>InteractionController</code></li>
 <li><code>InteractionControls</code> (camera/mouse/keyboard).</li>
 <li><strong><code>objects/</code></strong> — THREE.js object wrappers: <code>Body</code>, <code>StaticObject</code>, <code>Terrain</code> (heightfield
-  mesh + friction/stiffness color modes), plus shared helpers in <code>utils.js</code>.</li>
+  mesh + friction/stiffness/click-to-similarity "features" color modes), plus shared
+  helpers in <code>utils.js</code>. <code>colormap.js</code>/<code>similarity.js</code> factor the colormap resolver and
+  cosine-similarity math out of <code>utils.js</code> (which pulls in the browser-only <code>chroma</code>
+  package) into small, dependency-light modules used by both <code>Body</code>'s
+  click-to-similarity point coloring and <code>Terrain</code>'s "features" mode.</li>
 <li><strong><code>ui/</code></strong> — DOM-based UI panels: <code>Controls</code> (main options panel), <code>PlaybackControls</code>,
   <code>BodyStateWindow</code>, <code>Legend</code>/<code>BatchLegend</code>, <code>ScalarPlotter</code> and <code>ErrorMetrics</code> (both
   behind <code>AnalysisPanel</code>'s tab switcher, both plotted with vendored uPlot).</li>
@@ -1417,7 +1421,9 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
   the server's repack logic), <code>bodyTransforms.js</code> (resolve parent-relative poses,
   <code>topoSortBodies</code>), <code>interpolate.js</code>, <code>errorMath.js</code>, <code>csv.js</code>, <code>viewState.js</code>
   (encode/decode the shareable view-link URL hash), <code>liveFollow.js</code> (should new live
-  frames auto-scroll playback).</li>
+  frames auto-scroll playback), <code>terrainSample.js</code> (bilinear terrain layer sampling for
+  the Analysis panel's Terrain tab, plus <code>hasBodyTrajectory</code> gating whether that tab
+  shows up for a given body).</li>
 </ul>
 <h3 id="vendored-third-party-libraries">Vendored third-party libraries</h3>
 <p><a href="https://github.com/leeoniya/uPlot"><strong>uPlot</strong></a> (MIT), <a href="https://github.com/mrdoob/three.js"><strong>three.js</strong></a>

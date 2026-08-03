@@ -1130,8 +1130,27 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v3.6...HEAD">Unreleased</a></h2>
-<h2 id="36-2026-07-29"><a href="https://github.com/vlk-jan/simview/compare/v3.5...v3.6">3.6</a> - 2026-07-29</h2>
 <h3 id="added">Added</h3>
+<ul>
+<li><code>scene.create_pointcloud()</code> now accepts optional <code>color</code> (static per-point RGB) and
+  <code>embedding</code> (per-point feature vector) tensors; <code>scene.create_terrain()</code> gains a
+  matching <code>embedding_map</code> (per-cell feature vector). When present, clicking a point
+  or terrain cell recolors the whole body/grid by cosine similarity to the clicked
+  location, computed client-side — a new "similarity" Point Color Mode for point
+  clouds and "features" terrain color mode, both with a matching colormap legend.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li>Clicking now only recolors a point cloud/terrain by similarity when the matching
+  mode is already selected from its dropdown; otherwise it's an ordinary selection,
+  and a click does nothing at all unless "Data Probe" or similarity mode is active.</li>
+<li>The Analysis panel's "Terrain" tab no longer appears for bodies with no trajectory
+  (e.g. a static point cloud), and now plots the whole trajectory up front instead of
+  only revealing it progressively during playback.</li>
+<li>"Scene Info" now shows full metadata keys/values instead of truncating them.</li>
+</ul>
+<h2 id="36-2026-07-29"><a href="https://github.com/vlk-jan/simview/compare/v3.5...v3.6">3.6</a> - 2026-07-29</h2>
+<h3 id="added_1">Added</h3>
 <ul>
 <li><code>SimulationScene</code>/<code>SimViewModel</code> now accept an optional free-form <code>metadata</code>
   dict (e.g. engine name, checkpoint path, git commit, CLI args) carried
@@ -1160,7 +1179,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   distinct from the usage/parse-error exit 1, so scripts and CI can use an
   exported scene as a regression tripwire.</li>
 </ul>
-<h3 id="fixed">Fixed</h3>
+<h3 id="fixed_1">Fixed</h3>
 <ul>
 <li>Focusing a batch while a Scalars plot was open threw
   <code>s.stroke is not a function</code> on the next redraw (uPlot expects
@@ -1168,7 +1187,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   with a color string).</li>
 </ul>
 <h2 id="35-2026-07-28"><a href="https://github.com/vlk-jan/simview/compare/v3.4...v3.5">3.5</a> - 2026-07-28</h2>
-<h3 id="added_1">Added</h3>
+<h3 id="added_2">Added</h3>
 <ul>
 <li><code>simview render &lt;file&gt; --output frame.png</code>: headless PNG screenshot via a
   real (headless) browser driving a real <code>SimViewServer</code> instance, with
@@ -1196,7 +1215,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   defaulting to indices 0/1, falling back to 0/1 when no batch name matches.</li>
 </ul>
 <h2 id="34-2026-07-27"><a href="https://github.com/vlk-jan/simview/compare/v3.3...v3.4">3.4</a> - 2026-07-27</h2>
-<h3 id="added_2">Added</h3>
+<h3 id="added_3">Added</h3>
 <ul>
 <li><code>simview info &lt;file&gt;</code>: a structural summary of a scene JSON (model/terrain/
   body/state breakdown, columnar-repack eligibility, consistency warnings) in
@@ -1216,7 +1235,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Only emit uvicorn's access log when running in debug mode.</li>
 </ul>
 <h2 id="33-2026-07-17"><a href="https://github.com/vlk-jan/simview/compare/v3.2...v3.3">3.3</a> - 2026-07-17</h2>
-<h3 id="added_3">Added</h3>
+<h3 id="added_4">Added</h3>
 <ul>
 <li>Expose the installed package version as <code>simview.__version__</code>.</li>
 <li>Test against Python 3.14 in CI and advertise it in the package classifiers.</li>
@@ -1234,7 +1253,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Unused <code>collapsedMode</code>/<code>focusedMode</code> placeholder flags from <code>BatchManager</code>.</li>
 </ul>
 <h2 id="32-2026-07-15"><a href="https://github.com/vlk-jan/simview/compare/v3.1...v3.2">3.2</a> - 2026-07-15</h2>
-<h3 id="added_4">Added</h3>
+<h3 id="added_5">Added</h3>
 <ul>
 <li>Shareable view links: the current camera/playback state is encoded in the URL
   hash so a view can be restored or handed off.</li>
@@ -1246,14 +1265,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
   covered by an e2e test.</li>
 </ul>
-<h3 id="fixed_1">Fixed</h3>
+<h3 id="fixed_2">Fixed</h3>
 <ul>
 <li>Unblock CI: guard the optional <code>numpy</code> import and add <code>--no-launch</code> to
   <code>example.py</code>.</li>
 <li>Plot visualization fixes.</li>
 </ul>
 <h2 id="31-2026-07-14"><a href="https://github.com/vlk-jan/simview/compare/v3.0...v3.1">3.1</a> - 2026-07-14</h2>
-<h3 id="added_5">Added</h3>
+<h3 id="added_6">Added</h3>
 <ul>
 <li>Live streaming mode: <code>LiveViewer</code> pushes states to connected browser tabs over
   WebSocket as a simulation runs.</li>
@@ -1268,7 +1287,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   repack), backed by a <code>Float32Array</code> <code>StateStore</code>, for much cheaper playback of
   long recordings.</li>
 </ul>
-<h3 id="fixed_2">Fixed</h3>
+<h3 id="fixed_3">Fixed</h3>
 <ul>
 <li>Binary-search seek for non-uniform timelines, parallel blob fetches, and
   versioned immutable blob URLs.</li>

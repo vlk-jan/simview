@@ -1331,7 +1331,13 @@ produces.</p>
 <li><code>"box"</code> — requires <code>hx</code>, <code>hy</code>, <code>hz</code> (half-extents).</li>
 <li><code>"sphere"</code> — requires <code>radius</code>.</li>
 <li><code>"cylinder"</code> — requires <code>radius</code>, <code>height</code>.</li>
-<li><code>"pointcloud"</code> — requires <code>points</code> <em>(array[array[3]])</em> in the body's local frame.</li>
+<li><code>"pointcloud"</code> — requires <code>points</code> <em>(array[array[3]])</em> in the body's local frame.
+  Optional <code>color</code> <em>(array[array[3]], values in [0, 1])</em> — a static per-point RGB
+  color for vertex-colored rendering. Optional <code>embedding</code> <em>(array[array[K]])</em> — a
+  per-point K-wide feature vector (e.g. a reduced-dim PCA projection of a learned
+  backbone's features); enables the viewer's click-to-similarity "similarity" Point
+  Color Mode, computed client-side as cosine similarity to a clicked point (see
+  <a href="../../usage/controls/#point-cloud-and-terrain-similarity-coloring">Controls</a>).</li>
 <li><code>"mesh"</code> — requires <code>vertices</code> <em>(array[array[3]])</em> and <code>faces</code> <em>(array[array[3]])</em>.</li>
 </ul>
 </li>
@@ -1367,6 +1373,10 @@ produces.</p>
     per grid point.</li>
 <li><strong><code>frictionData</code></strong>, <strong><code>stiffnessData</code></strong> <em>(array[array[float]] | null, optional)</em> —
     per-batch scalar fields over the grid, selectable as terrain color modes.</li>
+<li><strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
+    K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
+    enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
+    <code>color</code>/<code>embedding</code> on point-cloud bodies above.</li>
 </ul>
 <h2 id="states-dynamic-data">States (Dynamic Data)</h2>
 <p><code>states</code> is an array; each element is one snapshot:</p>
