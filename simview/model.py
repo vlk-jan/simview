@@ -371,7 +371,9 @@ class SimViewBody:
         computed entirely in-browser from this data. Both round-trip through
         the existing generic `__b64__` blob mechanism -- no new wire format."""
         if points.ndim != 2 or points.shape[1] != 3:
-            raise ValueError(f"points must have shape (N, 3); got {tuple(points.shape)}.")
+            raise ValueError(
+                f"points must have shape (N, 3); got {tuple(points.shape)}."
+            )
         N = points.shape[0]
         if color is not None:
             if tuple(color.shape) != (N, 3):

@@ -92,7 +92,7 @@ def test_create_terrain_embedding_map_roundtrips():
     )
     terrain = scene.model.terrain
     assert terrain is not None
-    assert terrain.embedding_data is not None
+    assert isinstance(terrain.embedding_data, str)
     decoded = _flat(terrain.embedding_data)
     # Encoded as (b, (d1 d2), k): reshape back and compare against the
     # channels-first (b, k, d1, d2) input via a permute.
@@ -122,6 +122,7 @@ def test_create_terrain_embedding_map_broadcasts_shared_batch():
     )
     terrain = scene.model.terrain
     assert terrain is not None
+    assert isinstance(terrain.embedding_data, str)
     decoded = _flat(terrain.embedding_data)
     assert len(decoded) == B * res * res * K
 
