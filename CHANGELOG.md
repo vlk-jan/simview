@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `scene.create_pointcloud()` now accepts optional `color` (static per-point RGB) and
+  `embedding` (per-point feature vector) tensors; `scene.create_terrain()` gains a
+  matching `embedding_map` (per-cell feature vector). When present, clicking a point
+  or terrain cell recolors the whole body/grid by cosine similarity to the clicked
+  location, computed client-side — a new "similarity" Point Color Mode for point
+  clouds and "features" terrain color mode, both with a matching colormap legend.
+
+### Fixed
+
+- Clicking now only recolors a point cloud/terrain by similarity when the matching
+  mode is already selected from its dropdown; otherwise it's an ordinary selection,
+  and a click does nothing at all unless "Data Probe" or similarity mode is active.
+- The Analysis panel's "Terrain" tab no longer appears for bodies with no trajectory
+  (e.g. a static point cloud), and now plots the whole trajectory up front instead of
+  only revealing it progressively during playback.
+- "Scene Info" now shows full metadata keys/values instead of truncating them.
+
 ## [3.6] - 2026-07-29
 
 ### Added

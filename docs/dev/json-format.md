@@ -31,6 +31,12 @@ produces.
     - `"sphere"` — requires `radius`.
     - `"cylinder"` — requires `radius`, `height`.
     - `"pointcloud"` — requires `points` *(array[array[3]])* in the body's local frame.
+      Optional `color` *(array[array[3]], values in [0, 1])* — a static per-point RGB
+      color for vertex-colored rendering. Optional `embedding` *(array[array[K]])* — a
+      per-point K-wide feature vector (e.g. a reduced-dim PCA projection of a learned
+      backbone's features); enables the viewer's click-to-similarity "similarity" Point
+      Color Mode, computed client-side as cosine similarity to a clicked point (see
+      [Controls](../usage/controls.md#point-cloud-and-terrain-similarity-coloring)).
     - `"mesh"` — requires `vertices` *(array[array[3]])* and `faces` *(array[array[3]])*.
   - **`availableAttributes`** *(array[string], optional)* — which optional per-state
     fields this body provides. Any of `"contacts"`, `"velocity"`, `"angularVelocity"`,
@@ -64,6 +70,10 @@ produces.
     per grid point.
   - **`frictionData`**, **`stiffnessData`** *(array[array[float]] | null, optional)* —
     per-batch scalar fields over the grid, selectable as terrain color modes.
+  - **`embeddingData`** *(array[array[float]] | null, optional)* — per-batch, per-cell
+    K-wide feature vectors (flattened `resolutionX * resolutionY * K` per batch),
+    enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
+    `color`/`embedding` on point-cloud bodies above.
 
 ## States (Dynamic Data)
 

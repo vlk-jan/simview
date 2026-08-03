@@ -86,7 +86,11 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   interpolation), `BatchManager` (per-batch color/focus/visibility), `InteractionController`
   - `InteractionControls` (camera/mouse/keyboard).
 - **`objects/`** — THREE.js object wrappers: `Body`, `StaticObject`, `Terrain` (heightfield
-  mesh + friction/stiffness color modes), plus shared helpers in `utils.js`.
+  mesh + friction/stiffness/click-to-similarity "features" color modes), plus shared
+  helpers in `utils.js`. `colormap.js`/`similarity.js` factor the colormap resolver and
+  cosine-similarity math out of `utils.js` (which pulls in the browser-only `chroma`
+  package) into small, dependency-light modules used by both `Body`'s
+  click-to-similarity point coloring and `Terrain`'s "features" mode.
 - **`ui/`** — DOM-based UI panels: `Controls` (main options panel), `PlaybackControls`,
   `BodyStateWindow`, `Legend`/`BatchLegend`, `ScalarPlotter` and `ErrorMetrics` (both
   behind `AnalysisPanel`'s tab switcher, both plotted with vendored uPlot).
@@ -95,7 +99,9 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   the server's repack logic), `bodyTransforms.js` (resolve parent-relative poses,
   `topoSortBodies`), `interpolate.js`, `errorMath.js`, `csv.js`, `viewState.js`
   (encode/decode the shareable view-link URL hash), `liveFollow.js` (should new live
-  frames auto-scroll playback).
+  frames auto-scroll playback), `terrainSample.js` (bilinear terrain layer sampling for
+  the Analysis panel's Terrain tab, plus `hasBodyTrajectory` gating whether that tab
+  shows up for a given body).
 
 ### Vendored third-party libraries
 

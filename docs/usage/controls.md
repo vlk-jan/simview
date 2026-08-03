@@ -44,6 +44,18 @@ Once the visualizer is running, you can interact with the simulation using the f
 
 You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.
 
+## Point Cloud and Terrain Similarity Coloring
+
+Point-cloud bodies and terrain cells can each carry an optional per-point/per-cell
+feature embedding (see `create_pointcloud(embedding=)` / `create_terrain(embedding_map=)`
+in the [JSON format](../dev/json-format.md)). When present, clicking a point (with
+"Point Color Mode" already set to "similarity" in the Body Options panel) or a terrain
+cell (with "Data Probe" off and terrain "features" color mode already selected)
+recolors the whole cloud/grid by cosine similarity to the clicked location — computed
+entirely client-side, no backend round-trip. A colormap legend (coolwarm, [-1, 1])
+appears alongside the existing terrain legend to read values off the result. Clicking
+without the matching mode active is an ordinary object selection and has no other effect.
+
 ## Trajectory Trails
 
 Toggling trails (`G`, or "Show Trails" in the Body Options panel) draws each body's
