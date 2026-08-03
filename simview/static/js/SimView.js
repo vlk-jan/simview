@@ -16,6 +16,7 @@ import { TerrainProfile } from "./ui/TerrainProfile.js";
 import { AnalysisPanel } from "./ui/AnalysisPanel.js";
 import { InteractionController } from "./components/InteractionController.js";
 import { buildBodyMeta, resolveStateBodies, topoSortBodies } from "./utils/bodyTransforms.js";
+import { hasBodyTrajectory } from "./utils/terrainSample.js";
 import {
     decodeFloat32Blob,
     decodeStateField,
@@ -307,6 +308,25 @@ export class SimView {
         if (this.errorMetrics) {
             this.errorMetrics.onHistoryReady();
         }
+        this.maybeAttachTerrainProfile();
+    }
+
+    // Terrain tab needs an actual body *path* to sample terrain along, not
+    // just a body existing (a static point cloud with no states, e.g. a
+    // WaffleIron feature-similarity export, is a body with terrain but
+    // nothing to plot a profile against). Only knowable here, after
+    // appendBodyHistories() has populated each body's validStates -- doing
+    // this check at initFromModel() time (before states are even fetched)
+    // showed the tab unconditionally whenever a scene had terrain + any
+    // body, trajectory or not.
+    maybeAttachTerrainProfile() {
+        if (!this.terrain || this.terrainProfile) return;
+        if (!hasBodyTrajectory(this.bodies)) return;
+        if (!this.analysisPanel) {
+            this.analysisPanel = new AnalysisPanel(this);
+        }
+        this.terrainProfile = new TerrainProfile(this);
+        this.analysisPanel.attachTerrainProfile(this.terrainProfile);
     }
 
     // Resolves and records position/orientation (and contacts, vectors, ...)
@@ -400,10 +420,13 @@ export class SimView {
             }
             const hasScalars = model.scalarNames && model.scalarNames.length > 0;
             const hasErrorMetrics = this.batchManager.simBatches >= 2;
-            // Terrain tab needs an actual body path to sample against, so it's
-            // skipped for a scene with terrain but no bodies.
-            const hasTerrainProfile = !!this.terrain && this.bodies && this.bodies.size > 0;
-            if (hasScalars || hasErrorMetrics || hasTerrainProfile) {
+            // Terrain tab needs an actual body *path* to sample against -- not
+            // just a body existing, a body with real trajectory data -- which
+            // isn't known yet at this point (states haven't been fetched;
+            // that happens after initFromModel returns, see loadData()).
+            // Deferred to onStoreReady(), once appendBodyHistories() has run
+            // and each body's validStates reflects what it actually got.
+            if (hasScalars || hasErrorMetrics) {
                 this.analysisPanel = new AnalysisPanel(this);
             }
             if (hasScalars) {
@@ -417,10 +440,6 @@ export class SimView {
             if (hasErrorMetrics) {
                 this.errorMetrics = new ErrorMetrics(this);
                 this.analysisPanel.attachErrorMetrics(this.errorMetrics);
-            }
-            if (hasTerrainProfile) {
-                this.terrainProfile = new TerrainProfile(this);
-                this.analysisPanel.attachTerrainProfile(this.terrainProfile);
             }
             this.interactionController = new InteractionController(this);
             this.uiControls = new UIControls(this);

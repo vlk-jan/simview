@@ -2,7 +2,38 @@ import { describe, expect, it } from "vitest";
 import {
     bilinearSample,
     buildTerrainSeries,
+    hasBodyTrajectory,
 } from "../../simview/static/js/utils/terrainSample.js";
+
+describe("hasBodyTrajectory", () => {
+    it("is false for an empty/missing bodies collection", () => {
+        expect(hasBodyTrajectory(null)).toBe(false);
+        expect(hasBodyTrajectory(undefined)).toBe(false);
+        expect(hasBodyTrajectory(new Map())).toBe(false);
+        expect(hasBodyTrajectory([])).toBe(false);
+    });
+
+    it("is false when every body has validStates 0 (a static export, no trajectory)", () => {
+        const bodies = new Map([
+            ["a", { validStates: 0 }],
+            ["b", {}], // validStates missing entirely -- must not throw or count as truthy
+        ]);
+        expect(hasBodyTrajectory(bodies)).toBe(false);
+    });
+
+    it("is true when at least one body has validStates > 0", () => {
+        const bodies = new Map([
+            ["a", { validStates: 0 }],
+            ["b", { validStates: 12 }],
+        ]);
+        expect(hasBodyTrajectory(bodies)).toBe(true);
+    });
+
+    it("also accepts a plain array/iterable, not just a Map", () => {
+        expect(hasBodyTrajectory([{ validStates: 0 }, { validStates: 3 }])).toBe(true);
+        expect(hasBodyTrajectory([{ validStates: 0 }])).toBe(false);
+    });
+});
 
 // 3x3 grid, row-major (row = y, col = x):
 //  row0 (y=0): 0  1  2
