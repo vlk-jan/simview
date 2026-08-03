@@ -1,6 +1,16 @@
 import * as THREE from "three";
 import chroma from "chroma";
 
+// Blob-decoded fields (SimView.js::fetchBlobs) arrive as flat TypedArrays with
+// no reshape metadata; hand-authored (non-tensor) data arrives as plain nested
+// arrays. TypedArrays have no .flat(), so every consumer of "maybe-nested,
+// maybe-flat" numeric data needs this branch before treating it as flat.
+// Exported so Body.js can apply the same normalization to shape.color/
+// shape.embedding without duplicating the branch.
+export function toFlatFloat32Array(data) {
+    return ArrayBuffer.isView(data) ? data : new Float32Array(data.flat());
+}
+
 // Default configurations
 const DEFAULT_GEOMETRY_CONFIG = {
     box: {
@@ -109,16 +119,19 @@ export function createGeometry(shape, geometryConfig) {
 
 /**
  * Creates a THREE.js Points object from a point cloud
- * @param {Array<Array<number>>} pointCloud - Array of 3D points
+ * @param {Array<Array<number>>|Float32Array} pointCloud - 3D points, nested or flat
  * @param {PointsConfig} [pointsConfig={}] - Configuration for points appearance
  * @param {boolean} [visible=false] - Initial visibility of the points
+ * @param {Array<Array<number>>|Float32Array|null} [colors=null] - Optional
+ *   per-point RGB in [0,1], nested or flat, same length as pointCloud. When
+ *   present, enables per-vertex coloring (material.vertexColors = true).
  * @returns {THREE.Points|null} The created Points object or null if pointCloud is empty
  */
-export function createPoints(pointCloud, pointsConfig, visible = true) {
+export function createPoints(pointCloud, pointsConfig, visible = true, colors = null) {
     if (!pointCloud || pointCloud.length === 0) return null;
     const config = { ...DEFAULT_POINTS_CONFIG, ...pointsConfig };
     const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(pointCloud.flat());
+    const positions = toFlatFloat32Array(pointCloud);
     geometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(positions, 3)
@@ -131,6 +144,14 @@ export function createPoints(pointCloud, pointsConfig, visible = true) {
         transparent: config.transparent,
         sizeAttenuation: config.sizeAttenuation,
     });
+
+    if (colors) {
+        geometry.setAttribute(
+            "color",
+            new THREE.Float32BufferAttribute(toFlatFloat32Array(colors), 3)
+        );
+        material.vertexColors = true;
+    }
 
     if (config.texture) {
         const texture = new THREE.TextureLoader().load(config.texture);
@@ -161,7 +182,7 @@ export function createContactPoints(pointCloud, pointsConfig) {
     const config = { ...DEFAULT_POINTS_CONFIG, ...pointsConfig };
 
     const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(pointCloud.flat());
+    const positions = toFlatFloat32Array(pointCloud);
     geometry.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(positions, 3)

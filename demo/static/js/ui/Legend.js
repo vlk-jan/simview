@@ -36,7 +36,9 @@ export class Legend {
         this.container.style.display = "flex";
         const mode = this.app.uiState.terrainColorMode || "height";
         const cmapName =
-            mode === "diff" ? "coolwarm" : this.app.uiState.terrainColorMap || "viridis";
+            mode === "diff" || mode === "features"
+                ? "coolwarm"
+                : this.app.uiState.terrainColorMap || "viridis";
 
         let minVal, maxVal, unit, title;
 
@@ -67,6 +69,14 @@ export class Legend {
             unit = layer === "height" ? "m" : layer === "stiffness" ? "N/m" : "";
             const layerTitle = layer.charAt(0).toUpperCase() + layer.slice(1);
             title = `Δ${layerTitle} (batch ${batchB} − batch ${batchA})`;
+        } else if (mode === "features") {
+            // Cosine similarity is always in [-1, 1], independent of the
+            // underlying embedding's own scale (unlike diff, there's no
+            // data-driven range to compute).
+            minVal = -1;
+            maxVal = 1;
+            unit = "";
+            title = "Cosine similarity to clicked cell";
         }
 
         const isStiffnessScale =

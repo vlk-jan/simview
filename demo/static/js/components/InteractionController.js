@@ -1,10 +1,14 @@
 import * as THREE from "three";
-import { SELECTION_CONFIG } from "../config.js";
+import { SELECTION_CONFIG, RAYCAST_CONFIG } from "../config.js";
 
 export class InteractionController {
     constructor(app) {
         this.app = app;
         this.raycaster = new THREE.Raycaster();
+        // Default THREE.Raycaster Points.threshold is 1 world unit -- far too
+        // generous for points rendered at BODY_CONFIG.points.size (0.1), where
+        // it would make every click ambiguous among many nearby points.
+        this.raycaster.params.Points.threshold = RAYCAST_CONFIG.pointsThreshold;
         this.mouse = new THREE.Vector2();
         this.hoveredObject = null;
         this.selectedObject = null;
@@ -124,7 +128,7 @@ export class InteractionController {
 
     onClick(e) {
         if (!this.app.scene || !this.app.scene.camera) return;
-        
+
         // Prevent click if mouse was dragged (e.g. rotating camera)
         if (this.lastMouseDown) {
             const dx = e.clientX - this.lastMouseDown.x;
@@ -137,15 +141,26 @@ export class InteractionController {
 
         this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
         const intersects = this.raycaster.intersectObjects(
-            Object.values(this.app.bodies).flatMap((body) =>
-                body.children.filter((child) => child.isMesh)
-            ), // Filter only meshes
+            // this.app.bodies is a Map (SimView.js), not a plain object --
+            // Object.values() on a Map always returns [], which silently
+            // made every click here a no-op until this fix. body.children
+            // doesn't exist either (Body wraps a THREE.Group, exposed via
+            // getObject3D()) -- filter includes isPoints too, so a click can
+            // land on a rendered point cloud, not just mesh bodies.
+            Array.from(this.app.bodies.values()).flatMap((body) =>
+                body.getObject3D().children.filter((child) => child.isMesh || child.isPoints)
+            ),
             true // Enable recursive raycasting
         );
 
         if (intersects.length > 0) {
-            this.selectedObject = intersects[0].object;
-            this.hideTerrainTooltip();
+            const hit = intersects[0];
+            this.selectedObject = hit.object;
+            if (hit.object.isPoints && hit.object.userData?.bodyName) {
+                this.#handlePointClick(hit);
+            } else {
+                this.hideTerrainTooltip();
+            }
             return;
         }
 
@@ -154,12 +169,54 @@ export class InteractionController {
             const terrainIntersects = this.raycaster.intersectObject(this.app.terrain.group, true);
             const surfaceIntersect = terrainIntersects.find(i => i.object.name === "surface");
             if (surfaceIntersect) {
-                this.showTerrainTooltip(e, surfaceIntersect);
+                if (this.app.uiState.terrainColorMode === "features") {
+                    this.#handleTerrainFeatureClick(surfaceIntersect);
+                } else {
+                    this.showTerrainTooltip(e, surfaceIntersect);
+                }
                 return;
             }
         }
-        
+
         this.hideTerrainTooltip();
+    }
+
+    // Point-cloud analog of showTerrainTooltip: recolors the whole body by
+    // cosine similarity to the clicked point instead of showing a props
+    // tooltip (there's no single "value" to display -- the whole point of
+    // clicking is that every other point's similarity becomes visible).
+    #handlePointClick(hit) {
+        const body = this.app.bodies.get(hit.object.userData.bodyName);
+        if (!body) return;
+        body.recolorBySimilarity(hit.index);
+        this.#hideTooltipText();
+        if (this.probeSphere) {
+            this.probeSphere.position.copy(hit.point);
+            this.probeSphere.visible = true;
+        }
+    }
+
+    // Terrain analog of #handlePointClick, used instead of showTerrainTooltip
+    // when the BEV grid is in "features" color mode.
+    #handleTerrainFeatureClick(intersect) {
+        let batchIndex = 0;
+        let current = intersect.object;
+        while (current) {
+            if (current.name && current.name.startsWith("batch")) {
+                batchIndex = parseInt(current.name.replace("batch", ""));
+                break;
+            }
+            current = current.parent;
+        }
+        if (!this.app.terrain.setFeatureQueryAt(intersect.point.x, intersect.point.y, batchIndex)) {
+            this.hideTerrainTooltip();
+            return;
+        }
+        this.#hideTooltipText();
+        if (this.probeSphere) {
+            this.probeSphere.position.copy(intersect.point);
+            this.probeSphere.visible = true;
+        }
     }
 
     showTerrainTooltip(e, intersect) {
@@ -283,11 +340,18 @@ export class InteractionController {
         return lines.join("\n");
     }
 
-    hideTerrainTooltip() {
+    // Just the DOM tooltip text -- split out of hideTerrainTooltip so a
+    // point/terrain-feature click can hide the props tooltip without also
+    // hiding the probe sphere it's about to reposition and show.
+    #hideTooltipText() {
         const tooltip = document.getElementById("terrain-tooltip");
         if (tooltip) {
             tooltip.style.display = "none";
         }
+    }
+
+    hideTerrainTooltip() {
+        this.#hideTooltipText();
         if (this.probeSphere) {
             this.probeSphere.visible = false;
         }

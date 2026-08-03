@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { TERRAIN_CONFIG } from "../config.js";
-import { colorMapOptions, evaluate_cmap } from "../../lib/js-colormaps.js";
+import { getCallableFromColorMapName as resolveColorMap } from "./colormap.js";
 
 export class Terrain {
     constructor(terrainData, app) {
@@ -13,10 +13,39 @@ export class Terrain {
         this.frictionData = this.#normalizeScalarField(terrainData.frictionData);
         this.stiffnessData = this.#normalizeScalarField(terrainData.stiffnessData);
         this.isSingleton = terrainData.isSingleton;
+        this.#initEmbeddingData(terrainData.embeddingData);
 
-        const normals = this.#normalizeNormals(terrainData.normals);
+        const normals = this.#normalizeVectorField(terrainData.normals, 3);
 
         this.#createVisualRepresentations(this.heightData, normals);
+    }
+
+    // Per-cell K-wide feature vector (e.g. a reduced-dim PCA projection of a
+    // learned backbone's features), enabling the "features" click-to-
+    // similarity color mode. Unlike normals (fixed width=3), K is
+    // data-driven -- inferred from the flat blob length, the same implicit-
+    // width convention Body.js uses for point embeddings -- rather than
+    // shipped explicitly. Real producers always blob-encode this (so it
+    // always arrives as a flat Float32Array), so unlike
+    // #normalizeVectorField this doesn't need to handle hand-authored
+    // nested-list-of-vectors input.
+    #initEmbeddingData(embeddingData) {
+        const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
+        if (embeddingData instanceof Float32Array) {
+            const batchSize = this.app.batchManager.simBatches;
+            this.embeddingDim = embeddingData.length / (batchSize * resolution);
+            this.embeddingData = this.#splitIntoBatches(embeddingData, this.embeddingDim);
+        } else if (
+            Array.isArray(embeddingData) &&
+            embeddingData.length > 0 &&
+            typeof embeddingData[0] === "number"
+        ) {
+            this.embeddingDim = embeddingData.length / resolution;
+            this.embeddingData = [embeddingData]; // flat number array => single batch
+        } else {
+            this.embeddingDim = 0;
+            this.embeddingData = null;
+        }
     }
 
     // Reshapes a flat Float32Array of `batchSize` concatenated per-vertex
@@ -49,19 +78,22 @@ export class Terrain {
         return data;
     }
 
-    // Normalizes terrain normals (per-vertex 3-vectors) to an array of one
-    // batch of vectors.
-    #normalizeNormals(data) {
+    // Normalizes a per-vertex width-wide vector field (normals: width=3;
+    // embedding: width=K, see #initEmbeddingData) to an array of one batch
+    // of vectors.
+    #normalizeVectorField(data, width) {
         if (data instanceof Float32Array) {
-            return this.#splitIntoBatches(data, 3);
+            return this.#splitIntoBatches(data, width);
         }
         if (Array.isArray(data) && data.length > 0) {
             if (typeof data[0] === "number") {
                 // Case: Flat array [x, y, z, x, y, z...]
-                console.debug("Normalizing flat normals array to single batch of vectors");
+                console.debug(
+                    `Normalizing flat vector field (width=${width}) to single batch of vectors`
+                );
                 const vectors = [];
-                for (let i = 0; i < data.length; i += 3) {
-                    vectors.push([data[i], data[i + 1], data[i + 2]]);
+                for (let i = 0; i < data.length; i += width) {
+                    vectors.push(data.slice(i, i + width));
                 }
                 return [vectors];
             }
@@ -71,7 +103,7 @@ export class Terrain {
                 typeof data[0][0] === "number"
             ) {
                 // Case: Array of vectors [[x,y,z], ...] -> Wrap in batch
-                console.debug("Normalizing list of normal vectors to single batch");
+                console.debug("Normalizing list of vectors to single batch");
                 return [data];
             }
         }
@@ -232,58 +264,12 @@ export class Terrain {
         return geometry;
     }
 
+    // Delegates to utils.js so non-terrain consumers (Body.js's point-cloud
+    // similarity recoloring) can resolve colormaps without a Terrain
+    // instance. Kept as an instance method since Legend.js calls it via
+    // `this.app.terrain.getCallableFromColorMapName(...)`.
     getCallableFromColorMapName(cmapName) {
-        let reversed = false;
-        // Check if this is a reversed colormap request
-        if (cmapName.endsWith("_r")) {
-            cmapName = cmapName.substring(0, cmapName.length - 2);
-            reversed = true;
-        }
-        if (colorMapOptions.includes(cmapName))
-            return (value) => {
-                const [r, g, b] = evaluate_cmap(value, cmapName, reversed);
-                return new THREE.Color(r / 255, g / 255, b / 255);
-            };
-        console.log(
-            `Colormap ${cmapName} not found in colorMapOptions. Using default colormap instead.`
-        );
-        // Fallback
-        switch (cmapName) {
-            case "grayscale":
-                return (value) => new THREE.Color(value, value, value);
-            case "heatmap":
-                // Simple heatmap: blue->cyan->green->yellow->red
-                return (value) => {
-                    if (value < 0.25) {
-                        return new THREE.Color(0, value * 4, 1);
-                    } else if (value < 0.5) {
-                        return new THREE.Color(0, 1, 1 - (value - 0.25) * 4);
-                    } else if (value < 0.75) {
-                        return new THREE.Color((value - 0.5) * 4, 1, 0);
-                    } else {
-                        return new THREE.Color(1, 1 - (value - 0.75) * 4, 0);
-                    }
-                };
-            case "terrain":
-                // Terrain color map - blues for low areas, greens for middle, browns/whites for high
-                return (value) => {
-                    if (value < 0.2) {
-                        return new THREE.Color(0.0, 0.2, 0.5 + value); // Deep to shallow water
-                    } else if (value < 0.4) {
-                        const t = (value - 0.2) * 5; // 0-1 within this range
-                        return new THREE.Color(0.2 * t, 0.5 + 0.2 * t, 0.7 - 0.2 * t); // Shore transition
-                    } else if (value < 0.75) {
-                        const t = (value - 0.4) / 0.35; // 0-1 within this range
-                        return new THREE.Color(0.2 + 0.3 * t, 0.7 - 0.2 * t, 0.5 - 0.4 * t); // Green to brown
-                    } else {
-                        const t = (value - 0.75) * 4; // 0-1 within this range
-                        return new THREE.Color(0.5 + 0.5 * t, 0.5 + 0.5 * t, 0.1 + 0.9 * t); // Brown to white (snow)
-                    }
-                };
-            default:
-                // Default blue to red gradient
-                return (value) => new THREE.Color(value, 0.2, 1 - value);
-        }
+        return resolveColorMap(cmapName);
     }
 
     /**
@@ -407,6 +393,29 @@ export class Terrain {
             maxAbsDelta = this.#maxAbsDelta(diffLayer, diffBatchA, diffBatchB);
         }
 
+        // "features" mode: cosine similarity of every cell's own embedding
+        // (this batch's data -- read below per-vertex, same convention
+        // friction/stiffness use) to a single fixed query vector, from
+        // wherever the user last clicked (any batch/cell). Also forces a
+        // fixed diverging colormap, like "diff", since similarity is always
+        // a signed [-1, 1] quantity.
+        let featureQueryVec, featureQueryNorm;
+        if (mode === "features") {
+            callableColormap = this.getCallableFromColorMapName("coolwarm");
+            const K = this.embeddingDim;
+            const queryIndex = this.app.uiState.terrainFeatureQueryIndex;
+            const queryBatch = this.app.uiState.terrainFeatureQueryBatch ?? 0;
+            const queryDataBatchIndex = this.isSingleton ? 0 : queryBatch;
+            const queryEmbData = this.embeddingData && this.embeddingData[queryDataBatchIndex];
+            if (queryEmbData != null && queryIndex != null && K > 0) {
+                const qBase = queryIndex * K;
+                featureQueryVec = queryEmbData.slice(qBase, qBase + K);
+                let qNorm = 0;
+                for (let k = 0; k < K; k++) qNorm += featureQueryVec[k] * featureQueryVec[k];
+                featureQueryNorm = Math.sqrt(qNorm);
+            }
+        }
+
         // Update all colors based on the new colormap
         for (let i = 0; i < position.count; i++) {
             let value;
@@ -446,6 +455,27 @@ export class Terrain {
                         this.bounds.minStiffness,
                         this.bounds.maxStiffness
                     );
+                } else if (mode === "features") {
+                    const K = this.embeddingDim;
+                    const dataBatchIndex = this.isSingleton ? 0 : batchIndex;
+                    const cellEmbData = this.embeddingData && this.embeddingData[dataBatchIndex];
+                    if (featureQueryVec && cellEmbData && K > 0) {
+                        const base = dataIndex * K;
+                        let dot = 0;
+                        let norm = 0;
+                        for (let k = 0; k < K; k++) {
+                            dot += cellEmbData[base + k] * featureQueryVec[k];
+                            norm += cellEmbData[base + k] * cellEmbData[base + k];
+                        }
+                        norm = Math.sqrt(norm);
+                        const cos =
+                            norm > 0 && featureQueryNorm > 0
+                                ? dot / (norm * featureQueryNorm)
+                                : 0;
+                        value = 0.5 + 0.5 * Math.max(-1, Math.min(1, cos));
+                    } else {
+                        value = 0.5; // no query yet (nothing clicked): render as the center color
+                    }
                 } else {
                     value = this.calculateNormalizedHeight(position.getZ(i));
                 }
@@ -509,13 +539,20 @@ export class Terrain {
         if (this.app.batchManager.simBatches >= 2) {
             modes.push("diff");
         }
+        if (this.embeddingData && this.embeddingData.length > 0) {
+            modes.push("features");
+        }
         return modes;
     }
 
     // Layer names ("height"/"friction"/"stiffness") with per-batch data
-    // present, for the diff mode's layer picker in Controls.js.
+    // present, for the diff mode's layer picker in Controls.js. "features"
+    // isn't a scalar layer (it's a K-dim embedding) so it can't be a diff
+    // target either, same reason "diff" itself is excluded.
     getAvailableDiffLayers() {
-        return this.getAvailableColorModes().filter((mode) => mode !== "diff");
+        return this.getAvailableColorModes().filter(
+            (mode) => mode !== "diff" && mode !== "features"
+        );
     }
 
     // Resolves a world-space (x, y) point -- clicked/hovered on
@@ -591,6 +628,35 @@ export class Terrain {
             if (props) result.set(i, props);
         }
         return result;
+    }
+
+    // Sets the click-to-similarity query cell/batch and switches to
+    // "features" color mode -- the terrain-click analog of
+    // Body.recolorBySimilarity. `(x, y)` was clicked on `batchIndex`'s own
+    // terrain patch, resolved to a grid cell the same way getPropertiesAt
+    // does. Returns false (no query set) if the click missed the terrain extent.
+    setFeatureQueryAt(x, y, batchIndex) {
+        const dataIndex = this.#resolveGridIndex(x, y, batchIndex);
+        if (dataIndex === null) return false;
+        this.app.uiState.terrainFeatureQueryIndex = dataIndex;
+        this.app.uiState.terrainFeatureQueryBatch = batchIndex;
+
+        // Route through the lil-gui "colorMode" controller when one exists,
+        // so its onChange (Controls.js::updateTerrainColorMode) handles the
+        // mode switch + legend refresh + dropdown sync in one place, exactly
+        // like applyViewState does for view-state restores (see
+        // Controls.js::findController's docs -- setValue() both updates
+        // uiState via onChange and refreshes the widget's display). Falls
+        // back to updating the color mode directly when there's no UI
+        // (tests, or any headless embedding of Terrain).
+        const controller = this.app.uiControls?.findController?.("colorMode");
+        if (controller) {
+            controller.setValue("features");
+        } else {
+            this.app.uiState.terrainColorMode = "features";
+            this.setColorMode("features");
+        }
+        return true;
     }
 
     // Get THREE.js group containing all visualizations
