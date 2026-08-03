@@ -3,6 +3,22 @@
 // stay numerically identical for the same input) plus a series builder that
 // walks per-frame body positions against per-batch terrain grids.
 
+// Whether any body in the scene actually has per-frame trajectory data
+// (validStates > 0), as opposed to merely existing. A body defined in the
+// model but never given add_state/add_trajectory (e.g. a static point-cloud
+// export with no animation) sits at its default origin/identity pose
+// forever -- the Terrain tab has nothing to plot a profile against for a
+// path that doesn't exist, so SimView.js gates showing the tab on this
+// rather than "does the scene have any body at all."
+export function hasBodyTrajectory(bodies) {
+    if (!bodies) return false;
+    const iter = typeof bodies.values === "function" ? bodies.values() : bodies;
+    for (const body of iter) {
+        if ((body.validStates || 0) > 0) return true;
+    }
+    return false;
+}
+
 // Bilinearly samples a flat, row-major (row = y, column = x, per model.py's
 // "column index is x" convention) grid at world point (x, y). Out-of-extent
 // points are clamped to the nearest edge rather than extrapolated.
