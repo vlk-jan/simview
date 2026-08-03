@@ -34,7 +34,13 @@ function fakePointsBody(name, pointsObject) {
     };
 }
 
-function fakeApp({ bodies = new Map(), terrain = null, terrainProbe = true, terrainColorMode = "height" } = {}) {
+function fakeApp({
+    bodies = new Map(),
+    terrain = null,
+    terrainProbe = true,
+    terrainColorMode = "height",
+    pointColorMode = "similarity", // most tests below are about the click behavior itself
+} = {}) {
     return {
         scene: {
             camera: {},
@@ -42,7 +48,7 @@ function fakeApp({ bodies = new Map(), terrain = null, terrainProbe = true, terr
             addObject3D() {},
         },
         bodies,
-        uiState: { terrainProbe, terrainColorMode },
+        uiState: { terrainProbe, terrainColorMode, pointColorMode },
         terrain,
     };
 }
@@ -152,6 +158,53 @@ describe("InteractionController.onClick", () => {
         controller.onClick({ clientX: 0, clientY: 0 });
 
         expect(called).toBe(false);
+    });
+
+    it("clicking a point in 'pca' mode does NOT call recolorBySimilarity (similarity must be chosen first)", () => {
+        const pointsObj = { isPoints: true, userData: { bodyName: "pts" } };
+        const body = fakePointsBody("pts", pointsObj);
+        const bodies = new Map([["pts", body]]);
+        const app = fakeApp({ bodies, pointColorMode: "pca" });
+        const controller = new InteractionController(app);
+        stubRaycaster(controller, {
+            objectHits: [{ object: pointsObj, index: 7, point: { x: 1, y: 2, z: 3 } }],
+        });
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(body.recolorCalls).toEqual([]);
+        expect(controller.selectedObject).toBe(pointsObj);
+    });
+
+    it("clicking a point with no pointColorMode set at all does NOT call recolorBySimilarity", () => {
+        const pointsObj = { isPoints: true, userData: { bodyName: "pts" } };
+        const body = fakePointsBody("pts", pointsObj);
+        const bodies = new Map([["pts", body]]);
+        const app = fakeApp({ bodies });
+        delete app.uiState.pointColorMode; // genuinely absent, not just defaulted by fakeApp()
+        const controller = new InteractionController(app);
+        stubRaycaster(controller, {
+            objectHits: [{ object: pointsObj, index: 7, point: { x: 1, y: 2, z: 3 } }],
+        });
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(body.recolorCalls).toEqual([]);
+    });
+
+    it("clicking a point in 'similarity' mode does call recolorBySimilarity", () => {
+        const pointsObj = { isPoints: true, userData: { bodyName: "pts" } };
+        const body = fakePointsBody("pts", pointsObj);
+        const bodies = new Map([["pts", body]]);
+        const app = fakeApp({ bodies, pointColorMode: "similarity" });
+        const controller = new InteractionController(app);
+        stubRaycaster(controller, {
+            objectHits: [{ object: pointsObj, index: 3, point: { x: 1, y: 2, z: 3 } }],
+        });
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(body.recolorCalls).toEqual([3]);
     });
 
     it("does nothing when the click was actually a drag (>5px movement)", () => {

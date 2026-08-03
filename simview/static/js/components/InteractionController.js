@@ -156,7 +156,17 @@ export class InteractionController {
         if (intersects.length > 0) {
             const hit = intersects[0];
             this.selectedObject = hit.object;
-            if (hit.object.isPoints && hit.object.userData?.bodyName) {
+            // Mirrors the terrain gate below (features mode must already be
+            // selected before a click does anything): similarity mode must
+            // already be chosen from the "Point Color Mode" dropdown before
+            // clicking recolors the cloud, not the other way around --
+            // otherwise every accidental point click while in "pca" mode
+            // would silently switch modes.
+            if (
+                hit.object.isPoints &&
+                hit.object.userData?.bodyName &&
+                this.app.uiState?.pointColorMode === "similarity"
+            ) {
                 this.#handlePointClick(hit);
             } else {
                 this.hideTerrainTooltip();
