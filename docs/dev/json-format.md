@@ -59,21 +59,27 @@ produces.
   *(array, one per batch)* using the same shape objects as bodies.
 - **`terrain`** *(object)* — heightfield shared or per-batch:
   - **`dimensions`**: `sizeX`, `sizeY` *(float)* and `resolutionX`, `resolutionY` *(int)*.
-  - **`bounds`**: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`. When friction/stiffness
-    data is present, also `minFriction`/`maxFriction` and/or `minStiffness`/`maxStiffness`,
-    which the viewer uses to normalize the color map.
+  - **`bounds`**: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ` — purely spatial; a
+    named property's own value range lives on the property itself (see `properties`
+    below), not here.
   - **`isSingleton`** *(boolean)* — `true` when one terrain is shared by all batches;
     `false` when each batch has its own.
   - **`heightData`** *(array[array[float]])* — one flattened `resolutionX * resolutionY`
     grid per batch (a single flat array is also accepted and treated as one batch).
   - **`normals`** *(array[array[array[3]]])* — per-batch surface normals, one `[x, y, z]`
     per grid point.
-  - **`frictionData`**, **`stiffnessData`** *(array[array[float]] | null, optional)* —
-    per-batch scalar fields over the grid, selectable as terrain color modes.
+  - **`properties`** *(object, optional)* — arbitrary named per-cell scalar fields over
+    the grid (e.g. `friction`, `stiffness`, or any custom name), each selectable as a
+    terrain color mode with no viewer code changes. Keyed by property name, each entry
+    is `{"data": array[array[float]] | null, "min": float | null, "max": float | null}`
+    — `data` follows the same per-batch flattened-grid shape as `heightData`; `min`/`max`
+    are the property's own value range, used by the viewer to normalize its color map.
+    Example: `{"friction": {"data": [...], "min": 0.2, "max": 0.9}}`.
   - **`embeddingData`** *(array[array[float]] | null, optional)* — per-batch, per-cell
     K-wide feature vectors (flattened `resolutionX * resolutionY * K` per batch),
     enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
-    `color`/`embedding` on point-cloud bodies above.
+    `color`/`embedding` on point-cloud bodies above. Not a named property (no min/max,
+    similarity-colored), so it stays a separate top-level field.
 
 ## States (Dynamic Data)
 
