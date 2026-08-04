@@ -1129,9 +1129,35 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v3.6...HEAD">Unreleased</a></h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v4.0.0...HEAD">Unreleased</a></h2>
+<h2 id="400-2026-08-04"><a href="https://github.com/vlk-jan/simview/compare/v3.6...v4.0.0">4.0.0</a> - 2026-08-04</h2>
+<h3 id="breaking-changes">⚠ Breaking changes</h3>
+<ul>
+<li><strong>Scene JSON files saved by older versions of simview will not load.</strong> Terrain's
+  <code>frictionData</code>/<code>stiffnessData</code> fields and their <code>bounds.minFriction</code>/<code>maxFriction</code>/
+  <code>minStiffness</code>/<code>maxStiffness</code> entries are replaced by a generic
+  <code>terrain.properties</code> object (<code>{name: {data, min, max}}</code> — see the
+  <a href="https://vlk-jan.github.io/simview/dev/json-format/">JSON Format Specification</a>).
+  Re-save any existing scene file with the current version of <code>simview</code> (or
+  <code>SimulationScene.load()</code> + <code>save()</code>) to pick up the new format; there is no
+  automatic migration.</li>
+<li><code>scene.create_terrain()</code>/<code>SimViewModel.create_terrain()</code> no longer accept
+  <code>friction_map=</code>/<code>stiffness_map=</code>; pass <code>properties={"friction": ..., "stiffness": ...}</code>
+  instead (or any other named per-cell scalar map — see below).</li>
+<li>The batch-names sidecar file (<code>.&lt;scene&gt;.&lt;hash&gt;.batchnames.json</code>) written before
+  staleness-fingerprinting was added (pre-3.x) is no longer read; a fresh
+  <code>POST /batch-names</code> regenerates it in the current format.</li>
+<li>The model JSON's long-superseded <code>batchSize</code> field (renamed to <code>simBatches</code> several
+  releases ago) is no longer read as a fallback.</li>
+</ul>
 <h3 id="added">Added</h3>
 <ul>
+<li>Terrain scalar properties (friction, stiffness, or any other per-cell field) are
+  now a fully generic, arbitrarily-named mechanism end to end — Python
+  (<code>SimViewTerrain.properties</code>), the CLI (<code>simview terrain --layer &lt;name&gt;</code>,
+  <code>simview info</code>, <code>simview merge</code>), and the viewer (color mode dropdown, Legend,
+  hover/probe tooltip, Terrain Profile tab) all support any property name supplied
+  at authoring time, with zero code changes required to add a new one.</li>
 <li><code>scene.create_pointcloud()</code> now accepts optional <code>color</code> (static per-point RGB) and
   <code>embedding</code> (per-point feature vector) tensors; <code>scene.create_terrain()</code> gains a
   matching <code>embedding_map</code> (per-cell feature vector). When present, clicking a point

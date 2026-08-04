@@ -1310,6 +1310,16 @@ single JSON document with two top-level keys: <code>model</code> (static data, s
 produces.</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">&quot;states&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="err">...</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
 </span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Breaking change in 4.0.0</p>
+<p>Terrain's <code>frictionData</code>/<code>stiffnessData</code> fields and their <code>bounds.minFriction</code>/
+<code>maxFriction</code>/<code>minStiffness</code>/<code>maxStiffness</code> entries were replaced by the generic
+<code>terrain.properties</code> object described below. <strong>Scene JSON files saved by simview
+&lt; 4.0.0 will not load correctly</strong> — there is no automatic migration. Re-save the
+file with the current version (e.g. <code>SimulationScene.load(old_path).save(new_path)</code>)
+to upgrade it. See the <a href="../changelog/#400-2026-08-04">changelog</a> for the full list
+of breaking changes in this release.</p>
+</div>
 <h2 id="model-static-data">Model (Static Data)</h2>
 <ul>
 <li><strong><code>simBatches</code></strong> <em>(integer)</em> — number of parallel simulation instances (batches).</li>
@@ -1362,21 +1372,27 @@ produces.</p>
   <em>(array, one per batch)</em> using the same shape objects as bodies.</li>
 <li><strong><code>terrain</code></strong> <em>(object)</em> — heightfield shared or per-batch:</li>
 <li><strong><code>dimensions</code></strong>: <code>sizeX</code>, <code>sizeY</code> <em>(float)</em> and <code>resolutionX</code>, <code>resolutionY</code> <em>(int)</em>.</li>
-<li><strong><code>bounds</code></strong>: <code>minX</code>, <code>maxX</code>, <code>minY</code>, <code>maxY</code>, <code>minZ</code>, <code>maxZ</code>. When friction/stiffness
-    data is present, also <code>minFriction</code>/<code>maxFriction</code> and/or <code>minStiffness</code>/<code>maxStiffness</code>,
-    which the viewer uses to normalize the color map.</li>
+<li><strong><code>bounds</code></strong>: <code>minX</code>, <code>maxX</code>, <code>minY</code>, <code>maxY</code>, <code>minZ</code>, <code>maxZ</code> — purely spatial; a
+    named property's own value range lives on the property itself (see <code>properties</code>
+    below), not here.</li>
 <li><strong><code>isSingleton</code></strong> <em>(boolean)</em> — <code>true</code> when one terrain is shared by all batches;
     <code>false</code> when each batch has its own.</li>
 <li><strong><code>heightData</code></strong> <em>(array[array[float]])</em> — one flattened <code>resolutionX * resolutionY</code>
     grid per batch (a single flat array is also accepted and treated as one batch).</li>
 <li><strong><code>normals</code></strong> <em>(array[array[array[3]]])</em> — per-batch surface normals, one <code>[x, y, z]</code>
     per grid point.</li>
-<li><strong><code>frictionData</code></strong>, <strong><code>stiffnessData</code></strong> <em>(array[array[float]] | null, optional)</em> —
-    per-batch scalar fields over the grid, selectable as terrain color modes.</li>
+<li><strong><code>properties</code></strong> <em>(object, optional)</em> — arbitrary named per-cell scalar fields over
+    the grid (e.g. <code>friction</code>, <code>stiffness</code>, or any custom name), each selectable as a
+    terrain color mode with no viewer code changes. Keyed by property name, each entry
+    is <code>{"data": array[array[float]] | null, "min": float | null, "max": float | null}</code>
+    — <code>data</code> follows the same per-batch flattened-grid shape as <code>heightData</code>; <code>min</code>/<code>max</code>
+    are the property's own value range, used by the viewer to normalize its color map.
+    Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.</li>
 <li><strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
     K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
     enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
-    <code>color</code>/<code>embedding</code> on point-cloud bodies above.</li>
+    <code>color</code>/<code>embedding</code> on point-cloud bodies above. Not a named property (no min/max,
+    similarity-colored), so it stays a separate top-level field.</li>
 </ul>
 <h2 id="states-dynamic-data">States (Dynamic Data)</h2>
 <p><code>states</code> is an array; each element is one snapshot:</p>
