@@ -374,11 +374,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--layer",
-        choices=["height", "friction", "stiffness", "all"],
         default="all",
         help=(
-            "With 'simview terrain <file>', which terrain layer(s) to query "
-            "(default: all present)."
+            "With 'simview terrain <file>', which terrain layer to query: "
+            "'height', 'all' (default: all present), or the name of any "
+            "arbitrary property the terrain was authored with (e.g. "
+            "'friction', 'stiffness', or a custom name)."
         ),
     )
     parser.add_argument(

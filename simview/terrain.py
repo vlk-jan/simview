@@ -34,13 +34,15 @@ from simview.utils import read_maybe_gzipped_bytes
 
 BLOB_PREFIX = "__b64__"
 
-# Wire keys for the three per-vertex terrain layers a point/area query can
-# ask for, mapping to SimViewTerrain.to_json()'s dict keys (model.py).
-_LAYER_KEYS = {
-    "height": "heightData",
-    "friction": "frictionData",
-    "stiffness": "stiffnessData",
-}
+
+def _layer_data(terrain: dict, layer: str) -> Any:
+    """Raw data value (a `__b64__` blob or plain nested list) for a per-vertex
+    terrain layer name -- `"height"` maps to `heightData`; any other name is
+    looked up in the arbitrary named `properties` bag (model.py's
+    `SimViewTerrain.properties`/`TerrainProperty`)."""
+    if layer == "height":
+        return terrain["heightData"]
+    return (terrain.get("properties") or {})[layer]["data"]
 
 
 def load_scene_model(path: str | Path) -> dict:
@@ -88,23 +90,18 @@ def _require_terrain(model_data: dict) -> dict:
 
 
 def _resolve_layers(terrain: dict, layers: str | list[str]) -> list[str]:
-    available = ["height"]
-    if terrain.get("frictionData") is not None:
-        available.append("friction")
-    if terrain.get("stiffnessData") is not None:
-        available.append("stiffness")
+    available = ["height", *(terrain.get("properties") or {})]
 
     if layers == "all":
         return available
 
     requested = layers if isinstance(layers, list) else [layers]
     for layer in requested:
-        if layer not in _LAYER_KEYS:
-            raise ValueError(
-                f"unknown layer '{layer}'; expected one of {sorted(_LAYER_KEYS)}"
-            )
         if layer not in available:
-            raise ValueError(f"layer '{layer}' is not present in this terrain")
+            raise ValueError(
+                f"layer '{layer}' is not present in this terrain; "
+                f"available: {available}"
+            )
     return requested
 
 
@@ -326,7 +323,7 @@ def query_point(
     layers_out = {}
     for layer in resolved_layers:
         grid = _decode_grid(
-            terrain[_LAYER_KEYS[layer]], shape_x, shape_y, batch_size, batch
+            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch
         )
         value, clamped = _bilinear_sample(
             grid, shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
@@ -388,7 +385,7 @@ def query_area(
     layers_out = {}
     for layer in resolved_layers:
         grid = _decode_grid(
-            terrain[_LAYER_KEYS[layer]], shape_x, shape_y, batch_size, batch
+            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch
         )
         layers_out[layer] = [[grid[r][c] for c in cols] for r in rows]
 
@@ -431,7 +428,7 @@ def query_point_diff(
 
     layers_out = {}
     for layer in resolved_layers:
-        value = terrain[_LAYER_KEYS[layer]]
+        value = _layer_data(terrain, layer)
         grid_a = _decode_grid(value, shape_x, shape_y, batch_size, batch_a)
         grid_b = _decode_grid(value, shape_x, shape_y, batch_size, batch_b)
         value_a, clamped_a = _bilinear_sample(
@@ -508,7 +505,7 @@ def query_area_diff(
 
     layers_out = {}
     for layer in resolved_layers:
-        value = terrain[_LAYER_KEYS[layer]]
+        value = _layer_data(terrain, layer)
         grid_a = _decode_grid(value, shape_x, shape_y, batch_size, batch_a)
         grid_b = _decode_grid(value, shape_x, shape_y, batch_size, batch_b)
         value_a = [[grid_a[r][c] for c in cols] for r in rows]
@@ -592,7 +589,7 @@ def query_along_body(
 
     grids = {
         layer: _decode_grid(
-            terrain[_LAYER_KEYS[layer]], shape_x, shape_y, batch_size, batch
+            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch
         )
         for layer in resolved_layers
     }
@@ -695,13 +692,13 @@ def query_along_body_diff(
 
     grids_a = {
         layer: _decode_grid(
-            terrain[_LAYER_KEYS[layer]], shape_x, shape_y, batch_size, batch_a
+            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch_a
         )
         for layer in resolved_layers
     }
     grids_b = {
         layer: _decode_grid(
-            terrain[_LAYER_KEYS[layer]], shape_x, shape_y, batch_size, batch_b
+            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch_b
         )
         for layer in resolved_layers
     }

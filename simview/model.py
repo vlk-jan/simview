@@ -50,6 +50,27 @@ class OptionalBodyStateAttribute(StrEnum):
 
 
 @dataclass
+class TerrainProperty:
+    """One arbitrary named per-cell scalar field over the terrain grid (e.g.
+    friction, stiffness, or any other user-defined property), stored the same
+    way as `SimViewTerrain.height_data` -- a plain nested list, or an opaque
+    `__b64__`-prefixed blob string for compactness."""
+
+    data: list[list[float]] | str
+    # Value range used by the viewer to normalize the color map (analogous to
+    # min_z/max_z for height). None when not computed.
+    min: float | None = None
+    max: float | None = None
+
+    def to_json(self):
+        return {"data": self.data, "min": self.min, "max": self.max}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TerrainProperty":
+        return cls(data=d["data"], min=d.get("min"), max=d.get("max"))
+
+
+@dataclass
 class SimViewTerrain:
     extent_x: float
     extent_y: float
@@ -68,40 +89,22 @@ class SimViewTerrain:
     height_data: list[list[float]] | str
     normals: list[list[list[float]]] | str
     is_singleton: bool
-    friction_data: list[list[float]] | str | None = None
-    stiffness_data: list[list[float]] | str | None = None
+    # Arbitrary named per-cell scalar fields (e.g. "friction", "stiffness", or
+    # any other user-defined property), keyed by name -- see `TerrainProperty`.
+    # Adding a new property never requires touching this class or the viewer:
+    # supply it by name in `create()`'s `properties` dict and it becomes
+    # selectable as a terrain color mode automatically.
+    properties: dict[str, TerrainProperty] = field(default_factory=dict)
     # Per-cell K-wide feature vector (e.g. a reduced-dim PCA projection of a
     # learned backbone's features), stored the same way as `normals` (width
     # inferred client-side from flat length, not shipped explicitly). Used by
     # the viewer's "features" color mode: cosine similarity to a clicked cell,
-    # computed entirely in-browser -- not a scalar field like friction/
-    # stiffness, so it has no min/max bounds (similarity is always [-1, 1]).
+    # computed entirely in-browser -- not a named scalar property, so it has
+    # no min/max bounds (similarity is always [-1, 1]) and isn't part of
+    # `properties`.
     embedding_data: list[list[float]] | str | None = None
-    # Value ranges used by the viewer to normalize the color map (analogous to
-    # min_z/max_z for height). None when the corresponding data is absent.
-    min_friction: float | None = None
-    max_friction: float | None = None
-    min_stiffness: float | None = None
-    max_stiffness: float | None = None
 
     def to_json(self):
-        # min/max friction/stiffness are independent Optional fields (not tied to
-        # friction_data/stiffness_data by the type system, only by convention in
-        # create()/from_dict), so the dict's values are genuinely `float | None`.
-        bounds: dict[str, float | None] = {
-            "minX": self.min_x,
-            "minY": self.min_y,
-            "maxX": self.max_x,
-            "maxY": self.max_y,
-            "minZ": self.min_z,
-            "maxZ": self.max_z,
-        }
-        if self.friction_data is not None:
-            bounds["minFriction"] = self.min_friction
-            bounds["maxFriction"] = self.max_friction
-        if self.stiffness_data is not None:
-            bounds["minStiffness"] = self.min_stiffness
-            bounds["maxStiffness"] = self.max_stiffness
         return {
             "dimensions": {
                 "sizeX": self.extent_x,
@@ -109,12 +112,20 @@ class SimViewTerrain:
                 "resolutionX": self.shape_x,
                 "resolutionY": self.shape_y,
             },
-            "bounds": bounds,
+            "bounds": {
+                "minX": self.min_x,
+                "minY": self.min_y,
+                "maxX": self.max_x,
+                "maxY": self.max_y,
+                "minZ": self.min_z,
+                "maxZ": self.max_z,
+            },
             "heightData": self.height_data,
             "normals": self.normals,
             "isSingleton": self.is_singleton,
-            "frictionData": self.friction_data,
-            "stiffnessData": self.stiffness_data,
+            "properties": {
+                name: prop.to_json() for name, prop in self.properties.items()
+            },
             "embeddingData": self.embedding_data,
         }
 
@@ -122,10 +133,10 @@ class SimViewTerrain:
     def from_dict(cls, d: dict) -> "SimViewTerrain":
         """Reconstruct a SimViewTerrain from the dict produced by `to_json`.
 
-        `heightData`/`normals`/`frictionData`/`stiffnessData` are kept in
-        whatever form they were serialized in (plain nested lists or a
-        `__b64__` blob string) -- decode with `simview.model._decode_blob` if
-        you need the flat float values back out.
+        `heightData`/`normals`/each property's `data` are kept in whatever
+        form they were serialized in (plain nested lists or a `__b64__` blob
+        string) -- decode with `simview.model._decode_blob` if you need the
+        flat float values back out.
         """
         try:
             dimensions = d["dimensions"]
@@ -135,6 +146,11 @@ class SimViewTerrain:
             is_singleton = d["isSingleton"]
         except KeyError as e:
             raise ValueError(f"Terrain dict is missing required key: {e}") from e
+
+        properties = {
+            name: TerrainProperty.from_dict(p)
+            for name, p in (d.get("properties") or {}).items()
+        }
 
         return cls(
             extent_x=dimensions["sizeX"],
@@ -150,13 +166,8 @@ class SimViewTerrain:
             height_data=height_data,
             normals=normals,
             is_singleton=is_singleton,
-            friction_data=d.get("frictionData"),
-            stiffness_data=d.get("stiffnessData"),
+            properties=properties,
             embedding_data=d.get("embeddingData"),
-            min_friction=bounds.get("minFriction"),
-            max_friction=bounds.get("maxFriction"),
-            min_stiffness=bounds.get("minStiffness"),
-            max_stiffness=bounds.get("maxStiffness"),
         )
 
     @staticmethod
@@ -166,8 +177,7 @@ class SimViewTerrain:
         x_lim: tuple[float, float],
         y_lim: tuple[float, float],
         is_singleton: bool,
-        friction_map: torch.Tensor | None = None,
-        stiffness_map: torch.Tensor | None = None,
+        properties: dict[str, torch.Tensor] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> "SimViewTerrain":
         if heightmap.ndim != 3:
@@ -196,31 +206,20 @@ class SimViewTerrain:
             rearrange(normals, "b c d1 d2 -> b (d1 d2) c").cpu().numpy()
         )
 
-        friction_data_list = None
-        min_friction = max_friction = None
-        if friction_map is not None:
-            if friction_map.ndim != 3:
+        properties_out: dict[str, TerrainProperty] = {}
+        for name, prop_map in (properties or {}).items():
+            if prop_map.ndim != 3:
                 raise ValueError(
-                    f"Friction map must include a batch dimension (ndim=3); got ndim={friction_map.ndim}."
+                    f"Property '{name}' map must include a batch dimension "
+                    f"(ndim=3); got ndim={prop_map.ndim}."
                 )
-            friction_data_list = _encode_blob(
-                rearrange(friction_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
+            properties_out[name] = TerrainProperty(
+                data=_encode_blob(
+                    rearrange(prop_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
+                ),
+                min=prop_map.min().item(),
+                max=prop_map.max().item(),
             )
-            min_friction = friction_map.min().item()
-            max_friction = friction_map.max().item()
-
-        stiffness_data_list = None
-        min_stiffness = max_stiffness = None
-        if stiffness_map is not None:
-            if stiffness_map.ndim != 3:
-                raise ValueError(
-                    f"Stiffness map must include a batch dimension (ndim=3); got ndim={stiffness_map.ndim}."
-                )
-            stiffness_data_list = _encode_blob(
-                rearrange(stiffness_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
-            )
-            min_stiffness = stiffness_map.min().item()
-            max_stiffness = stiffness_map.max().item()
 
         embedding_data_list = None
         if embedding_map is not None:
@@ -246,13 +245,8 @@ class SimViewTerrain:
             height_data=height_data_list,
             normals=normals_list,
             is_singleton=is_singleton,
-            friction_data=friction_data_list,
-            stiffness_data=stiffness_data_list,
+            properties=properties_out,
             embedding_data=embedding_data_list,
-            min_friction=min_friction,
-            max_friction=max_friction,
-            min_stiffness=min_stiffness,
-            max_stiffness=max_stiffness,
         )
 
 
@@ -583,8 +577,7 @@ class SimViewModel:
         x_lim: tuple[float, float] | None = None,
         y_lim: tuple[float, float] | None = None,
         grid_res: float | None = None,
-        friction_map: torch.Tensor | None = None,
-        stiffness_map: torch.Tensor | None = None,
+        properties: dict[str, torch.Tensor] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the internal simulation model.
@@ -597,8 +590,11 @@ class SimViewModel:
             y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
             grid_res (float | None): Grid resolution. If x_lim and y_lim are omitted,
                 they will be automatically inferred assuming the grid is centered at 0.
-            friction_map (torch.Tensor | None): Optional friction coefficient map.
-            stiffness_map (torch.Tensor | None): Optional stiffness coefficient map.
+            properties (dict[str, torch.Tensor] | None): Optional arbitrary named
+                per-cell scalar maps (2D or 3D, like `heightmap`), e.g.
+                `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
+                selectable as a terrain color mode in the viewer automatically, with no
+                further code changes needed.
             embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
                 (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
                 enabling the viewer's click-to-similarity "features" color mode.
@@ -629,10 +625,10 @@ class SimViewModel:
 
         if normals.ndim == 3:  # channels first
             normals = normals.unsqueeze(0)  # add batch dim
-        if friction_map is not None and friction_map.ndim == 2:
-            friction_map = friction_map.unsqueeze(0)
-        if stiffness_map is not None and stiffness_map.ndim == 2:
-            stiffness_map = stiffness_map.unsqueeze(0)
+        properties = {
+            name: (prop.unsqueeze(0) if prop.ndim == 2 else prop)
+            for name, prop in (properties or {}).items()
+        }
         if embedding_map is not None and embedding_map.ndim == 3:  # channels first
             embedding_map = embedding_map.unsqueeze(0)
 
@@ -643,9 +639,8 @@ class SimViewModel:
         provided = {
             "heightmap": heightmap,
             "normals": normals,
-            "friction_map": friction_map,
-            "stiffness_map": stiffness_map,
             "embedding_map": embedding_map,
+            **properties,
         }
         for name, tensor in provided.items():
             if tensor is not None and tensor.shape[0] not in (1, self.batch_size):
@@ -667,10 +662,12 @@ class SimViewModel:
                 heightmap = heightmap.repeat(self.batch_size, 1, 1)
             if normals.shape[0] == 1:
                 normals = normals.repeat(self.batch_size, 1, 1, 1)
-            if friction_map is not None and friction_map.shape[0] == 1:
-                friction_map = friction_map.repeat(self.batch_size, 1, 1)
-            if stiffness_map is not None and stiffness_map.shape[0] == 1:
-                stiffness_map = stiffness_map.repeat(self.batch_size, 1, 1)
+            properties = {
+                name: (
+                    prop.repeat(self.batch_size, 1, 1) if prop.shape[0] == 1 else prop
+                )
+                for name, prop in properties.items()
+            }
             if embedding_map is not None and embedding_map.shape[0] == 1:
                 embedding_map = embedding_map.repeat(self.batch_size, 1, 1, 1)
 
@@ -680,8 +677,7 @@ class SimViewModel:
             x_lim=x_lim,
             y_lim=y_lim,
             is_singleton=is_singleton,
-            friction_map=friction_map,
-            stiffness_map=stiffness_map,
+            properties=properties,
             embedding_map=embedding_map,
         )
 

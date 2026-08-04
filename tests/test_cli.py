@@ -57,8 +57,6 @@ def _along_body_diff_scene(path) -> None:
         "heightData": _blob(grid_a + grid_b),
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": False,
-        "frictionData": None,
-        "stiffnessData": None,
     }
     model = {"simBatches": 2, "terrain": terrain}
 
@@ -501,8 +499,6 @@ def test_terrain_along_body_ambiguous_errors(capsys, monkeypatch, tmp_path):
         "heightData": _blob([0.0] * 9),
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": True,
-        "frictionData": None,
-        "stiffnessData": None,
     }
     model = {"simBatches": 1, "terrain": terrain}
     row = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]

@@ -64,13 +64,13 @@ def _decode_state_field(value, width: int):
 
 
 def _decode_per_batch(value: list | str, batch_size: int) -> list:
-    """Normalize a terrain data field (heightData/normals/frictionData/
-    stiffnessData) to a plain list of length `batch_size`, one entry per
-    batch, regardless of whether it's a binary ``__b64__`` blob (one flat
-    buffer covering all batches) or an already-batched plain list. Used so
-    that inputs mixing binary and plain-list encoding can still be
-    concatenated -- each file's field is decoded independently rather than
-    branching on a single file's encoding."""
+    """Normalize a terrain data field (heightData/normals/a named property's
+    data) to a plain list of length `batch_size`, one entry per batch,
+    regardless of whether it's a binary ``__b64__`` blob (one flat buffer
+    covering all batches) or an already-batched plain list. Used so that
+    inputs mixing binary and plain-list encoding can still be concatenated --
+    each file's field is decoded independently rather than branching on a
+    single file's encoding."""
     flat = _decode_b64_floats(value)
     if flat is None:
         # `_decode_b64_floats` only returns None for non-`__b64__` input, and
@@ -276,26 +276,28 @@ def _merge_terrain(
                 f"'{labels[0]}' dimensions {dims}."
             )
 
-    has_friction = all(
-        model["terrain"].get("frictionData") is not None for model in models
-    )
-    has_stiffness = all(
-        model["terrain"].get("stiffnessData") is not None for model in models
-    )
-    if not has_friction and any(
-        model["terrain"].get("frictionData") is not None for model in models
-    ):
-        logger.warning(
-            "Not all files provide terrain friction data; dropping "
-            "frictionData from the merged terrain."
+    # Union of property names across all files, in first-seen order. A property
+    # present in every file is kept (concatenated + bounds merged); one present
+    # in only some is dropped with a warning, same all-or-nothing rule as
+    # heightData/normals require unconditionally.
+    property_names: list[str] = []
+    for model in models:
+        for name in model["terrain"].get("properties") or {}:
+            if name not in property_names:
+                property_names.append(name)
+    kept_properties = []
+    for name in property_names:
+        present_in_all = all(
+            name in (model["terrain"].get("properties") or {}) for model in models
         )
-    if not has_stiffness and any(
-        model["terrain"].get("stiffnessData") is not None for model in models
-    ):
-        logger.warning(
-            "Not all files provide terrain stiffness data; dropping "
-            "stiffnessData from the merged terrain."
-        )
+        if present_in_all:
+            kept_properties.append(name)
+        else:
+            logger.warning(
+                "Not all files provide terrain property '%s'; dropping it "
+                "from the merged terrain.",
+                name,
+            )
 
     def _concat_lists_or_b64(items: list[tuple]) -> list | None:
         # Each item is decoded independently, keyed by its own batch_size (not
@@ -309,9 +311,12 @@ def _merge_terrain(
             merged.extend(_decode_per_batch(value, batch_size))
         return merged
 
-    height_data, normals, friction_data, stiffness_data = [], [], [], []
+    height_data, normals = [], []
+    property_data: dict[str, list] = {name: [] for name in kept_properties}
     min_z = max_z = None
-    min_friction = max_friction = min_stiffness = max_stiffness = None
+    property_min_max: dict[str, tuple[float | None, float | None]] = {
+        name: (None, None) for name in kept_properties
+    }
     for model, batch_size, label in zip(models, batch_sizes, labels):
         terrain = model["terrain"]
         singleton = terrain.get("isSingleton", False)
@@ -335,51 +340,18 @@ def _merge_terrain(
         bounds = terrain["bounds"]
         min_z = bounds["minZ"] if min_z is None else min(min_z, bounds["minZ"])
         max_z = bounds["maxZ"] if max_z is None else max(max_z, bounds["maxZ"])
-        if has_friction:
-            friction_data.append(
+        for name in kept_properties:
+            prop = terrain["properties"][name]
+            property_data[name].append(
                 (
-                    _expand_batched(
-                        terrain["frictionData"],
-                        singleton,
-                        batch_size,
-                        "frictionData",
-                        label,
-                    ),
+                    _expand_batched(prop["data"], singleton, batch_size, name, label),
                     batch_size,
                 )
             )
-            min_friction = (
-                bounds["minFriction"]
-                if min_friction is None
-                else min(min_friction, bounds["minFriction"])
-            )
-            max_friction = (
-                bounds["maxFriction"]
-                if max_friction is None
-                else max(max_friction, bounds["maxFriction"])
-            )
-        if has_stiffness:
-            stiffness_data.append(
-                (
-                    _expand_batched(
-                        terrain["stiffnessData"],
-                        singleton,
-                        batch_size,
-                        "stiffnessData",
-                        label,
-                    ),
-                    batch_size,
-                )
-            )
-            min_stiffness = (
-                bounds["minStiffness"]
-                if min_stiffness is None
-                else min(min_stiffness, bounds["minStiffness"])
-            )
-            max_stiffness = (
-                bounds["maxStiffness"]
-                if max_stiffness is None
-                else max(max_stiffness, bounds["maxStiffness"])
+            cur_min, cur_max = property_min_max[name]
+            property_min_max[name] = (
+                prop["min"] if cur_min is None else min(cur_min, prop["min"]),
+                prop["max"] if cur_max is None else max(cur_max, prop["max"]),
             )
 
     merged_bounds = {
@@ -390,12 +362,15 @@ def _merge_terrain(
         "minZ": min_z,
         "maxZ": max_z,
     }
-    if has_friction:
-        merged_bounds["minFriction"] = min_friction
-        merged_bounds["maxFriction"] = max_friction
-    if has_stiffness:
-        merged_bounds["minStiffness"] = min_stiffness
-        merged_bounds["maxStiffness"] = max_stiffness
+
+    merged_properties = {
+        name: {
+            "data": _concat_lists_or_b64(property_data[name]),
+            "min": property_min_max[name][0],
+            "max": property_min_max[name][1],
+        }
+        for name in kept_properties
+    }
 
     return {
         "dimensions": dims,
@@ -403,10 +378,7 @@ def _merge_terrain(
         "isSingleton": False,
         "heightData": _concat_lists_or_b64(height_data),
         "normals": _concat_lists_or_b64(normals),
-        "frictionData": _concat_lists_or_b64(friction_data) if has_friction else None,
-        "stiffnessData": _concat_lists_or_b64(stiffness_data)
-        if has_stiffness
-        else None,
+        "properties": merged_properties,
     }
 
 

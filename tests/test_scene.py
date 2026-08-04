@@ -134,20 +134,19 @@ def test_add_state_numpy_position_orientation_and_velocity():
 # --- _clear_internal_data leak (bug B3) -------------------------------------
 
 
-def test_clear_internal_data_clears_friction_and_stiffness():
+def test_clear_internal_data_clears_terrain_properties():
     scene = build_scene(batch_size=2)
     terrain = scene.model.terrain
     assert terrain is not None
-    assert terrain.friction_data is not None
-    assert terrain.stiffness_data is not None
+    assert terrain.properties.get("friction") is not None
+    assert terrain.properties.get("stiffness") is not None
 
     scene._clear_internal_data()
 
     assert scene.states == []
     assert terrain.height_data == []
     assert terrain.normals == []
-    assert terrain.friction_data is None
-    assert terrain.stiffness_data is None
+    assert terrain.properties == {}
 
 
 # --- Contacts in add_trajectory (bug B4) ------------------------------------

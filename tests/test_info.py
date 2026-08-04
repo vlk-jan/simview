@@ -40,8 +40,7 @@ def _minimal_model(batch_size=1, scalar_names=None, bodies=None):
             "heightData": [[0.0] * 4] * 4,
             "normals": [[[0, 0, 1]] * 4] * 4,
             "isSingleton": True,
-            "frictionData": None,
-            "stiffnessData": None,
+            "properties": {},
         },
         "bodies": bodies
         if bodies is not None

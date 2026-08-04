@@ -69,8 +69,7 @@ def _summarize_terrain(terrain: dict) -> dict:
     bounds = terrain.get("bounds") or {}
     height = terrain.get("heightData")
     normals = terrain.get("normals")
-    friction = terrain.get("frictionData")
-    stiffness = terrain.get("stiffnessData")
+    properties = terrain.get("properties") or {}
     return {
         "extent": {"x": dims.get("sizeX"), "y": dims.get("sizeY")},
         "shape": {"x": dims.get("resolutionX"), "y": dims.get("resolutionY")},
@@ -83,28 +82,18 @@ def _summarize_terrain(terrain: dict) -> dict:
             "max_z": bounds.get("maxZ"),
         },
         "is_singleton": terrain.get("isSingleton"),
-        "has_friction": friction is not None,
-        "has_stiffness": stiffness is not None,
-        "friction_bounds": (
-            {"min": bounds.get("minFriction"), "max": bounds.get("maxFriction")}
-            if friction is not None
-            else None
-        ),
-        "stiffness_bounds": (
-            {"min": bounds.get("minStiffness"), "max": bounds.get("maxStiffness")}
-            if stiffness is not None
-            else None
-        ),
         "height_data_encoding": _encoding_of(height),
         "height_data_bytes": _blob_byte_length(height),
         "normals_encoding": _encoding_of(normals),
         "normals_bytes": _blob_byte_length(normals),
-        "friction_data_encoding": _encoding_of(friction)
-        if friction is not None
-        else None,
-        "stiffness_data_encoding": (
-            _encoding_of(stiffness) if stiffness is not None else None
-        ),
+        "properties": {
+            name: {
+                "bounds": {"min": prop.get("min"), "max": prop.get("max")},
+                "encoding": _encoding_of(prop.get("data")),
+                "bytes": _blob_byte_length(prop.get("data")),
+            }
+            for name, prop in properties.items()
+        },
     }
 
 
@@ -466,9 +455,12 @@ def format_text(summary: dict) -> str:
                 f"  Bounds: x=[{b['min_x']},{b['max_x']}] "
                 f"y=[{b['min_y']},{b['max_y']}] z=[{b['min_z']},{b['max_z']}]"
             )
-            friction = "yes" if terrain["has_friction"] else "no"
-            stiffness = "yes" if terrain["has_stiffness"] else "no"
-            lines.append(f"  Friction data: {friction}   Stiffness data: {stiffness}")
+            props = terrain["properties"]
+            if props:
+                names = ", ".join(sorted(props))
+                lines.append(f"  Properties: {names}")
+            else:
+                lines.append("  Properties: (none)")
             h_bytes = terrain["height_data_bytes"]
             n_bytes = terrain["normals_bytes"]
             lines.append(

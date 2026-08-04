@@ -14,6 +14,7 @@ from simview.model import (
     SimViewModel,
     SimViewStaticObject,
     SimViewTerrain,
+    TerrainProperty,
     _decode_blob,
     _encode_blob,
 )
@@ -40,16 +41,16 @@ def test_save_produces_loadable_json(tmp_path):
     assert model["bodies"][0]["availableAttributes"] == ["velocity"]
 
 
-def test_terrain_ships_friction_and_stiffness_bounds(tmp_path):
+def test_terrain_ships_property_bounds(tmp_path):
     scene = build_scene(batch_size=2)
     out = tmp_path / "sim.json"
     scene.save(out)
 
-    bounds = json.loads(out.read_text())["model"]["terrain"]["bounds"]
-    assert bounds["minFriction"] == 0.5
-    assert bounds["maxFriction"] == 0.5
-    assert bounds["minStiffness"] == 250000.0
-    assert bounds["maxStiffness"] == 250000.0
+    properties = json.loads(out.read_text())["model"]["terrain"]["properties"]
+    assert properties["friction"]["min"] == 0.5
+    assert properties["friction"]["max"] == 0.5
+    assert properties["stiffness"]["min"] == 250000.0
+    assert properties["stiffness"]["max"] == 250000.0
 
 
 def test_states_shape(tmp_path):
@@ -98,12 +99,12 @@ def test_terrain_to_json_from_dict_roundtrip():
         height_data=[[0.0] * 4] * 4,
         normals=[[[0.0, 0.0, 1.0]] * 4] * 4,
         is_singleton=False,
-        friction_data=[[0.5] * 4] * 4,
-        stiffness_data=[[250000.0] * 4] * 4,
-        min_friction=0.5,
-        max_friction=0.5,
-        min_stiffness=250000.0,
-        max_stiffness=250000.0,
+        properties={
+            "friction": TerrainProperty(data=[[0.5] * 4] * 4, min=0.5, max=0.5),
+            "stiffness": TerrainProperty(
+                data=[[250000.0] * 4] * 4, min=250000.0, max=250000.0
+            ),
+        },
     )
     restored = SimViewTerrain.from_dict(terrain.to_json())
     assert restored == terrain
@@ -409,17 +410,19 @@ def test_save_with_zero_bodies_and_empty_states_round_trips(tmp_path):
     assert loaded.states == []
 
 
-def test_invalid_friction_map_ndim_raises_value_error():
+def test_invalid_property_map_ndim_raises_value_error():
     resolution = 4
     heightmap = torch.zeros(1, resolution, resolution)
     normals = torch.zeros(1, 3, resolution, resolution)
     bad_friction = torch.zeros(1, 1, resolution, resolution)  # extra dim
-    with pytest.raises(ValueError, match="Friction map must include a batch"):
+    with pytest.raises(
+        ValueError, match="Property 'friction' map must include a batch"
+    ):
         SimViewTerrain.create(
             heightmap=heightmap,
             normals=normals,
             x_lim=(-5, 5),
             y_lim=(-5, 5),
             is_singleton=False,
-            friction_map=bad_friction,
+            properties={"friction": bad_friction},
         )

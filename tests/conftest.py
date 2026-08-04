@@ -24,8 +24,7 @@ def build_scene(batch_size: int = 2) -> "SimulationScene":
         normals=normals,
         x_lim=(-5, 5),
         y_lim=(-5, 5),
-        friction_map=friction,
-        stiffness_map=stiffness,
+        properties={"friction": friction, "stiffness": stiffness},
     )
 
     scene.create_body(

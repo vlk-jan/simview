@@ -56,6 +56,12 @@ def _model(height_encoding="blob", batch_size=1, friction=None, stiffness=None):
         rows = [_GRID_VALUES[i * 3 : (i + 1) * 3] for i in range(3)]
         height_data = rows  # shared, no batch dim
 
+    properties = {}
+    if friction is not None:
+        properties["friction"] = {"data": friction, "min": None, "max": None}
+    if stiffness is not None:
+        properties["stiffness"] = {"data": stiffness, "min": None, "max": None}
+
     terrain = {
         "dimensions": {"sizeX": 2.0, "sizeY": 2.0, "resolutionX": 3, "resolutionY": 3},
         "bounds": {
@@ -69,8 +75,7 @@ def _model(height_encoding="blob", batch_size=1, friction=None, stiffness=None):
         "heightData": height_data,
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": batch_size == 1,
-        "frictionData": friction,
-        "stiffnessData": stiffness,
+        "properties": properties,
     }
     return {"simBatches": batch_size, "terrain": terrain}
 
@@ -136,8 +141,11 @@ def test_query_point_missing_layer_raises():
 
 
 def test_query_point_unknown_layer_raises():
+    # Property names are arbitrary (no fixed global vocabulary), so an
+    # unrecognized layer name hits the same "not present in this terrain"
+    # path as a recognized-but-absent one (e.g. "friction" above).
     model = _model()
-    with pytest.raises(ValueError, match="unknown layer"):
+    with pytest.raises(ValueError, match="not present"):
         query_point(model, x=0.0, y=0.0, layers="bogus")
 
 
@@ -163,8 +171,6 @@ def test_query_point_batch_selection_on_broadcast_blob():
         "heightData": blob,
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": False,
-        "frictionData": None,
-        "stiffnessData": None,
     }
     model = {"simBatches": 2, "terrain": terrain}
 
@@ -226,8 +232,6 @@ def _two_batch_model(offset=100.0):
         "heightData": blob,
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": False,
-        "frictionData": None,
-        "stiffnessData": None,
     }
     return {"simBatches": 2, "terrain": terrain}
 
@@ -286,8 +290,6 @@ def test_query_area_diff_stats_mean_max_min_for_nonuniform_delta():
         "heightData": _blob(grid_a + grid_b),
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": False,
-        "frictionData": None,
-        "stiffnessData": None,
     }
     model = {"simBatches": 2, "terrain": terrain}
     result = query_area_diff(model, bounds=None, batch_a=0, batch_b=1)
@@ -440,8 +442,6 @@ def _along_model(batch_size=1, doubled_b=False):
         "heightData": height_data,
         "normals": [[[0, 0, 1]] * 3] * 3,
         "isSingleton": batch_size == 1,
-        "frictionData": None,
-        "stiffnessData": None,
     }
     return {"simBatches": batch_size, "terrain": terrain}
 

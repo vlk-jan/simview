@@ -528,8 +528,7 @@ class SimulationScene:
         x_lim: tuple[float, float] | None = None,
         y_lim: tuple[float, float] | None = None,
         grid_res: float | None = None,
-        friction_map: torch.Tensor | None = None,
-        stiffness_map: torch.Tensor | None = None,
+        properties: dict[str, torch.Tensor] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the simulation model.
@@ -542,8 +541,11 @@ class SimulationScene:
             y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
             grid_res (float | None): Grid resolution. If x_lim and y_lim are omitted,
                 they will be automatically inferred assuming the grid is centered at 0.
-            friction_map (torch.Tensor | None): Optional friction coefficient map.
-            stiffness_map (torch.Tensor | None): Optional stiffness coefficient map.
+            properties (dict[str, torch.Tensor] | None): Optional arbitrary named
+                per-cell scalar maps (2D or 3D, like `heightmap`), e.g.
+                `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
+                selectable as a terrain color mode in the viewer automatically, with no
+                further code changes needed.
             embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
                 (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
                 enabling the viewer's click-to-similarity "features" color mode.
@@ -554,8 +556,7 @@ class SimulationScene:
             x_lim=x_lim,
             y_lim=y_lim,
             grid_res=grid_res,
-            friction_map=friction_map,
-            stiffness_map=stiffness_map,
+            properties=properties,
             embedding_map=embedding_map,
         )
 
@@ -653,6 +654,5 @@ class SimulationScene:
         if self.model and self.model.terrain:
             self.model.terrain.height_data = []
             self.model.terrain.normals = []
-            self.model.terrain.friction_data = None
-            self.model.terrain.stiffness_data = None
+            self.model.terrain.properties = {}
         logger.info("SimulationScene: Internal data cleared.")
