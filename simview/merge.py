@@ -63,14 +63,23 @@ def _decode_state_field(value, width: int):
     return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
 
 
-def _decode_per_batch(value: list | str, batch_size: int) -> list:
+def _decode_per_batch(
+    value: list | str, batch_size: int, vector_width: int | None = None
+) -> list:
     """Normalize a terrain data field (heightData/normals/a named property's
     data) to a plain list of length `batch_size`, one entry per batch,
     regardless of whether it's a binary ``__b64__`` blob (one flat buffer
     covering all batches) or an already-batched plain list. Used so that
     inputs mixing binary and plain-list encoding can still be concatenated --
     each file's field is decoded independently rather than branching on a
-    single file's encoding."""
+    single file's encoding.
+
+    A decoded ``__b64__`` blob is flat, so a vector-valued field (normals:
+    `vector_width=3`) needs its per-batch chunk grouped into width-wide
+    vectors to match SimViewTerrain.normals' canonical
+    `list[batch][vertex][xyz]` shape -- otherwise each batch would stay a
+    flat float list, which is indistinguishable on the JS side from a single
+    unbatched list of vectors (see Terrain.js's #normalizeVectorField)."""
     flat = _decode_b64_floats(value)
     if flat is None:
         # `_decode_b64_floats` only returns None for non-`__b64__` input, and
@@ -81,7 +90,13 @@ def _decode_per_batch(value: list | str, batch_size: int) -> list:
         assert isinstance(value, list)
         return value
     width = len(flat) // batch_size
-    return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
+    rows = [list(flat[i : i + width]) for i in range(0, len(flat), width)]
+    if vector_width is None:
+        return rows
+    return [
+        [row[i : i + vector_width] for i in range(0, len(row), vector_width)]
+        for row in rows
+    ]
 
 
 def _load_json(path: Path) -> dict:
@@ -299,7 +314,9 @@ def _merge_terrain(
                 name,
             )
 
-    def _concat_lists_or_b64(items: list[tuple]) -> list | None:
+    def _concat_lists_or_b64(
+        items: list[tuple], vector_width: int | None = None
+    ) -> list | None:
         # Each item is decoded independently, keyed by its own batch_size (not
         # branched on items[0]'s encoding), so a mix of binary and plain-list
         # inputs merges correctly instead of crashing -- or silently
@@ -308,7 +325,7 @@ def _merge_terrain(
             return None
         merged = []
         for value, batch_size in items:
-            merged.extend(_decode_per_batch(value, batch_size))
+            merged.extend(_decode_per_batch(value, batch_size, vector_width))
         return merged
 
     height_data, normals = [], []
@@ -377,7 +394,7 @@ def _merge_terrain(
         "bounds": merged_bounds,
         "isSingleton": False,
         "heightData": _concat_lists_or_b64(height_data),
-        "normals": _concat_lists_or_b64(normals),
+        "normals": _concat_lists_or_b64(normals, vector_width=3),
         "properties": merged_properties,
     }
 

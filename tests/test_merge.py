@@ -480,6 +480,73 @@ def test_merge_mixed_binary_and_plain_terrain_data(tmp_path):
     assert height[1] == pytest.approx(expected_row)
 
 
+def test_merge_binary_normals_grouped_into_vec3_per_batch(tmp_path):
+    """Regression test: `_decode_per_batch` used to treat normals like a
+    per-vertex scalar field (heightData/a named property's data), decoding
+    each merged batch's b64 blob into one long flat float list instead of
+    grouping it into width-3 [x, y, z] vectors. On the JS side that flat
+    per-batch list is indistinguishable from a single unbatched list of
+    vectors (Terrain.js's #normalizeVectorField), which crashed
+    #createNormalVectors with "undefined is not iterable" past the first
+    `batch_size` vertices. Use per-vertex, per-batch-distinct values so a
+    wrong reshape shows up as scrambled values, not just a wrong length."""
+    resolution = 2
+    num_vertices = resolution * resolution
+
+    def build(batch_size: int, batch_offset: float) -> SimulationScene:
+        scene = SimulationScene(batch_size=batch_size, scalar_names=[], dt=0.1)
+        # Per-batch varying heightmap forces isSingleton=False, matching the
+        # non-singleton terrains that triggered the original bug.
+        heightmap = torch.stack(
+            [torch.full((resolution, resolution), float(b)) for b in range(batch_size)]
+        )
+        normals = torch.zeros(batch_size, 3, resolution, resolution)
+        for b in range(batch_size):
+            for v in range(num_vertices):
+                row, col = divmod(v, resolution)
+                # x-channel encodes the vertex index, y-channel encodes a
+                # value unique to this (file, batch) -- a wrong reshape (e.g.
+                # mixing the batch dim into the vertex dim) scrambles these.
+                normals[b, 0, row, col] = v
+                normals[b, 1, row, col] = batch_offset + b
+            normals[b, 2] = 1.0
+        scene.create_terrain(
+            heightmap=heightmap, normals=normals, x_lim=(-2, 2), y_lim=(-2, 2)
+        )
+        scene.create_body(
+            body_name="Box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+        )
+        pos = torch.tensor([[0.0, 0.0, 0.0]] * batch_size)
+        quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]] * batch_size)
+        scene.add_state(time=0.0, body_states=[SimViewBodyState("Box", pos, quat)])
+        return scene
+
+    scene_a = build(batch_size=2, batch_offset=0.0)
+    scene_b = build(batch_size=2, batch_offset=10.0)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    data_a = json.loads(path_a.read_text())
+    assert data_a["model"]["terrain"]["isSingleton"] is False
+    assert isinstance(data_a["model"]["terrain"]["normals"], str)  # b64 by default
+
+    merged = merge_simulation_files([path_a, path_b])
+    normals = merged["model"]["terrain"]["normals"]
+
+    assert merged["model"]["simBatches"] == 4
+    assert isinstance(normals, list) and len(normals) == 4
+    for batch_idx, batch_offset in enumerate([0.0, 0.0, 10.0, 10.0]):
+        batch_normals = normals[batch_idx]
+        assert len(batch_normals) == num_vertices
+        for v in range(num_vertices):
+            vertex_normal = batch_normals[v]
+            assert len(vertex_normal) == 3
+            assert vertex_normal[0] == pytest.approx(v)
+            assert vertex_normal[1] == pytest.approx(batch_offset + batch_idx % 2)
+            assert vertex_normal[2] == pytest.approx(1.0)
+
+
 def test_merge_terrain_already_broadcast_singleton(tmp_path):
     """SimViewModel.create_terrain, when batch_size > 1 and every terrain field
     is shared (batch dim 1), sets isSingleton=True but still broadcasts the
