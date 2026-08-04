@@ -26,13 +26,9 @@ export class BatchManager {
                 `Initializing with ${this.simBatches} simulation batches`
             );
             this.app.simBatches = this.simBatches;
-        } else if (modelData.batchSize !== undefined) {
-             // Fallback for backward compatibility if needed, though README says simBatches
-            this.simBatches = Math.max(1, parseInt(modelData.batchSize));
-            console.log(`Initializing with ${this.simBatches} simulation batches (fallback from batchSize)`);
-            this.app.simBatches = this.simBatches;
         }
-        
+
+
         this.sideLength = Math.ceil(Math.sqrt(this.simBatches));
         const sideLength = this.sideLength;
         // Use README-defined terrain dimension names: sizeX, sizeY

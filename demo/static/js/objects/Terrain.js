@@ -10,14 +10,39 @@ export class Terrain {
         this.group = null;
 
         this.heightData = this.#normalizeScalarField(terrainData.heightData, true);
-        this.frictionData = this.#normalizeScalarField(terrainData.frictionData);
-        this.stiffnessData = this.#normalizeScalarField(terrainData.stiffnessData);
         this.isSingleton = terrainData.isSingleton;
+        this.#initProperties(terrainData.properties);
         this.#initEmbeddingData(terrainData.embeddingData);
 
         const normals = this.#normalizeVectorField(terrainData.normals, 3);
 
         this.#createVisualRepresentations(this.heightData, normals);
+    }
+
+    // Reserved color-mode names a property can't be named after -- picking
+    // one of these would make getAvailableColorModes/#updateSurfaceColor
+    // ambiguous between the built-in mode and the named property.
+    static #RESERVED_MODE_NAMES = new Set(["height", "diff", "features"]);
+
+    // Populates this.properties (name -> per-batch data) and
+    // this.propertyBounds (name -> {min, max}) from the server's arbitrary
+    // named `properties` bag (see SimViewTerrain.properties/TerrainProperty
+    // in model.py). Any number of properties (e.g. friction, stiffness, or
+    // any custom name) become selectable terrain color modes automatically,
+    // with no viewer code changes.
+    #initProperties(propertiesData) {
+        this.properties = new Map();
+        this.propertyBounds = new Map();
+        for (const [name, prop] of Object.entries(propertiesData || {})) {
+            if (Terrain.#RESERVED_MODE_NAMES.has(name)) {
+                console.warn(
+                    `Terrain property '${name}' collides with a reserved color mode name and will be ignored.`
+                );
+                continue;
+            }
+            this.properties.set(name, this.#normalizeScalarField(prop.data));
+            this.propertyBounds.set(name, { min: prop.min, max: prop.max });
+        }
     }
 
     // Per-cell K-wide feature vector (e.g. a reduced-dim PCA projection of a
@@ -61,9 +86,9 @@ export class Terrain {
         return batches;
     }
 
-    // Normalizes a per-vertex scalar terrain field (heightData/frictionData/
-    // stiffnessData) to an array of one entry per batch. Passes through
-    // unchanged if already batched, or if absent (friction/stiffness are
+    // Normalizes a per-vertex scalar terrain field (heightData, or a named
+    // property's data) to an array of one entry per batch. Passes through
+    // unchanged if already batched, or if absent (named properties are
     // optional).
     #normalizeScalarField(data, logNormalization = false) {
         if (data instanceof Float32Array) {
@@ -342,12 +367,11 @@ export class Terrain {
         }
     }
 
-    // Returns the per-batch data array for a diff layer name ("height",
-    // "friction", or "stiffness").
+    // Returns the per-batch data array for a diff layer name ("height", or
+    // any named property).
     #diffLayerData(layer) {
-        if (layer === "friction") return this.frictionData;
-        if (layer === "stiffness") return this.stiffnessData;
-        return this.heightData;
+        if (layer === "height") return this.heightData;
+        return this.properties.get(layer);
     }
 
     // Largest absolute (batchB - batchA) delta over the whole grid for a
@@ -381,10 +405,11 @@ export class Terrain {
         if (mode === "diff") {
             // Diff mode always renders with a fixed diverging colormap
             // (centered on zero), independent of the sequential "Color Map"
-            // picker used by height/friction/stiffness -- see Legend.js's
+            // picker used by height/named properties -- see Legend.js's
             // matching "diff" branch.
             callableColormap = this.getCallableFromColorMapName("coolwarm");
-            diffLayer = this.app.uiState.terrainDiffLayer || "friction";
+            diffLayer =
+                this.app.uiState.terrainDiffLayer || this.getAvailableDiffLayers()[0];
             diffBatchA = this.app.uiState.terrainDiffBatchA ?? 0;
             diffBatchB =
                 this.app.uiState.terrainDiffBatchB ??
@@ -394,8 +419,8 @@ export class Terrain {
         }
 
         // "features" mode: cosine similarity of every cell's own embedding
-        // (this batch's data -- read below per-vertex, same convention
-        // friction/stiffness use) to a single fixed query vector, from
+        // (this batch's data -- read below per-vertex, same convention named
+        // properties use) to a single fixed query vector, from
         // wherever the user last clicked (any batch/cell). Also forces a
         // fixed diverging colormap, like "diff", since similarity is always
         // a signed [-1, 1] quantity.
@@ -441,19 +466,15 @@ export class Terrain {
                 const row = resolutionY - invertedRow - 1;
                 const dataIndex = row * resolutionX + col;
 
-                if (mode === "friction" && this.frictionData && this.frictionData[batchIndex]) {
-                    // Normalize against the data range shipped in bounds (falls back to [0, 1]).
+                const propData = this.properties.get(mode);
+                if (propData && propData[batchIndex]) {
+                    // Normalize against the data range shipped with the property
+                    // (falls back to [0, 1]).
+                    const propBounds = this.propertyBounds.get(mode) || {};
                     value = this.#normalizeToRange(
-                        this.frictionData[batchIndex][dataIndex],
-                        this.bounds.minFriction,
-                        this.bounds.maxFriction
-                    );
-                } else if (mode === "stiffness" && this.stiffnessData && this.stiffnessData[batchIndex]) {
-                    // Normalize against the data range shipped in bounds (falls back to [0, 1]).
-                    value = this.#normalizeToRange(
-                        this.stiffnessData[batchIndex][dataIndex],
-                        this.bounds.minStiffness,
-                        this.bounds.maxStiffness
+                        propData[batchIndex][dataIndex],
+                        propBounds.min,
+                        propBounds.max
                     );
                 } else if (mode === "features") {
                     const K = this.embeddingDim;
@@ -490,7 +511,7 @@ export class Terrain {
     // Max |delta| for the currently-configured diff layer/batch pair, for
     // Legend.js to label the diverging colorbar's endpoints.
     getDiffMaxAbsDelta() {
-        const layer = this.app.uiState.terrainDiffLayer || "friction";
+        const layer = this.app.uiState.terrainDiffLayer || this.getAvailableDiffLayers()[0];
         const batchA = this.app.uiState.terrainDiffBatchA ?? 0;
         const batchB =
             this.app.uiState.terrainDiffBatchB ??
@@ -530,11 +551,8 @@ export class Terrain {
         if (this.heightData && this.heightData.length > 0) {
             modes.push("height");
         }
-        if (this.frictionData && this.frictionData.length > 0) {
-            modes.push("friction");
-        }
-        if (this.stiffnessData && this.stiffnessData.length > 0) {
-            modes.push("stiffness");
+        for (const [name, data] of this.properties) {
+            if (data && data.length > 0) modes.push(name);
         }
         if (this.app.batchManager.simBatches >= 2) {
             modes.push("diff");
@@ -545,7 +563,7 @@ export class Terrain {
         return modes;
     }
 
-    // Layer names ("height"/"friction"/"stiffness") with per-batch data
+    // Layer names ("height", or any named property) with per-batch data
     // present, for the diff mode's layer picker in Controls.js. "features"
     // isn't a scalar layer (it's a K-dim embedding) so it can't be a diff
     // target either, same reason "diff" itself is excluded.
@@ -579,8 +597,8 @@ export class Terrain {
         return row * this.dimensions.resolutionX + col;
     }
 
-    // Reads height/friction/stiffness for `dataBatchIndex` at an already-
-    // resolved flat grid index (see #resolveGridIndex). Shared by
+    // Reads height and every named property for `dataBatchIndex` at an
+    // already-resolved flat grid index (see #resolveGridIndex). Shared by
     // getPropertiesAt and getPropertiesAtAllBatches so both look up data the
     // same way.
     #propsAtIndex(dataIndex, dataBatchIndex) {
@@ -590,11 +608,10 @@ export class Terrain {
         } else {
             return null;
         }
-        if (this.frictionData && this.frictionData[dataBatchIndex]) {
-            props.friction = this.frictionData[dataBatchIndex][dataIndex];
-        }
-        if (this.stiffnessData && this.stiffnessData[dataBatchIndex]) {
-            props.stiffness = this.stiffnessData[dataBatchIndex][dataIndex];
+        for (const [name, data] of this.properties) {
+            if (data && data[dataBatchIndex]) {
+                props[name] = data[dataBatchIndex][dataIndex];
+            }
         }
         return props;
     }
