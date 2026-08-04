@@ -4,10 +4,11 @@ import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import { injectStyles } from "../utils/injectStyles.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
 
-const LAYER_LABELS = { height: "Height", friction: "Friction", stiffness: "Stiffness" };
+const LAYER_LABELS = { height: "Height" };
 
-// Terrain analysis tab: samples a terrain layer (height/friction/stiffness)
-// under a body's path over time, one uPlot series per batch, so a
+// Terrain analysis tab: samples a terrain layer (height, or any named
+// property, e.g. friction/stiffness) under a body's path over time, one
+// uPlot series per batch, so a
 // divergence onset (e.g. in Error Metrics) can be correlated with a
 // terrain-property difference under the body at that time -- the DRIFT
 // use case is plotting each batch's terrain under GT's own path. The whole
@@ -230,9 +231,8 @@ export class TerrainProfile {
 
     _gridForLayer(layer) {
         const terrain = this.app.terrain;
-        if (layer === "friction") return terrain.frictionData;
-        if (layer === "stiffness") return terrain.stiffnessData;
-        return terrain.heightData;
+        if (layer === "height") return terrain.heightData;
+        return terrain.properties.get(layer);
     }
 
     // Builds the per-batch [x, y] path (local/un-offset, same frame terrain

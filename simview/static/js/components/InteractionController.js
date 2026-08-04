@@ -286,20 +286,33 @@ export class InteractionController {
         }
     }
 
+    // Formats a raw named-property value. Properties carry no unit/precision
+    // metadata of their own, so this picks scientific notation for very
+    // large or very small magnitudes (e.g. a stiffness ~1e5) and fixed
+    // notation otherwise (e.g. a friction coefficient ~[0, 1]).
+    #formatPropValue(value) {
+        const abs = Math.abs(value);
+        if (value !== 0 && (abs >= 1e4 || abs < 1e-3)) return value.toExponential(2);
+        return value.toFixed(3);
+    }
+
     // Single-batch tooltip text: "Batch: N\nX: .., Y: ..\nHeight: ..." etc.
     // Used when the terrain is singleton (every batch shares the same data,
     // so showing all of them would just repeat the same numbers) or there's
     // only one batch to begin with.
     #formatSingleBatchProps(props) {
         let text = `Height: ${props.height.toFixed(3)}`;
-        if (props.friction !== undefined) text += `\nFriction: ${props.friction.toFixed(3)}`;
-        if (props.stiffness !== undefined) text += `\nStiffness: ${props.stiffness.toExponential(2)}`;
+        for (const [name, value] of Object.entries(props)) {
+            if (name === "height") continue;
+            const label = name.charAt(0).toUpperCase() + name.slice(1);
+            text += `\n${label}: ${this.#formatPropValue(value)}`;
+        }
         return text;
     }
 
     // Builds the terrain probe tooltip text. For a non-singleton terrain
-    // with 2+ batches, shows every batch's height/friction/stiffness plus,
-    // for every batch other than the reference, its delta from the
+    // with 2+ batches, shows every batch's height and every named property
+    // plus, for every batch other than the reference, its delta from the
     // reference batch (the Terrain Options "Diff Batch A" pick, or batch 0
     // if that's unset) -- so a DRIFT-style 4-batch scene shows all of
     // GT/baseline/pre/post at a glance instead of one at a time.
@@ -322,6 +335,7 @@ export class InteractionController {
 
         const referenceBatch = this.app.uiState?.terrainDiffBatchA ?? 0;
         const referenceProps = allProps.get(referenceBatch);
+        const propertyNames = Object.keys(props).filter((name) => name !== "height");
 
         const lines = [header];
         for (let i = 0; i < simBatches; i++) {
@@ -331,28 +345,20 @@ export class InteractionController {
             const isRef = i === referenceBatch;
             const label = `Batch ${i}${isRef ? " (ref)" : ""}${i === batchIndex ? " *" : ""}:`;
             const fields = [`h=${batchProps.height.toFixed(3)}`];
-            if (batchProps.friction !== undefined) {
-                fields.push(`fric=${batchProps.friction.toFixed(3)}`);
-            }
-            if (batchProps.stiffness !== undefined) {
-                fields.push(`stiff=${batchProps.stiffness.toExponential(2)}`);
+            for (const name of propertyNames) {
+                if (batchProps[name] !== undefined) {
+                    fields.push(`${name}=${this.#formatPropValue(batchProps[name])}`);
+                }
             }
             if (!isRef && referenceProps) {
                 const dh = batchProps.height - referenceProps.height;
                 fields.push(`Δh=${dh >= 0 ? "+" : ""}${dh.toFixed(3)}`);
-                if (
-                    batchProps.friction !== undefined &&
-                    referenceProps.friction !== undefined
-                ) {
-                    const df = batchProps.friction - referenceProps.friction;
-                    fields.push(`Δfric=${df >= 0 ? "+" : ""}${df.toFixed(3)}`);
-                }
-                if (
-                    batchProps.stiffness !== undefined &&
-                    referenceProps.stiffness !== undefined
-                ) {
-                    const ds = batchProps.stiffness - referenceProps.stiffness;
-                    fields.push(`Δstiff=${ds >= 0 ? "+" : ""}${ds.toExponential(2)}`);
+                for (const name of propertyNames) {
+                    if (batchProps[name] === undefined || referenceProps[name] === undefined) {
+                        continue;
+                    }
+                    const d = batchProps[name] - referenceProps[name];
+                    fields.push(`Δ${name}=${d >= 0 ? "+" : ""}${this.#formatPropValue(d)}`);
                 }
             }
             lines.push(`${label} ${fields.join("  ")}`);

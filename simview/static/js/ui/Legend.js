@@ -53,18 +53,10 @@ export class Legend {
             maxVal = this.app.terrain.bounds.maxZ;
             unit = "m";
             title = "Height";
-        } else if (mode === "friction") {
-            minVal = this.app.terrain.bounds.minFriction ?? 0.0;
-            maxVal = this.app.terrain.bounds.maxFriction ?? 1.0;
-            unit = "";
-            title = "Friction";
-        } else if (mode === "stiffness") {
-            minVal = this.app.terrain.bounds.minStiffness ?? 100000.0;
-            maxVal = this.app.terrain.bounds.maxStiffness ?? 500000.0;
-            unit = "N/m";
-            title = "Stiffness";
         } else if (mode === "diff") {
-            const layer = this.app.uiState.terrainDiffLayer || "friction";
+            const layer =
+                this.app.uiState.terrainDiffLayer ||
+                this.app.terrain.getAvailableDiffLayers()[0];
             const batchA = this.app.uiState.terrainDiffBatchA ?? 0;
             const batchB =
                 this.app.uiState.terrainDiffBatchB ??
@@ -72,7 +64,7 @@ export class Legend {
             const maxAbsDelta = this.app.terrain.getDiffMaxAbsDelta();
             minVal = -maxAbsDelta;
             maxVal = maxAbsDelta;
-            unit = layer === "height" ? "m" : layer === "stiffness" ? "N/m" : "";
+            unit = layer === "height" ? "m" : "";
             const layerTitle = layer.charAt(0).toUpperCase() + layer.slice(1);
             title = `Δ${layerTitle} (batch ${batchB} − batch ${batchA})`;
         } else if (mode === "features") {
@@ -83,12 +75,19 @@ export class Legend {
             maxVal = 1;
             unit = "";
             title = "Cosine similarity to clicked cell";
+        } else if (this.app.terrain.properties.has(mode)) {
+            const propBounds = this.app.terrain.propertyBounds.get(mode) || {};
+            minVal = propBounds.min ?? 0.0;
+            maxVal = propBounds.max ?? 1.0;
+            unit = "";
+            title = mode.charAt(0).toUpperCase() + mode.slice(1);
         }
 
-        const isStiffnessScale =
-            mode === "stiffness" ||
-            (mode === "diff" && this.app.uiState.terrainDiffLayer === "stiffness");
-        const decimals = isStiffnessScale && maxVal > 1000 ? 0 : 2;
+        // Large-magnitude properties (e.g. stiffness, typically ~1e5) read
+        // better without decimals; small ones (e.g. friction, typically
+        // ~[0, 1]) need them -- this heuristic works for any named property,
+        // not just a hardcoded one.
+        const decimals = Math.abs(maxVal) > 1000 ? 0 : 2;
 
         this.container.style.display = "flex";
         this.#renderGradient(this.container, title, unit, minVal, maxVal, decimals, cmapName);

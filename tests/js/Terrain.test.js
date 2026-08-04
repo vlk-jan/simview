@@ -47,7 +47,13 @@ function makeTerrainData(isSingleton = false) {
         bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 3 },
         dimensions: { sizeX: 1, sizeY: 1, resolutionX: RESOLUTION, resolutionY: RESOLUTION },
         heightData: new Float32Array([...HEIGHT_A, ...HEIGHT_B]),
-        frictionData: new Float32Array([...FRICTION_A, ...frictionB]),
+        properties: {
+            friction: {
+                data: new Float32Array([...FRICTION_A, ...frictionB]),
+                min: 0.3,
+                max: 0.9,
+            },
+        },
         normals: new Float32Array(
             Array(RESOLUTION * RESOLUTION * 2 * 3)
                 .fill(0)
