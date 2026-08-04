@@ -7,8 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-08-04
+
+### ⚠ Breaking changes
+
+- **Scene JSON files saved by older versions of simview will not load.** Terrain's
+  `frictionData`/`stiffnessData` fields and their `bounds.minFriction`/`maxFriction`/
+  `minStiffness`/`maxStiffness` entries are replaced by a generic
+  `terrain.properties` object (`{name: {data, min, max}}` — see the
+  [JSON Format Specification](https://vlk-jan.github.io/simview/dev/json-format/)).
+  Re-save any existing scene file with the current version of `simview` (or
+  `SimulationScene.load()` + `save()`) to pick up the new format; there is no
+  automatic migration.
+- `scene.create_terrain()`/`SimViewModel.create_terrain()` no longer accept
+  `friction_map=`/`stiffness_map=`; pass `properties={"friction": ..., "stiffness": ...}`
+  instead (or any other named per-cell scalar map — see below).
+- The batch-names sidecar file (`.<scene>.<hash>.batchnames.json`) written before
+  staleness-fingerprinting was added (pre-3.x) is no longer read; a fresh
+  `POST /batch-names` regenerates it in the current format.
+- The model JSON's long-superseded `batchSize` field (renamed to `simBatches` several
+  releases ago) is no longer read as a fallback.
+
 ### Added
 
+- Terrain scalar properties (friction, stiffness, or any other per-cell field) are
+  now a fully generic, arbitrarily-named mechanism end to end — Python
+  (`SimViewTerrain.properties`), the CLI (`simview terrain --layer <name>`,
+  `simview info`, `simview merge`), and the viewer (color mode dropdown, Legend,
+  hover/probe tooltip, Terrain Profile tab) all support any property name supplied
+  at authoring time, with zero code changes required to add a new one.
 - `scene.create_pointcloud()` now accepts optional `color` (static per-point RGB) and
   `embedding` (per-point feature vector) tensors; `scene.create_terrain()` gains a
   matching `embedding_map` (per-cell feature vector). When present, clicking a point
@@ -197,7 +224,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v3.6...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/vlk-jan/simview/compare/v3.6...v4.0.0
 [3.6]: https://github.com/vlk-jan/simview/compare/v3.5...v3.6
 [3.5]: https://github.com/vlk-jan/simview/compare/v3.4...v3.5
 [3.4]: https://github.com/vlk-jan/simview/compare/v3.3...v3.4

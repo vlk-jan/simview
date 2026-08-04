@@ -9,6 +9,15 @@ produces.
 { "model": { ... }, "states": [ { ... }, { ... } ] }
 ```
 
+!!! warning "Breaking change in 4.0.0"
+    Terrain's `frictionData`/`stiffnessData` fields and their `bounds.minFriction`/
+    `maxFriction`/`minStiffness`/`maxStiffness` entries were replaced by the generic
+    `terrain.properties` object described below. **Scene JSON files saved by simview
+    < 4.0.0 will not load correctly** — there is no automatic migration. Re-save the
+    file with the current version (e.g. `SimulationScene.load(old_path).save(new_path)`)
+    to upgrade it. See the [changelog](changelog.md#400-2026-08-04) for the full list
+    of breaking changes in this release.
+
 ## Model (Static Data)
 
 - **`simBatches`** *(integer)* — number of parallel simulation instances (batches).
