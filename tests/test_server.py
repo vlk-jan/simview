@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -140,23 +139,6 @@ def test_stale_batch_names_ignored_after_source_file_regenerated(tmp_path):
     reloaded_client = TestClient(reloaded.app)
     model = reloaded_client.get("/model").json()
     assert model.get("batchNames") != ["real", "sim"]
-
-
-def test_legacy_bare_list_sidecar_still_applied(tmp_path):
-    # Sidecars written before fingerprinting was added are a bare JSON list with
-    # no way to check staleness; they must keep working rather than being
-    # silently discarded.
-    scene = build_scene(batch_size=2)
-    sim_file = tmp_path / "sim.json"
-    scene.save(sim_file)
-
-    key = hashlib.sha1(str(sim_file.resolve()).encode()).hexdigest()[:10]
-    sidecar = sim_file.parent / f".{sim_file.stem}.{key}.batchnames.json"
-    sidecar.write_text(json.dumps(["legacy-a", "legacy-b"]))
-
-    server = SimViewServer(sim_path=sim_file)
-    client = TestClient(server.app)
-    assert client.get("/model").json()["batchNames"] == ["legacy-a", "legacy-b"]
 
 
 def test_batch_names_endpoint_rejects_wrong_length(tmp_path):

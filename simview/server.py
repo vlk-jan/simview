@@ -423,15 +423,11 @@ class SimViewServer:
         if model_data is not None and names_path and names_path.is_file():
             try:
                 payload = json.loads(names_path.read_text())
-                # Legacy sidecars are a bare list with no fingerprint; trust them as
-                # before. Current sidecars wrap the names with the mtimes of the
-                # source file(s) at save time, so a stale sidecar left over from a
+                # Sidecars wrap the names with the mtimes of the source file(s)
+                # at save time, so a stale sidecar left over from a
                 # since-regenerated file can be detected and ignored.
-                if isinstance(payload, list):
-                    saved_names, saved_fingerprint = payload, None
-                else:
-                    saved_names = payload.get("names")
-                    saved_fingerprint = payload.get("source_mtime")
+                saved_names = payload.get("names")
+                saved_fingerprint = payload.get("source_mtime")
 
                 sim_batches = int(model_data.get("simBatches", 1))
                 stale = (
