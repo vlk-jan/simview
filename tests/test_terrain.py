@@ -63,15 +63,19 @@ def _per_batch_scene(batch_size: int, offset: float = 0.0) -> SimulationScene:
     return scene
 
 
-def test_shared_terrain_is_singleton_and_broadcast():
+def test_shared_terrain_is_singleton_and_ships_one_copy():
     terrain, res = _terrain(batch_size=3, h_batches=1, n_batches=1)
     assert terrain.is_singleton is True
-    # Broadcast to batch_size so the viewer (which splits by batch_size) is happy.
+    # A fully-shared terrain ships exactly one copy of its data (the viewer,
+    # merge, and `simview terrain` all detect the shared row by its
+    # resolution-sized length) instead of being broadcast batch_size times.
     # create_terrain always binary-encodes heightData/normals (see _encode_blob
     # in SimViewTerrain.create), so this is always the `str` blob form, never
     # the plain-list form the field's type also allows.
     assert isinstance(terrain.height_data, str)
-    assert len(_flat(terrain.height_data)) == 3 * res * res
+    assert len(_flat(terrain.height_data)) == res * res
+    assert isinstance(terrain.normals, str)
+    assert len(_flat(terrain.normals)) == res * res * 3
 
 
 def test_mixed_shared_and_per_batch_is_not_singleton():

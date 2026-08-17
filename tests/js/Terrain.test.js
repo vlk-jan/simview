@@ -104,6 +104,44 @@ describe("Terrain.getPropertiesAt / getPropertiesAtAllBatches", () => {
     });
 });
 
+describe("Terrain singleton data layouts", () => {
+    it("splits a deduplicated singleton terrain (one shared copy) into a single batch entry", () => {
+        // Modern singleton wire format: exactly one resolution-sized copy of
+        // every field, isSingleton=true (see model.py create_terrain).
+        const data = {
+            bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 3 },
+            dimensions: { sizeX: 1, sizeY: 1, resolutionX: RESOLUTION, resolutionY: RESOLUTION },
+            heightData: new Float32Array(HEIGHT_A),
+            properties: {
+                friction: { data: new Float32Array(FRICTION_A), min: 0.3, max: 0.9 },
+            },
+            normals: new Float32Array(
+                Array(RESOLUTION * RESOLUTION * 3)
+                    .fill(0)
+                    .map((_, i) => (i % 3 === 2 ? 1 : 0))
+            ),
+            isSingleton: true,
+        };
+        const terrain = new Terrain(data, fakeApp(2));
+
+        expect(terrain.heightData.length).toBe(1);
+        expect(terrain.properties.get("friction").length).toBe(1);
+        // Every batch's probe reads the one shared copy.
+        const all = terrain.getPropertiesAtAllBatches(10, 1, 1);
+        expect(all.get(0).friction).toBeCloseTo(0.3);
+        expect(all.get(1).friction).toBeCloseTo(0.3);
+        expect(all.get(1).height).toBeCloseTo(2);
+    });
+
+    it("still splits a legacy broadcast singleton (simBatches identical copies) per batch", () => {
+        const terrain = new Terrain(makeTerrainData(true), fakeApp(2));
+        expect(terrain.heightData.length).toBe(2);
+        const all = terrain.getPropertiesAtAllBatches(10, 1, 1);
+        expect(all.get(0).friction).toBeCloseTo(0.3);
+        expect(all.get(1).friction).toBeCloseTo(0.3);
+    });
+});
+
 describe("Terrain diff overlay helpers", () => {
     it("getAvailableColorModes includes 'diff' only with 2+ batches", () => {
         const single = new Terrain(makeTerrainData(false), fakeApp(1));

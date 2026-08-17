@@ -9,8 +9,10 @@ export class Terrain {
         this.dimensions = terrainData.dimensions;
         this.group = null;
 
-        this.heightData = this.#normalizeScalarField(terrainData.heightData, true);
+        // Set before any field is normalized: #initEmbeddingData needs it to
+        // resolve the shared-vs-per-batch layout of a singleton terrain.
         this.isSingleton = terrainData.isSingleton;
+        this.heightData = this.#normalizeScalarField(terrainData.heightData, true);
         this.#initProperties(terrainData.properties);
         this.#initEmbeddingData(terrainData.embeddingData);
 
@@ -57,8 +59,8 @@ export class Terrain {
     #initEmbeddingData(embeddingData) {
         const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
         if (embeddingData instanceof Float32Array) {
-            const batchSize = this.app.batchManager.simBatches;
-            this.embeddingDim = embeddingData.length / (batchSize * resolution);
+            const batchCount = this.#embeddingBatchCount(embeddingData, resolution);
+            this.embeddingDim = embeddingData.length / (batchCount * resolution);
             this.embeddingData = this.#splitIntoBatches(embeddingData, this.embeddingDim);
         } else if (
             Array.isArray(embeddingData) &&
@@ -73,17 +75,40 @@ export class Terrain {
         }
     }
 
-    // Reshapes a flat Float32Array of `batchSize` concatenated per-vertex
-    // records (`width` floats each) into one subarray view per batch.
+    // Reshapes a flat Float32Array of concatenated per-vertex records
+    // (`width` floats each) into one subarray view per batch. The batch
+    // count is inferred from the data length rather than taken from
+    // simBatches: a singleton terrain ships exactly one shared copy
+    // (resolution-sized), while per-batch (or legacy broadcast-singleton)
+    // data holds simBatches copies -- both split correctly this way.
     #splitIntoBatches(flatArray, width) {
-        const batchSize = this.app.batchManager.simBatches;
         const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
         const perBatch = resolution * width;
+        const count = Math.max(1, Math.round(flatArray.length / perBatch));
         const batches = [];
-        for (let i = 0; i < batchSize; i++) {
+        for (let i = 0; i < count; i++) {
             batches.push(flatArray.subarray(i * perBatch, (i + 1) * perBatch));
         }
         return batches;
+    }
+
+    // How many batches an embedding blob spans. Unlike heightData/normals,
+    // the per-cell width K isn't known up front (it's inferred from the flat
+    // length), so a singleton blob whose total length happens to divide by
+    // simBatches is ambiguous between one shared row (K wide) and simBatches
+    // legacy broadcast copies (K/simBatches wide each). Identical chunks
+    // mean broadcast copies; any difference means one shared row.
+    #embeddingBatchCount(flat, resolution) {
+        const simBatches = this.app.batchManager.simBatches;
+        if (!this.isSingleton) return simBatches;
+        if (flat.length % (simBatches * resolution) !== 0) return 1;
+        const perBatch = flat.length / simBatches;
+        for (let b = 1; b < simBatches; b++) {
+            for (let i = 0; i < perBatch; i++) {
+                if (flat[i] !== flat[b * perBatch + i]) return 1;
+            }
+        }
+        return simBatches;
     }
 
     // Normalizes a per-vertex scalar terrain field (heightData, or a named

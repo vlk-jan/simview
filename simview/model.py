@@ -655,9 +655,13 @@ class SimViewModel:
             tensor.shape[0] == 1 for tensor in provided.values() if tensor is not None
         )
 
-        # The viewer always splits terrain data into batch_size chunks, so broadcast
-        # any shared field up to the full batch size before encoding.
-        if self.batch_size > 1:
+        # A fully-shared (singleton) terrain ships exactly one copy of every
+        # field -- the viewer, merge, and `simview terrain` all detect the
+        # shared row by its length (resolution-sized instead of
+        # batch_size * resolution). Only the mixed case (some fields shared,
+        # some per-batch) broadcasts the shared ones, since a non-singleton
+        # terrain's fields must all be batch_size rows.
+        if self.batch_size > 1 and not is_singleton:
             if heightmap.shape[0] == 1:
                 heightmap = heightmap.repeat(self.batch_size, 1, 1)
             if normals.shape[0] == 1:

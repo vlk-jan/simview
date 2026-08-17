@@ -72,15 +72,22 @@ def _decode_state_field(value, width: int):
 
 
 def _decode_per_batch(
-    value: list | str, batch_size: int, vector_width: int | None = None
+    value: list | str,
+    batch_size: int,
+    resolution: int,
+    vector_width: int | None = None,
 ) -> list:
     """Normalize a terrain data field (heightData/normals/a named property's
     data) to a plain list of length `batch_size`, one entry per batch,
-    regardless of whether it's a binary ``__b64__`` blob (one flat buffer
-    covering all batches) or an already-batched plain list. Used so that
-    inputs mixing binary and plain-list encoding can still be concatenated --
-    each file's field is decoded independently rather than branching on a
-    single file's encoding.
+    regardless of whether it's a binary ``__b64__`` blob or an already-batched
+    plain list. Used so that inputs mixing binary and plain-list encoding can
+    still be concatenated -- each file's field is decoded independently rather
+    than branching on a single file's encoding.
+
+    A blob's row layout is resolved by its length against the known per-row
+    size (`resolution * vector_width` floats): a singleton terrain ships one
+    shared row (replicated out to `batch_size` here), while per-batch (or
+    legacy broadcast-singleton) data holds `batch_size` rows.
 
     A decoded ``__b64__`` blob is flat, so a vector-valued field (normals:
     `vector_width=3`) needs its per-batch chunk grouped into width-wide
@@ -97,13 +104,23 @@ def _decode_per_batch(
         # always a `list` at this point.
         assert isinstance(value, list)
         return value
-    width = len(flat) // batch_size
-    rows = [list(flat[i : i + width]) for i in range(0, len(flat), width)]
+    per_row = resolution * (vector_width or 1)
+    if len(flat) == per_row:
+        # One shared row (deduplicated singleton terrain).
+        chunks = [list(flat)] * batch_size
+    elif len(flat) == batch_size * per_row:
+        chunks = [list(flat[i : i + per_row]) for i in range(0, len(flat), per_row)]
+    else:
+        raise ValueError(
+            f"terrain blob has {len(flat)} floats; expected {per_row} (one "
+            f"shared row) or {batch_size * per_row} ({batch_size} batches "
+            f"x {per_row})"
+        )
     if vector_width is None:
-        return rows
+        return chunks
     return [
         [row[i : i + vector_width] for i in range(0, len(row), vector_width)]
-        for row in rows
+        for row in chunks
     ]
 
 
@@ -174,15 +191,11 @@ def _validate_doc(doc: dict, label: str) -> None:
 def _expand_batched(
     values: list | str, is_singleton: bool, batch_size: int, field: str, label: str
 ) -> list | str:
-    # A __b64__ blob's decoded length is always taken to span batch_size rows
-    # (see _decode_per_batch, and Terrain.js's identical convention on the
-    # viewer side) regardless of isSingleton. Singleton data is nominally a
-    # single shared entry, but the only producer that ever sets isSingleton on
-    # terrain (SimViewModel.create_terrain) already broadcasts it out to
-    # batch_size rows before encoding, so the blob is never a lone unbroadcast
-    # row that needs expanding here -- doing so would double it to
-    # batch_size^2 rows. Leave b64 blobs untouched; only plain lists (where the
-    # row count is directly observable) may need broadcasting below.
+    # b64 blobs pass through untouched: _decode_per_batch resolves their row
+    # layout by length (one shared row for a deduplicated singleton terrain,
+    # or batch_size rows for per-batch / legacy broadcast-singleton data) and
+    # replicates the shared case itself. Only plain lists (where the row count
+    # is directly observable) may need broadcasting below.
     if isinstance(values, str) and values.startswith("__b64__"):
         return values
 
@@ -418,6 +431,8 @@ def _merge_terrain(
                 name,
             )
 
+    resolution = int(dims["resolutionX"]) * int(dims["resolutionY"])
+
     def _concat_lists_or_b64(
         items: list[tuple], vector_width: int | None = None
     ) -> list | None:
@@ -429,7 +444,9 @@ def _merge_terrain(
             return None
         merged = []
         for value, batch_size in items:
-            merged.extend(_decode_per_batch(value, batch_size, vector_width))
+            merged.extend(
+                _decode_per_batch(value, batch_size, resolution, vector_width)
+            )
         return merged
 
     height_data, normals = [], []
@@ -501,7 +518,6 @@ def _merge_terrain(
         "normals": _concat_lists_or_b64(normals, vector_width=3),
         "properties": merged_properties,
     }
-    resolution = int(dims["resolutionX"]) * int(dims["resolutionY"])
     embedding = _merge_embedding(models, batch_sizes, labels, resolution)
     if embedding is not None:
         merged["embeddingData"] = embedding

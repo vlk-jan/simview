@@ -112,7 +112,7 @@ def test_create_terrain_embedding_map_batch_dim_validation():
         )
 
 
-def test_create_terrain_embedding_map_broadcasts_shared_batch():
+def test_create_terrain_embedding_map_shared_batch_ships_one_copy():
     res, K, B = 3, 2, 3
     scene = SimulationScene(batch_size=B, scalar_names=[], dt=0.1)
     heights = torch.zeros(1, res, res)
@@ -122,9 +122,11 @@ def test_create_terrain_embedding_map_broadcasts_shared_batch():
     )
     terrain = scene.model.terrain
     assert terrain is not None
+    assert terrain.is_singleton is True
     assert isinstance(terrain.embedding_data, str)
+    # Fully-shared terrain data is deduplicated: one copy, not batch_size.
     decoded = _flat(terrain.embedding_data)
-    assert len(decoded) == B * res * res * K
+    assert len(decoded) == res * res * K
 
 
 def test_create_terrain_without_embedding_map_key_is_none():

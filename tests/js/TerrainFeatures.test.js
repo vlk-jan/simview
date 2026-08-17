@@ -34,7 +34,7 @@ function makeTerrainData({ embeddingData = null, batches = 1 } = {}) {
         dimensions: { sizeX: 1, sizeY: 1, resolutionX: RESOLUTION, resolutionY: RESOLUTION },
         heightData: new Float32Array(Array(batches).fill(height).flat()),
         normals: new Float32Array(
-            Array(RESOLUTION * RESOLUTION * batches)
+            Array(RESOLUTION * RESOLUTION * 3 * batches)
                 .fill(0)
                 .map((_, i) => (i % 3 === 2 ? 1 : 0))
         ),
@@ -172,5 +172,35 @@ describe("Terrain 'features' mode with multiple batches", () => {
         // (cos=-1) instead of matching (cos=1) -- the two batches' color
         // buffers must therefore differ.
         expect(attrBatch0).not.toEqual(attrBatch1);
+    });
+});
+
+describe("Terrain singleton embedding layouts", () => {
+    it("keeps K whole for a deduplicated singleton embedding (one shared row)", () => {
+        // One shared copy: 4 cells x K=2 = 8 floats, isSingleton=true. The
+        // total length divides by simBatches=2, but the halves differ, so it
+        // must be read as one K=2 row -- not two broadcast K=1 copies.
+        const data = makeTerrainData({
+            embeddingData: EMBEDDING_SINGLE_BATCH,
+            batches: 1,
+        });
+        data.isSingleton = true;
+        const terrain = new Terrain(data, fakeApp(2));
+        expect(terrain.embeddingDim).toBe(K);
+        expect(terrain.embeddingData.length).toBe(1);
+    });
+
+    it("splits a legacy broadcast singleton embedding (identical copies) per batch", () => {
+        const data = makeTerrainData({
+            embeddingData: new Float32Array([
+                ...EMBEDDING_SINGLE_BATCH,
+                ...EMBEDDING_SINGLE_BATCH,
+            ]),
+            batches: 2,
+        });
+        data.isSingleton = true;
+        const terrain = new Terrain(data, fakeApp(2));
+        expect(terrain.embeddingDim).toBe(K);
+        expect(terrain.embeddingData.length).toBe(2);
     });
 });

@@ -405,9 +405,9 @@ class SimViewServer:
         return {str(p.resolve()): p.stat().st_mtime for p in self.sim_paths}
 
     def _load_data(self):
-        preloaded = self._preloaded_data is not None
+        data = self._preloaded_data
+        preloaded = data is not None
         if preloaded:
-            data = self._preloaded_data
             self._preloaded_data = None  # allow it to be garbage-collected
         else:
             # __init__ requires sim_path and/or data; if we get here,

@@ -547,16 +547,19 @@ def test_merge_binary_normals_grouped_into_vec3_per_batch(tmp_path):
             assert vertex_normal[2] == pytest.approx(1.0)
 
 
-def test_merge_terrain_already_broadcast_singleton(tmp_path):
-    """SimViewModel.create_terrain, when batch_size > 1 and every terrain field
-    is shared (batch dim 1), sets isSingleton=True but still broadcasts the
-    encoded data out to batch_size rows (the viewer always splits terrain into
-    batch_size chunks). `_expand_batched`'s b64 singleton branch used to assume
-    isSingleton=True + batch_size>1 always means "one row, needs broadcasting",
-    and blindly repeated the blob batch_size times -- corrupting this
-    already-fully-replicated case into batch_size^2 rows crammed into
-    batch_size rows of double width. Cover both b64 (the default) and
-    plain-list encoding of this same already-broadcast-but-singleton shape."""
+def _tile_blob(value: str, copies: int) -> str:
+    """Re-encode a __b64__ blob with its payload repeated `copies` times, to
+    forge the legacy broadcast-singleton on-disk layout (files written before
+    shared terrain data was deduplicated)."""
+    flat = _decode_blob(value) * copies
+    return "__b64__" + base64.b64encode(struct.pack(f"<{len(flat)}f", *flat)).decode()
+
+
+def test_merge_terrain_legacy_broadcast_singleton(tmp_path):
+    """Files written before shared (singleton) terrain was deduplicated hold
+    batch_size identical copies of every field with isSingleton=True. Merge
+    must recognize them as batch_size rows (not one giant shared row) and not
+    re-broadcast. Cover both b64 and plain-list encoding of that shape."""
     resolution = 4
     row_width = resolution * resolution
 
@@ -567,18 +570,20 @@ def test_merge_terrain_already_broadcast_singleton(tmp_path):
         json.loads(path_a.read_text())["model"]["terrain"]["heightData"], 1
     )[0]
 
-    # build_scene(batch_size=2) shares terrain across both batches, so
-    # create_terrain marks it isSingleton=True but broadcasts heightData/
-    # normals to 2 rows before encoding -- exactly the trigger case.
+    # Forge the legacy layout: take a modern (single-copy) singleton file and
+    # tile every terrain blob out to 2 identical copies.
     scene_b = build_scene(batch_size=2)
     path_b_bin = tmp_path / "b_bin.json"
     scene_b.save(path_b_bin)
     data_b_bin = json.loads(path_b_bin.read_text())
     terrain_b_bin = data_b_bin["model"]["terrain"]
     assert terrain_b_bin["isSingleton"] is True
-    assert isinstance(terrain_b_bin["heightData"], str)
-    flat = _decode_blob(terrain_b_bin["heightData"])
-    assert len(flat) == 2 * row_width  # already broadcast to both batches
+    terrain_b_bin["heightData"] = _tile_blob(terrain_b_bin["heightData"], 2)
+    terrain_b_bin["normals"] = _tile_blob(terrain_b_bin["normals"], 2)
+    for prop in terrain_b_bin["properties"].values():
+        prop["data"] = _tile_blob(prop["data"], 2)
+    assert len(_decode_blob(terrain_b_bin["heightData"])) == 2 * row_width
+    path_b_bin.write_text(json.dumps(data_b_bin))
 
     # Same shape, but re-saved with plain-list encoding instead of b64.
     data_b_plain = json.loads(json.dumps(data_b_bin))
@@ -600,6 +605,44 @@ def test_merge_terrain_already_broadcast_singleton(tmp_path):
         assert height[0] == pytest.approx(expected_row)
         assert height[1] == pytest.approx(expected_row)
         assert height[2] == pytest.approx(expected_row)
+
+
+def test_merge_terrain_deduplicated_singleton(tmp_path):
+    """A modern singleton file ships exactly one shared copy of each terrain
+    field; merge must replicate that row out to the file's batch count."""
+    resolution = 4
+    row_width = resolution * resolution
+
+    scene_a = build_scene(batch_size=1)
+    path_a = tmp_path / "a.json"
+    scene_a.save(path_a)
+    expected_row = _decode_blob_per_batch(
+        json.loads(path_a.read_text())["model"]["terrain"]["heightData"], 1
+    )[0]
+
+    scene_b = build_scene(batch_size=2)
+    path_b = tmp_path / "b.json"
+    scene_b.save(path_b)
+    terrain_b = json.loads(path_b.read_text())["model"]["terrain"]
+    assert terrain_b["isSingleton"] is True
+    # One shared copy on disk, not batch_size copies.
+    assert len(_decode_blob(terrain_b["heightData"])) == row_width
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    assert merged["model"]["simBatches"] == 3
+    height = merged["model"]["terrain"]["heightData"]
+    assert len(height) == 3
+    for row in height:
+        assert row == pytest.approx(expected_row)
+    normals = merged["model"]["terrain"]["normals"]
+    assert len(normals) == 3
+    for batch in normals:
+        assert len(batch) == row_width  # grouped into per-vertex vec3s
+        assert all(len(vec) == 3 for vec in batch)
+    friction = merged["model"]["terrain"]["properties"]["friction"]["data"]
+    assert len(friction) == 3
+    assert all(len(row) == row_width for row in friction)
 
 
 def _build_embedding_scene(batch_size: int, k: int, fill: float) -> SimulationScene:

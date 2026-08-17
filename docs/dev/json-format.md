@@ -72,7 +72,11 @@ produces.
     named property's own value range lives on the property itself (see `properties`
     below), not here.
   - **`isSingleton`** *(boolean)* — `true` when one terrain is shared by all batches;
-    `false` when each batch has its own.
+    `false` when each batch has its own. A singleton terrain ships exactly **one**
+    copy of `heightData`/`normals`/each property's `data`/`embeddingData` (the
+    shared row is detected by its resolution-sized length); readers also still
+    accept the legacy layout where singleton data was broadcast to `simBatches`
+    identical copies.
   - **`heightData`** *(array[array[float]])* — one flattened `resolutionX * resolutionY`
     grid per batch (a single flat array is also accepted and treated as one batch).
   - **`normals`** *(array[array[array[3]]])* — per-batch surface normals, one `[x, y, z]`
@@ -256,8 +260,9 @@ in `model.bodies` and doesn't require or emit per-frame data for them.
 
 - **Batch Synchronization**
   Per-batch arrays (`bodyTransform`, `velocity`, scalar values, …) must have length `simBatches`.
-  When `terrain.isSingleton` is `true`, `heightData`/`normals` hold a single batch that is
-  reused for all instances.
+  When `terrain.isSingleton` is `true`, `heightData`/`normals` hold a single shared
+  copy that is reused for all instances (legacy files with `simBatches` identical
+  broadcast copies are still accepted).
 
 - **Contact Points**
   The `contacts` field lists point indices into a body's pointcloud `points` for each batch.
