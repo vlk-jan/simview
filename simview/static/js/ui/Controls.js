@@ -1,5 +1,4 @@
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
-import { SELECTION_CONFIG } from "../config.js";
 import { colorMapOptions } from "../../lib/js-colormaps.js";
 import { serializeViewState, toggleMapFromUiState } from "../utils/viewState.js";
 
@@ -648,7 +647,7 @@ export class UIControls {
                     case "arrowdown":
                     case "arrowleft":
                     case "arrowright":
-                        if (event[SELECTION_CONFIG.BATCH.key]) {
+                        if (event.shiftKey) {
                             this.changeTargetBatch(event.key.toLowerCase());
                             event.stopPropagation();
                         }

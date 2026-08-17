@@ -177,22 +177,6 @@ export const CONTACT_CONFIG = {
     },
 };
 
-export const SELECTION_CONFIG = {
-    BODIES: {
-        key: "ctrl",
-        set: "selectedBodies",
-        objects: "bodies",
-    },
-    CONTACT_POINTS: {
-        key: "Alt",
-        set: "selectedContactPoints",
-        objects: "contactPoints",
-    },
-    BATCH: {
-        key: "shiftKey",
-    },
-};
-
 export const RAYCAST_CONFIG = {
     // THREE.Raycaster's default Points.threshold is 1 world unit -- far too
     // generous at BODY_CONFIG.points.size (0.1), where it would make every
