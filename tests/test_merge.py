@@ -600,3 +600,118 @@ def test_merge_terrain_already_broadcast_singleton(tmp_path):
         assert height[0] == pytest.approx(expected_row)
         assert height[1] == pytest.approx(expected_row)
         assert height[2] == pytest.approx(expected_row)
+
+
+def _build_embedding_scene(batch_size: int, k: int, fill: float) -> SimulationScene:
+    """A scene whose terrain carries a K-wide per-cell embedding map filled
+    with `fill` (distinguishable per file in the merged output)."""
+    scene = build_scene(batch_size=batch_size)
+    scene.model.terrain = (
+        None  # replace build_scene's terrain with one that has an embedding
+    )
+    resolution = 4
+    heights = torch.zeros(resolution, resolution)
+    friction = torch.full((resolution, resolution), 0.5)
+    stiffness = torch.full((resolution, resolution), 250000.0)
+    scene.create_terrain(
+        heightmap=heights,
+        x_lim=(-5, 5),
+        y_lim=(-5, 5),
+        properties={"friction": friction, "stiffness": stiffness},
+        embedding_map=torch.full((k, resolution, resolution), fill),
+    )
+    return scene
+
+
+def test_merge_concatenates_embedding_data(tmp_path):
+    resolution = 4
+    k = 2
+    scene_a = _build_embedding_scene(batch_size=1, k=k, fill=1.0)
+    scene_b = _build_embedding_scene(batch_size=1, k=k, fill=2.0)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    embedding = merged["model"]["terrain"]["embeddingData"]
+    flat = _decode_blob(embedding)
+    per_batch = resolution * resolution * k
+    assert len(flat) == 2 * per_batch
+    assert all(v == pytest.approx(1.0) for v in flat[:per_batch])
+    assert all(v == pytest.approx(2.0) for v in flat[per_batch:])
+
+
+def test_merge_drops_embedding_when_not_in_all_files(tmp_path, caplog):
+    scene_a = _build_embedding_scene(batch_size=1, k=2, fill=1.0)
+    scene_b = build_scene(batch_size=1)  # no embedding
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    with caplog.at_level("WARNING", logger="simview.merge"):
+        merged = merge_simulation_files([path_a, path_b])
+
+    assert "embeddingData" not in merged["model"]["terrain"]
+    assert any("embeddingData" in r.message for r in caplog.records)
+
+
+def test_merge_drops_embedding_on_width_mismatch(tmp_path, caplog):
+    scene_a = _build_embedding_scene(batch_size=1, k=2, fill=1.0)
+    scene_b = _build_embedding_scene(batch_size=1, k=3, fill=2.0)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    with caplog.at_level("WARNING", logger="simview.merge"):
+        merged = merge_simulation_files([path_a, path_b])
+
+    assert "embeddingData" not in merged["model"]["terrain"]
+    assert any("widths differ" in r.message for r in caplog.records)
+
+
+def test_merge_carries_metadata_per_source(tmp_path):
+    scene_a = build_scene(batch_size=1)
+    scene_a.model.metadata = {"engine": "real", "run": 1}
+    scene_b = build_scene(batch_size=1)  # no metadata
+    scene_c = build_scene(batch_size=1)
+    scene_c.model.metadata = {"engine": "sim"}
+    path_a, path_b, path_c = (tmp_path / f"{n}.json" for n in "abc")
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    scene_c.save(path_c)
+
+    merged = merge_simulation_files([path_a, path_b, path_c])
+
+    assert merged["model"]["metadata"] == {
+        "sources": {"a.json": {"engine": "real", "run": 1}, "c.json": {"engine": "sim"}}
+    }
+
+
+def test_merge_no_metadata_key_when_no_source_has_any(tmp_path):
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=1)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    assert "metadata" not in merged["model"]
+
+
+def test_merge_mismatched_terrain_xy_bounds_raises(tmp_path):
+    """Same grid resolution/size but a different origin must be rejected --
+    it would merge into spatially misaligned batches otherwise."""
+    scene_a = build_scene(batch_size=1)
+    path_a = tmp_path / "a.json"
+    scene_a.save(path_a)
+
+    data = json.loads(path_a.read_text())
+    data["model"]["terrain"]["bounds"]["minX"] += 3.0
+    data["model"]["terrain"]["bounds"]["maxX"] += 3.0
+    path_b = tmp_path / "b.json"
+    path_b.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError, match="x/y bounds"):
+        merge_simulation_files([path_a, path_b])

@@ -53,6 +53,14 @@ def _decode_b64_floats(value) -> tuple[float, ...] | None:
     return struct.unpack(f"<{len(raw) // 4}f", raw)
 
 
+def _encode_b64_floats(flat: list[float]) -> str:
+    """Inverse of `_decode_b64_floats`: pack a flat float list as a
+    little-endian float32 ``__b64__`` blob string."""
+    return "__b64__" + base64.b64encode(struct.pack(f"<{len(flat)}f", *flat)).decode(
+        "ascii"
+    )
+
+
 def _decode_state_field(value, width: int):
     """Expand a binary ``__b64__`` per-body state field to a list of per-batch
     rows. Plain lists pass through unchanged, so merged output is always JSON
@@ -278,17 +286,113 @@ def _merge_static_objects(
     return merged
 
 
+def _merge_embedding(
+    models: list[dict], batch_sizes: list[int], labels: list[str], resolution: int
+) -> str | None:
+    """Concatenate the per-batch terrain `embeddingData` of every file into a
+    single ``__b64__`` blob (the encoding the viewer's Terrain.js splits per
+    batch), or return None (dropping it with a warning, mirroring the
+    all-or-nothing rule named properties use) when only some files have it or
+    their per-cell widths (K) differ.
+
+    K isn't shipped explicitly anywhere (the viewer infers it from the flat
+    length), so each file's layout is resolved from its length: a per-batch
+    blob holds `batch_size * resolution * K` floats; a singleton file may
+    instead hold one shared `resolution * K` row (or, for files written
+    before shared terrain stopped being broadcast, `batch_size` identical
+    copies of it)."""
+    values = [m["terrain"].get("embeddingData") for m in models]
+    if all(v is None for v in values):
+        return None
+    if any(v is None for v in values):
+        logger.warning(
+            "Not all files provide terrain embeddingData; dropping it from "
+            "the merged terrain."
+        )
+        return None
+
+    per_file_rows: list[list[list[float]]] = []
+    widths: list[int] = []
+    for model, value, batch_size, label in zip(models, values, batch_sizes, labels):
+        flat = _decode_b64_floats(value)
+        if flat is None:
+            # Real producers always blob-encode embeddings; a plain list is
+            # a flat single-batch array (see Terrain.js #initEmbeddingData).
+            flat = tuple(float(x) for x in value)
+        if len(flat) % resolution != 0:
+            raise ValueError(
+                f"'{label}': embeddingData has {len(flat)} floats, not a "
+                f"multiple of the terrain resolution ({resolution})."
+            )
+        singleton = model["terrain"].get("isSingleton", False)
+        per_batch = len(flat) // batch_size if len(flat) % batch_size == 0 else None
+        if singleton:
+            if per_batch is None or per_batch % resolution != 0:
+                # Genuinely one shared row that batch_size doesn't divide into.
+                rows = [list(flat)] * batch_size
+            else:
+                # Ambiguous: could be one shared row or batch_size broadcast
+                # copies (the pre-singleton-dedup format). Identical chunks
+                # mean broadcast copies; otherwise the whole thing is one row.
+                chunks = [
+                    list(flat[i : i + per_batch])
+                    for i in range(0, len(flat), per_batch)
+                ]
+                if all(c == chunks[0] for c in chunks):
+                    rows = [chunks[0]] * batch_size
+                else:
+                    rows = [list(flat)] * batch_size
+        else:
+            if per_batch is None:
+                raise ValueError(
+                    f"'{label}': embeddingData has {len(flat)} floats; not "
+                    f"divisible into {batch_size} batches."
+                )
+            rows = [
+                list(flat[i : i + per_batch]) for i in range(0, len(flat), per_batch)
+            ]
+        per_file_rows.append(rows)
+        widths.append(len(rows[0]) // resolution)
+
+    if len(set(widths)) > 1:
+        logger.warning(
+            "Terrain embeddingData widths differ across files (%s); dropping "
+            "it from the merged terrain.",
+            dict(zip(labels, widths)),
+        )
+        return None
+
+    merged_flat: list[float] = []
+    for rows in per_file_rows:
+        for row in rows:
+            merged_flat.extend(row)
+    return _encode_b64_floats(merged_flat)
+
+
 def _merge_terrain(
     models: list[dict], batch_sizes: list[int], labels: list[str]
 ) -> dict:
     first_terrain = models[0]["terrain"]
     dims = first_terrain["dimensions"]
+    # The x/y extent must match too, not just the grid resolution: two
+    # terrains of the same size/resolution but different origins would merge
+    # into spatially misaligned batches with no error anywhere. minZ/maxZ are
+    # legitimately per-file (merged via min/max below), so only x/y bounds
+    # are required to be identical.
+    xy_bounds_keys = ("minX", "maxX", "minY", "maxY")
+    first_xy = {k: first_terrain["bounds"][k] for k in xy_bounds_keys}
     for model, label in zip(models[1:], labels[1:]):
         other_dims = model["terrain"]["dimensions"]
         if other_dims != dims:
             raise ValueError(
                 f"'{label}' terrain dimensions {other_dims} do not match "
                 f"'{labels[0]}' dimensions {dims}."
+            )
+        other_xy = {k: model["terrain"]["bounds"][k] for k in xy_bounds_keys}
+        if other_xy != first_xy:
+            raise ValueError(
+                f"'{label}' terrain x/y bounds {other_xy} do not match "
+                f"'{labels[0]}' bounds {first_xy}."
             )
 
     # Union of property names across all files, in first-seen order. A property
@@ -389,7 +493,7 @@ def _merge_terrain(
         for name in kept_properties
     }
 
-    return {
+    merged = {
         "dimensions": dims,
         "bounds": merged_bounds,
         "isSingleton": False,
@@ -397,6 +501,11 @@ def _merge_terrain(
         "normals": _concat_lists_or_b64(normals, vector_width=3),
         "properties": merged_properties,
     }
+    resolution = int(dims["resolutionX"]) * int(dims["resolutionY"])
+    embedding = _merge_embedding(models, batch_sizes, labels, resolution)
+    if embedding is not None:
+        merged["embeddingData"] = embedding
+    return merged
 
 
 def _nearest_index(sorted_times: list[float], t: float) -> int:
@@ -579,4 +688,14 @@ def merge_simulation_files(paths: Sequence[str | Path]) -> dict:
         "bodies": bodies,
         "staticObjects": static_objects,
     }
+    # Keep every input's run provenance (engine, checkpoint, git commit, ...)
+    # instead of silently dropping it -- namespaced per source file since the
+    # inputs may come from entirely different runs.
+    source_metadata = {
+        label: model["metadata"]
+        for model, label in zip(models, labels)
+        if model.get("metadata") is not None
+    }
+    if source_metadata:
+        merged_model["metadata"] = {"sources": source_metadata}
     return {"model": merged_model, "states": merged_states}
