@@ -44,7 +44,9 @@ export function decodeStateField(str, width) {
     const bin = atob(str.slice(7)); // strip "__b64__"
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const floats = new Float32Array(bytes.buffer);
+    // Route through decodeFloat32Blob for the same big-endian fallback the
+    // standalone-blob path gets, instead of reinterpreting bytes directly.
+    const floats = decodeFloat32Blob(bytes.buffer);
     const rows = new Array(floats.length / width);
     for (let r = 0; r < rows.length; r++) {
         const row = new Array(width);
