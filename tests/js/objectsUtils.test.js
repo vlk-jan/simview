@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createContactPoints, createPoints } from "../../simview/static/js/objects/utils.js";
+import {
+    createContactPoints,
+    createGeometry,
+    createPoints,
+} from "../../simview/static/js/objects/utils.js";
 
 // Regression coverage for the bug this session found: blob-decoded point
 // data (SimView.js::fetchBlobs) arrives as a flat Float32Array with no
@@ -56,6 +60,55 @@ describe("createPoints", () => {
         const points = createPoints(new Float32Array([0, 0, 0]), {});
         expect(points.geometry.getAttribute("color")).toBeUndefined();
         expect(points.material.vertexColors).toBe(false);
+    });
+});
+
+describe("createGeometry (mesh)", () => {
+    // Tensor-authored meshes always arrive blob-decoded as flat Float32Arrays
+    // (SimViewBody._create_shape_dict encodes any multi-element tensor), so
+    // this is the shape every real create_mesh() body hits -- it used to
+    // crash on `shape.vertices.flat()`, which TypedArrays don't have.
+    it("accepts blob-decoded Float32Array vertices/faces without throwing", () => {
+        const shape = {
+            type: "mesh",
+            vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            // Faces decode as float32 too (the blob codec is float32-only).
+            faces: new Float32Array([0, 1, 2]),
+        };
+        const geometry = createGeometry(shape, {});
+        expect(geometry).not.toBeNull();
+        expect(Array.from(geometry.getAttribute("position").array)).toEqual([
+            0, 0, 0, 1, 0, 0, 0, 1, 0,
+        ]);
+        expect(Array.from(geometry.getIndex().array)).toEqual([0, 1, 2]);
+    });
+
+    it("still accepts hand-authored nested-list vertices/faces", () => {
+        const shape = {
+            type: "mesh",
+            vertices: [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+            ],
+            faces: [[0, 1, 2]],
+        };
+        const geometry = createGeometry(shape, {});
+        expect(geometry).not.toBeNull();
+        expect(Array.from(geometry.getIndex().array)).toEqual([0, 1, 2]);
+    });
+
+    it("uses a Uint32 index so vertex indices past 65535 don't wrap", () => {
+        const shape = {
+            type: "mesh",
+            vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            faces: new Float32Array([0, 1, 70000]),
+        };
+        const geometry = createGeometry(shape, {});
+        const index = geometry.getIndex().array;
+        expect(index).toBeInstanceOf(Uint32Array);
+        // A Uint16 buffer would have silently stored 70000 % 65536 = 4464.
+        expect(index[2]).toBe(70000);
     });
 });
 
