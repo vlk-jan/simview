@@ -85,6 +85,34 @@ def test_context_manager_stops_server_and_frees_port():
     assert _port_is_free(host, port)
 
 
+def test_show_does_not_mutate_the_scene_model():
+    """Serving an in-memory scene must not rewrite its blob-encoded shape data
+    in place (regression: extract_blobs replaced `__b64__` strings with
+    server-local "/blob/..." URLs inside the live scene's shape dicts, so a
+    later scene.save() wrote dead references and a second show() served stale
+    blob URLs)."""
+    torch = pytest.importorskip("torch")
+    scene = build_scene(batch_size=1)
+    scene.create_pointcloud("cloud", torch.rand(5, 3))
+    points_before = scene.model.bodies["cloud"].shape["points"]
+    assert isinstance(points_before, str) and points_before.startswith("__b64__")
+
+    with scene.show(preferred_port=6015):
+        pass
+
+    assert scene.model.bodies["cloud"].shape["points"] == points_before
+
+    # A second show() must serve the original blob data, not a stale URL.
+    with scene.show(preferred_port=6016) as handle:
+        model = httpx.get(f"{handle.url}/model", timeout=5.0).json()
+        cloud = next(b for b in model["bodies"] if b["name"] == "cloud")
+        blob_url = cloud["shape"]["points"]
+        assert blob_url.startswith("/blob/")
+        blob_resp = httpx.get(f"{handle.url}{blob_url}", timeout=5.0)
+        assert blob_resp.status_code == 200
+        assert len(blob_resp.content) == 5 * 3 * 4  # 5 points x 3 floats x 4 bytes
+
+
 def test_concurrent_shows_get_independent_ports():
     scene_a = build_scene(batch_size=1)
     scene_b = build_scene(batch_size=1)

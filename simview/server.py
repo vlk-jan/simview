@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import gzip
 import hashlib
 import json
@@ -404,7 +405,8 @@ class SimViewServer:
         return {str(p.resolve()): p.stat().st_mtime for p in self.sim_paths}
 
     def _load_data(self):
-        if self._preloaded_data is not None:
+        preloaded = self._preloaded_data is not None
+        if preloaded:
             data = self._preloaded_data
             self._preloaded_data = None  # allow it to be garbage-collected
         else:
@@ -418,6 +420,18 @@ class SimViewServer:
 
         model_data = data.get("model")
         states_data = data.get("states")
+
+        # In-memory callers (SimulationScene.show, LiveViewer, SimViewLauncher)
+        # hand over dicts that still share structure with the live scene --
+        # SimViewBody.to_json() returns `shape` by reference, for example.
+        # extract_blobs below rewrites `__b64__` strings in place, which would
+        # otherwise corrupt the caller's scene (a later scene.save() would
+        # write dead "/blob/..." URLs, and a second show() would serve stale
+        # blob references). Deep-copying just the model is cheap: the big
+        # payloads are immutable blob strings, which deepcopy shares rather
+        # than duplicating. `states` is never mutated, so it isn't copied.
+        if preloaded and model_data is not None:
+            model_data = copy.deepcopy(model_data)
 
         names_path = self._names_sidecar_path()
         if model_data is not None and names_path and names_path.is_file():
