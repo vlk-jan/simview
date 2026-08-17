@@ -180,6 +180,12 @@ export class SimView {
         await Promise.all(
             refs.map(async ({ container, key, url }) => {
                 const res = await fetch(url);
+                // Without this check a 404/500 body (an error page) would be
+                // silently reinterpreted as float32 data, corrupting whatever
+                // geometry/trajectory referenced this blob.
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch blob ${url}: ${res.status} ${res.statusText}`);
+                }
                 const arrayBuffer = await res.arrayBuffer();
                 container[key] = SimView.decodeFloat32Blob(arrayBuffer);
             })
