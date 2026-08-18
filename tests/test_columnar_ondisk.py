@@ -284,3 +284,97 @@ def test_expand_carries_contacts_and_scalars():
     assert "contacts" not in states[1]["bodies"][0]
     assert states[0]["energy"] == [5.0]
     assert states[1]["energy"] == [6.0]
+
+
+# --- Ranged blob fetches (windowed state loading) --------------------------
+#
+# The viewer windows a long trajectory's blobs instead of pulling whole
+# (T, B, k) runs into memory; that needs the blob endpoint to honor Range.
+# See simview/server.py::_parse_byte_range and static/js/utils/blobWindow.js.
+
+
+def _blob_url(client) -> str:
+    states = client.get("/states").json()
+    return states["bodies"][0]["fields"]["bodyTransform"]
+
+
+def _columnar_client(tmp_path):
+    path = tmp_path / "sim.json"
+    build_scene(batch_size=2).save(path)
+    return TestClient(SimViewServer(sim_path=path).app)
+
+
+def test_blob_endpoint_advertises_range_support(tmp_path):
+    with _columnar_client(tmp_path) as client:
+        response = client.get(_blob_url(client))
+        assert response.status_code == 200
+        assert response.headers["accept-ranges"] == "bytes"
+
+
+def test_blob_endpoint_serves_a_byte_range(tmp_path):
+    with _columnar_client(tmp_path) as client:
+        url = _blob_url(client)
+        whole = client.get(url).content
+        # One frame of (B=2, 7) float32 = 56 bytes; take the second frame.
+        response = client.get(url, headers={"Range": "bytes=56-111"})
+
+        assert response.status_code == 206
+        assert response.content == whole[56:112]
+        assert response.headers["content-range"] == f"bytes 56-111/{len(whole)}"
+
+
+def test_open_ended_and_suffix_ranges(tmp_path):
+    with _columnar_client(tmp_path) as client:
+        url = _blob_url(client)
+        whole = client.get(url).content
+
+        open_ended = client.get(url, headers={"Range": "bytes=56-"})
+        assert open_ended.status_code == 206
+        assert open_ended.content == whole[56:]
+
+        suffix = client.get(url, headers={"Range": "bytes=-56"})
+        assert suffix.status_code == 206
+        assert suffix.content == whole[-56:]
+
+
+def test_range_past_the_end_is_unsatisfiable(tmp_path):
+    with _columnar_client(tmp_path) as client:
+        url = _blob_url(client)
+        size = len(client.get(url).content)
+
+        response = client.get(url, headers={"Range": f"bytes={size}-{size + 10}"})
+
+        assert response.status_code == 416
+        assert response.headers["content-range"] == f"bytes */{size}"
+
+
+def test_a_range_that_overruns_the_end_is_clamped(tmp_path):
+    with _columnar_client(tmp_path) as client:
+        url = _blob_url(client)
+        whole = client.get(url).content
+
+        response = client.get(url, headers={"Range": f"bytes=56-{len(whole) + 999}"})
+
+        assert response.status_code == 206
+        assert response.content == whole[56:]
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "",
+        "bytes=",
+        "bytes=abc-def",
+        "items=0-10",  # a unit we don't serve
+        "bytes=0-10, 20-30",  # multi-range
+    ],
+)
+def test_unusable_range_headers_fall_back_to_the_whole_blob(tmp_path, header):
+    with _columnar_client(tmp_path) as client:
+        url = _blob_url(client)
+        whole = client.get(url).content
+
+        response = client.get(url, headers={"Range": header})
+
+        assert response.status_code == 200
+        assert response.content == whole

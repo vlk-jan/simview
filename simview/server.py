@@ -65,6 +65,49 @@ _LIVE_FRAME_BUFFER_MAXLEN = 10_000
 _CATCHUP_CHUNK_SIZE = 500
 
 
+class _RangeNotSatisfiable(Exception):
+    """A well-formed Range that lies outside the blob -- answered with 416,
+    as opposed to an absent/unusable one, which just serves the whole thing."""
+
+
+def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
+    """Parse a `Range: bytes=...` header into an inclusive `(start, end)`.
+
+    Returns None when there's no range to honor (absent, malformed, or a unit
+    other than bytes -- RFC 9110 says to ignore those and serve the whole
+    representation), and raises `_RangeNotSatisfiable` when the range is
+    well-formed but lies outside the blob.
+
+    Only the single-range forms the viewer actually sends are supported
+    (`bytes=start-end`, `bytes=start-`, `bytes=-suffix`); a multi-range request
+    is ignored rather than answered with a multipart body.
+    """
+    if not header or size == 0:
+        return None
+    unit, _, spec = header.partition("=")
+    if unit.strip().lower() != "bytes" or "," in spec:
+        return None
+    start_text, sep, end_text = spec.strip().partition("-")
+    if not sep:
+        return None
+
+    try:
+        if not start_text:
+            # Suffix range: the last N bytes.
+            suffix = int(end_text)
+            if suffix <= 0:
+                raise _RangeNotSatisfiable
+            return max(0, size - suffix), size - 1
+        start = int(start_text)
+        end = int(end_text) if end_text else size - 1
+    except ValueError:
+        return None
+
+    if start < 0 or start >= size or end < start:
+        raise _RangeNotSatisfiable
+    return start, min(end, size - 1)
+
+
 class BatchNamesRequest(BaseModel):
     names: list[str]
 
@@ -372,13 +415,40 @@ class SimViewServer:
             )
 
         @self.app.get("/blob/{token}/{blob_id}")
-        async def get_blob(token: str, blob_id: int):
+        async def get_blob(token: str, blob_id: int, request: Request):
             if token != self._blob_token or not (0 <= blob_id < len(self.blobs)):
                 return Response(status_code=404)
+            blob = self.blobs[blob_id]
+            headers = {
+                "Cache-Control": "public, max-age=31536000, immutable",
+                # Advertised so the viewer knows it can window a long
+                # trajectory's blobs instead of pulling whole (T, B, k) runs
+                # into memory -- see static/js/utils/blobWindow.js.
+                "Accept-Ranges": "bytes",
+            }
+
+            try:
+                byte_range = _parse_byte_range(request.headers.get("range"), len(blob))
+            except _RangeNotSatisfiable:
+                return Response(
+                    status_code=416,
+                    headers={**headers, "Content-Range": f"bytes */{len(blob)}"},
+                )
+            if byte_range is not None:
+                start, end = byte_range  # inclusive end, per RFC 9110
+                return Response(
+                    content=blob[start : end + 1],
+                    status_code=206,
+                    media_type="application/octet-stream",
+                    headers={
+                        **headers,
+                        "Content-Range": f"bytes {start}-{end}/{len(blob)}",
+                    },
+                )
             return Response(
-                content=self.blobs[blob_id],
+                content=blob,
                 media_type="application/octet-stream",
-                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+                headers=headers,
             )
 
         @self.app.post("/batch-names")

@@ -108,7 +108,9 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   frames auto-scroll playback), `terrainSample.js` (bilinear terrain layer sampling for
   the Analysis panel's Terrain tab, plus `hasBodyTrajectory` gating whether that tab
   shows up for a given body), `episodes.js` (episode segments, navigation and
-  per-episode aggregates), `batchVisibility.js` (which batches get built and drawn).
+  per-episode aggregates), `batchVisibility.js` (which batches get built and drawn),
+  `blobWindow.js` (window arithmetic for range-fetching a long trajectory's field blobs,
+  used by `components/WindowedField.js`).
 
 ### Vendored third-party libraries
 

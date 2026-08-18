@@ -174,6 +174,14 @@ legacy array, or `columnar=True` to fail loudly rather than fall back. Both layo
 read transparently by `SimulationScene.load`, `merge_simulation_files`, `simview
 info`/`diff`/`terrain`, and the viewer.
 
+!!! note "Range requests"
+    Blobs are served with `Accept-Ranges: bytes`, so the viewer can fetch a slice of a
+    field rather than the whole thing. It uses this for long trajectories: the per-body
+    vector fields (`velocity`, `angularVelocity`, `force`, `torque`) are only ever read
+    for the frame on screen, so above 8 MB they're streamed in windows around the
+    playhead. `bodyTransform` and the scalars are always fetched whole — trails, the
+    error metrics, the terrain profile and the scalar plots all walk every frame of them.
+
 !!! note "Over the wire vs. on disk"
     The two are the same document; only how a blob is referenced differs. On disk it's an
     inline `"__b64__<base64>"` string, exactly like the per-frame binary fields; over HTTP

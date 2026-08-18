@@ -24,6 +24,8 @@ import {
     STATE_FIELD_WIDTHS,
 } from "./utils/blobCodec.js";
 import { StateStore } from "./components/StateStore.js";
+import { WindowedField } from "./components/WindowedField.js";
+import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
 import { parseViewState } from "./utils/viewState.js";
 
@@ -125,6 +127,10 @@ export class SimView {
                 // a lightweight index plus /blob/... URLs for the actual
                 // whole-trajectory float32 data, fetched in parallel below.
                 console.debug(`Received ${statesPayload.times.length} states (columnar)`);
+                // Long trajectories: swap the biggest current-frame-only
+                // fields for windowed readers before the bulk fetch, so they
+                // are never materialized in full (see utils/blobWindow.js).
+                this.windowLargeStateFields(statesPayload);
                 console.time("fetch_state_blobs");
                 await this.fetchBlobs(statesPayload);
                 console.timeEnd("fetch_state_blobs");
@@ -148,6 +154,47 @@ export class SimView {
         }
     }
 
+    // Replaces the blob URL of every large, current-frame-only per-body field
+    // with a WindowedField, so fetchBlobs skips it and it's read in windows
+    // around the playhead instead. Static demo mode is excluded: it serves
+    // pre-dumped flat files with no Range support.
+    //
+    // bodyTransform, contacts and the scalars are deliberately untouched --
+    // trails, error metrics, the terrain profile and the scalar plots all walk
+    // the whole trajectory, so windowing those would just move the cost.
+    windowLargeStateFields(statesPayload) {
+        if (this.staticBase) return;
+        const totalFrames = statesPayload.times.length;
+        const batchCount = this.batchManager.simBatches;
+        // Overridable so tests can exercise windowing without a fixture big
+        // enough to cross the real threshold (same spirit as
+        // window.__debugSimView); undefined in normal use.
+        const threshold = window.__simviewWindowThresholdBytes;
+
+        let windowed = 0;
+        for (const body of statesPayload.bodies || []) {
+            for (const field of Object.keys(body.fields || {})) {
+                const url = body.fields[field];
+                const width = STATE_FIELD_WIDTHS[field];
+                if (typeof url !== "string" || !width) continue;
+                const totalBytes = totalFrames * bytesPerFrame(batchCount, width);
+                if (!shouldWindowField(field, totalBytes, threshold)) continue;
+
+                body.fields[field] = new WindowedField(url, {
+                    totalFrames,
+                    batchCount,
+                    width,
+                });
+                windowed++;
+            }
+        }
+        if (windowed > 0) {
+            console.log(
+                `Windowing ${windowed} large state field(s) instead of loading them in full.`
+            );
+        }
+    }
+
     // Walks any JSON-shaped object/array (the model, or the columnar states
     // payload) collecting every "/blob/..." reference, then fetches them all
     // in parallel and replaces each in place with its decoded Float32Array --
@@ -162,6 +209,10 @@ export class SimView {
         const refs = [];
         const collect = (node) => {
             if (!node || typeof node !== 'object') return;
+            // A WindowedField holds its own blob URL and fetches ranges of it
+            // itself -- recursing in would "helpfully" replace that URL with
+            // the very full-blob download the windowing exists to avoid.
+            if (node instanceof WindowedField) return;
             for (const key of Object.keys(node)) {
                 const val = node[key];
                 if (typeof val === 'string' && val.startsWith('/blob/')) {

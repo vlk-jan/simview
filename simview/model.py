@@ -529,7 +529,9 @@ class SimViewEpisode:
                 f"Episode start_index must be an int, got {type(self.start_index).__name__}"
             )
         if self.start_index < 0:
-            raise ValueError(f"Episode start_index must be >= 0, got {self.start_index}")
+            raise ValueError(
+                f"Episode start_index must be >= 0, got {self.start_index}"
+            )
 
     def to_json(self) -> dict:
         r: dict = {"startIndex": self.start_index}

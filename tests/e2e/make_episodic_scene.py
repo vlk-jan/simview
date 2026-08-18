@@ -47,7 +47,9 @@ def main() -> None:
         quat[..., 0] = 1.0
         # A per-episode reward ramp, so the plotter's per-episode aggregates
         # differ between episodes rather than all coming out identical.
-        reward = (steps[:, None] * (episode + 1) / FRAMES_PER_EPISODE).repeat(1, BATCHES)
+        reward = (steps[:, None] * (episode + 1) / FRAMES_PER_EPISODE).repeat(
+            1, BATCHES
+        )
 
         offset = episode * FRAMES_PER_EPISODE
         scene.add_trajectory(

@@ -22,12 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bar, adds |◀ / ▶| navigation (`[` / `]`), and overlays per-episode aggregates
   (including the episode return) on the scalar plots. See
   [Episodes](https://vlk-jan.github.io/simview/usage/episodes/).
-
 - **Focused-batch rendering.** Above 32 batches the viewer now draws only the focused
   batch by default, and builds each batch's per-batch scene objects (axes, arrows,
   point clouds, contact points) the first time it's rendered rather than all up front —
   so a scene with hundreds of parallel envs loads and runs like a single-env one.
   Toggle with "Render All Batches" in Body Options.
+- **Windowed state loading.** The `/blob` endpoint now supports HTTP Range requests, and
+  the viewer uses them to stream the large current-frame-only fields (`velocity`,
+  `angularVelocity`, `force`, `torque`) in ~1 MB windows around the playhead instead of
+  materializing whole `(T, B, k)` runs. `bodyTransform` and the scalars stay fully
+  resident, since trails, error metrics, the terrain profile and the scalar plots all
+  walk the entire trajectory.
 
 ### Changed
 
