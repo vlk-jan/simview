@@ -243,3 +243,93 @@ describe("Body pointcloud color/embedding", () => {
         });
     });
 });
+
+// --- Trails --------------------------------------------------------------
+//
+// finalizeTrails() runs once per loaded chunk, which in live streaming means
+// once per pushed frame. It used to dispose and reallocate the whole trail
+// geometry every time, making a long live run O(T^2); these tests pin the
+// append-only behavior that replaced it.
+
+function trailApp(simBatches = 1, offset = { x: 0, y: 0, z: 0 }) {
+    const app = fakeApp(simBatches);
+    app.batchManager.getBatchOffset = () => offset;
+    app.batchManager.getColorForBatch = () => 0xffffff;
+    app.uiState.trailsVisible = true;
+    return app;
+}
+
+function pushFrame(body, stateIndex, x) {
+    body.appendHistoryPointAt(stateIndex, {
+        // (x, y, z, qw, qx, qy, qz)
+        bodyTransform: [[x, 2 * x, 3 * x, 1, 0, 0, 0]],
+    });
+    body.finalizeTrails();
+}
+
+describe("Body trails", () => {
+    it("appends into the existing geometry instead of rebuilding per chunk", () => {
+        const body = new Body(makePointcloudBodyData(), trailApp());
+
+        pushFrame(body, 0, 0);
+        pushFrame(body, 1, 1);
+        const geometry = body.trails[0].geometry;
+        const positions = geometry.getAttribute("position").array;
+
+        // 98 more frames, all within the initial 100-point history allocation.
+        for (let s = 2; s < 100; s++) pushFrame(body, s, s);
+
+        // Same geometry and same backing buffer throughout: no dispose/realloc.
+        expect(body.trails[0].geometry).toBe(geometry);
+        expect(body.trails[0].geometry.getAttribute("position").array).toBe(positions);
+    });
+
+    it("writes correct world positions for every appended point", () => {
+        const offset = { x: 10, y: 20, z: 30 };
+        const body = new Body(makePointcloudBodyData(), trailApp(1, offset));
+
+        for (let s = 0; s < 5; s++) pushFrame(body, s, s);
+
+        const positions = body.trails[0].geometry.getAttribute("position").array;
+        for (let s = 0; s < 5; s++) {
+            expect(positions[s * 3]).toBeCloseTo(s + offset.x);
+            expect(positions[s * 3 + 1]).toBeCloseTo(2 * s + offset.y);
+            expect(positions[s * 3 + 2]).toBeCloseTo(3 * s + offset.z);
+        }
+    });
+
+    it("preserves earlier points when the buffer has to grow", () => {
+        const body = new Body(makePointcloudBodyData(), trailApp());
+
+        // Cross the initial 100-state allocation, forcing exactly one regrow.
+        for (let s = 0; s < 150; s++) pushFrame(body, s, s);
+
+        const positions = body.trails[0].geometry.getAttribute("position").array;
+        expect(body.trails[0].geometry.getAttribute("position").count).toBeGreaterThanOrEqual(150);
+        for (const s of [0, 42, 99, 100, 149]) {
+            expect(positions[s * 3]).toBeCloseTo(s);
+            expect(positions[s * 3 + 1]).toBeCloseTo(2 * s);
+            expect(positions[s * 3 + 2]).toBeCloseTo(3 * s);
+        }
+    });
+
+    it("marks only the appended slice for re-upload", () => {
+        const body = new Body(makePointcloudBodyData(), trailApp());
+        for (let s = 0; s < 5; s++) pushFrame(body, s, s);
+
+        const attribute = body.trails[0].geometry.getAttribute("position");
+        attribute.clearUpdateRanges();
+        const versionBefore = attribute.version;
+        pushFrame(body, 5, 5);
+
+        // `needsUpdate` is write-only in THREE -- setting it bumps `version`.
+        expect(attribute.version).toBeGreaterThan(versionBefore);
+        expect(attribute.updateRanges).toEqual([{ start: 5 * 3, count: 3 }]);
+    });
+
+    it("does nothing until there are at least two points to draw", () => {
+        const body = new Body(makePointcloudBodyData(), trailApp());
+        pushFrame(body, 0, 0);
+        expect(body.trails.length).toBe(0);
+    });
+});

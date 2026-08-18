@@ -94,6 +94,10 @@ export class Body {
         this.quaternionHistory = [];
         this.trails = [];
         this._trailStateIndex = -1;
+        // Capacity of the trail position buffers, and how much of it has
+        // actually been written -- see finalizeTrails.
+        this._trailCapacity = 0;
+        this._trailFilledCount = 0;
     }
 
     // --- History (position/orientation over all states) ---
@@ -154,27 +158,60 @@ export class Body {
 
     // --- Trails ---
 
+    // Brings the trail lines up to date with `validStates`. Called once per
+    // loaded chunk, which in live mode means once per pushed frame -- so it
+    // must not do work proportional to the whole run each time, or a long live
+    // stream costs O(T^2) overall. It appends only the newly-recorded points
+    // into the existing buffers, and reallocates just when the geometry has
+    // none yet or is out of capacity (amortized O(1) per point, since the
+    // capacity follows positionHistory's doubling growth).
     finalizeTrails() {
-        this.disposeTrails();
         const count = this.validStates || 0;
         if (count < 2) return;
+        if (this.trails.length !== this.simBatches || this._trailCapacity < count) {
+            this._rebuildTrails(count);
+        } else {
+            this._appendTrailPoints(count);
+        }
+        this._trailStateIndex = -1;
+        const currentIndex = this.app.animationController
+            ? this.app.animationController.getCurrentStateIndex()
+            : 0;
+        this.updateTrails(currentIndex);
+    }
+
+    _batchOffset(batchIndex) {
+        return this.app.batchManager
+            ? this.app.batchManager.getBatchOffset(batchIndex)
+            : { x: 0, y: 0, z: 0 };
+    }
+
+    // Writes local history points [from, to) into a batch's world-space trail
+    // buffer. Batch offsets are fixed once BatchManager._initialize has run, so
+    // points written in an earlier pass stay valid.
+    _writeTrailPoints(worldPositions, batchIndex, from, to) {
+        const offset = this._batchOffset(batchIndex);
+        const localPositions = this.positionHistory[batchIndex];
+        for (let s = from; s < to; s++) {
+            const base = s * 3;
+            worldPositions[base] = localPositions[base] + offset.x;
+            worldPositions[base + 1] = localPositions[base + 1] + offset.y;
+            worldPositions[base + 2] = localPositions[base + 2] + offset.z;
+        }
+    }
+
+    _rebuildTrails(count) {
+        this.disposeTrails();
+        // Match positionHistory's allocation so the trail buffer only has to be
+        // rebuilt when that one grows (i.e. O(log T) times over a live run).
+        const capacity = Math.max(this.allocatedStates || 0, count);
         for (let i = 0; i < this.simBatches; i++) {
-            const offset = this.app.batchManager
-                ? this.app.batchManager.getBatchOffset(i)
-                : { x: 0, y: 0, z: 0 };
-            const localPositions = this.positionHistory[i];
-            const worldPositions = new Float32Array(count * 3);
-            for (let s = 0; s < count; s++) {
-                const base = s * 3;
-                worldPositions[base] = localPositions[base] + offset.x;
-                worldPositions[base + 1] = localPositions[base + 1] + offset.y;
-                worldPositions[base + 2] = localPositions[base + 2] + offset.z;
-            }
+            const worldPositions = new Float32Array(capacity * 3);
+            this._writeTrailPoints(worldPositions, i, 0, count);
             const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute(
-                "position",
-                new THREE.BufferAttribute(worldPositions, 3)
-            );
+            const attribute = new THREE.BufferAttribute(worldPositions, 3);
+            attribute.setUsage(THREE.DynamicDrawUsage);
+            geometry.setAttribute("position", attribute);
             geometry.setDrawRange(0, 1);
             const color = this.app.batchManager
                 ? this.app.batchManager.getColorForBatch(i)
@@ -190,11 +227,23 @@ export class Body {
             this.group.add(line);
             this.trails[i] = line;
         }
-        this._trailStateIndex = -1;
-        const currentIndex = this.app.animationController
-            ? this.app.animationController.getCurrentStateIndex()
-            : 0;
-        this.updateTrails(currentIndex);
+        this._trailCapacity = capacity;
+        this._trailFilledCount = count;
+    }
+
+    _appendTrailPoints(count) {
+        const from = this._trailFilledCount || 0;
+        if (count <= from) return;
+        for (let i = 0; i < this.simBatches; i++) {
+            const line = this.trails[i];
+            if (!line) continue;
+            const attribute = line.geometry.getAttribute("position");
+            this._writeTrailPoints(attribute.array, i, from, count);
+            // Re-upload only the appended slice rather than the whole buffer.
+            attribute.addUpdateRange(from * 3, (count - from) * 3);
+            attribute.needsUpdate = true;
+        }
+        this._trailFilledCount = count;
     }
 
     updateTrails(stateIndex) {
@@ -219,6 +268,8 @@ export class Body {
             }
         }
         this.trails = [];
+        this._trailCapacity = 0;
+        this._trailFilledCount = 0;
     }
 
     createBatchGroups(bodyData) {
