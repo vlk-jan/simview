@@ -116,6 +116,28 @@ def test_add_trajectory_numpy_times_and_scalars():
     assert scene.states[1]["energy"] == [1.0]
 
 
+def test_add_state_normalizes_zero_dim_scalar_tensors():
+    """A 0-dim tensor's .tolist() is a bare float, which merge (values.extend)
+    and the viewer's plots both choke on -- it must be stored as a list."""
+    scene = _base_scene(batch_size=1, scalar_names=["energy"])
+    pos = torch.tensor([[0.0, 0.0, 0.0]])
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+
+    scene.add_state(
+        0.0,
+        [SimViewBodyState("Box", pos, quat)],
+        scalar_values={"energy": torch.tensor(4.0)},
+    )
+    scene.add_state(
+        0.1,
+        [SimViewBodyState("Box", pos, quat)],
+        scalar_values={"energy": np.array(5.0, dtype=np.float32)},
+    )
+
+    assert scene.states[0]["energy"] == [4.0]
+    assert scene.states[1]["energy"] == [5.0]
+
+
 def test_add_state_numpy_position_orientation_and_velocity():
     pos = np.array([[1.0, 2.0, 3.0]], dtype=np.float32)
     quat = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)

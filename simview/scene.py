@@ -258,7 +258,14 @@ class SimulationScene:
             processed_scalars = {}
             for k, v in scalar_values.items():
                 if isinstance(v, (torch.Tensor, np.ndarray)):
-                    processed_scalars[k] = v.tolist()
+                    # A 0-dim tensor/array yields a bare float from .tolist().
+                    # Wrap it so every scalar is stored as a per-batch list --
+                    # consumers (merge's values.extend, the viewer's plots)
+                    # would otherwise choke on the odd frame out.
+                    as_list = v.tolist()
+                    processed_scalars[k] = (
+                        as_list if isinstance(as_list, list) else [as_list]
+                    )
                 elif isinstance(v, list):
                     processed_scalars[k] = v
                 else:
