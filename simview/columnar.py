@@ -70,8 +70,7 @@ def is_columnar(states_data: Any) -> bool:
     """True if `states_data` is a columnar states document rather than the
     legacy per-frame array."""
     return (
-        isinstance(states_data, dict)
-        and states_data.get("version") == COLUMNAR_VERSION
+        isinstance(states_data, dict) and states_data.get("version") == COLUMNAR_VERSION
     )
 
 
@@ -305,7 +304,7 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
         return None
 
 
-def expand_columnar_states(states_doc: dict, batch_size: int) -> list[dict]:
+def expand_columnar_states(states_doc: Any, batch_size: int) -> list[dict]:
     """Inverse of `columnarize_states`: rebuild the legacy per-frame array.
 
     Stdlib only (no numpy), so every reader -- `SimulationScene.load`,

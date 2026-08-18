@@ -7,6 +7,12 @@ from typing import Any
 import numpy as np
 import torch
 
+from .columnar import (
+    columnarize_states,
+    expand_columnar_states,
+    inline_blob,
+    is_columnar,
+)
 from .model import (
     BodyShapeType,  # If used directly by users of SimulationData for body creation
     OptionalBodyStateAttribute,  # If used directly
@@ -199,6 +205,11 @@ class SimulationScene:
         ``add_trajectory(binary=True)``) are left as-is, matching the on-disk
         wire format, so a subsequent `save()` reproduces the same bytes for
         those fields without a decode/re-encode round trip.
+
+        Accepts either `states` layout (see :mod:`simview.columnar`). A
+        columnar document is expanded back into the per-frame list `states`
+        is in memory, so every authoring API keeps working unchanged; the
+        expansion is exact, so re-saving columnar reproduces the same blobs.
         """
         try:
             model_dict = d["model"]
@@ -207,6 +218,8 @@ class SimulationScene:
             raise ValueError(f"Scene dict is missing required key: {e}") from e
 
         model = SimViewModel.from_dict(model_dict)
+        if is_columnar(states):
+            states = expand_columnar_states(states, model.batch_size)
         scene = cls(
             batch_size=model.batch_size,
             scalar_names=model.scalar_names,
@@ -408,7 +421,12 @@ class SimulationScene:
                 state[name] = arr[t].tolist()
             self.states.append(state)
 
-    def save(self, filepath: str | Path, compress: bool = False) -> None:
+    def save(
+        self,
+        filepath: str | Path,
+        compress: bool = False,
+        columnar: bool | None = None,
+    ) -> None:
         """
         Exports the complete simulation data (model and states) to a JSON file.
         Uses a streaming approach to reduce memory spikes for large simulations.
@@ -420,6 +438,19 @@ class SimulationScene:
                 simulations, which can reach 100+ MB as plain JSON). If
                 `filepath` doesn't already end in ``.gz``, the suffix is
                 appended so the extension reflects the actual file contents.
+            columnar: Which `states` layout to write (see
+                :mod:`simview.columnar`). ``None`` (the default) writes the
+                columnar layout when the states allow it and silently falls
+                back to the legacy per-frame array when they don't. ``True``
+                requires it, raising ValueError rather than falling back --
+                useful in a pipeline that depends on the smaller output.
+                ``False`` always writes the legacy array.
+
+        The columnar layout stores one whole-trajectory binary blob per body
+        per field instead of thousands of small per-frame ones, which makes
+        both the file and the viewer's load of it dramatically cheaper. Both
+        layouts are read transparently by `load`, `merge_simulation_files`,
+        the viewer and the CLI tools.
         """
         if not self.model.is_complete:
             raise ValueError(
@@ -455,6 +486,18 @@ class SimulationScene:
         compress = compress or output_path.suffix == ".gz"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        model_json = self.model.to_json()
+        columnar_states = None
+        if columnar is not False and self.states:
+            columnar_states = columnarize_states(self.states, model_json, inline_blob)
+            if columnar_states is None and columnar is True:
+                raise ValueError(
+                    "columnar=True but these states cannot be packed columnar "
+                    "(they are not uniform across frames -- see the warning "
+                    "logged above for the specific reason). Pass columnar=None "
+                    "to fall back to the legacy per-frame layout automatically."
+                )
+
         try:
             logger.info("Saving simulation data to %s...", output_path)
             open_fn = (
@@ -463,15 +506,23 @@ class SimulationScene:
             with open_fn(output_path) as f:
                 f.write("{\n")
                 f.write('  "model": ')
-                json.dump(self.model.to_json(), f, indent=2)
+                json.dump(model_json, f, indent=2)
                 f.write(",\n")
-                f.write('  "states": [\n')
-                for i, state in enumerate(self.states):
-                    if i > 0:
-                        f.write(",\n")
-                    f.write("    ")
-                    json.dump(state, f)
-                f.write("\n  ]\n}")
+                if columnar_states is not None:
+                    f.write('  "states": ')
+                    json.dump(columnar_states, f)
+                    f.write("\n}")
+                else:
+                    # Streamed frame by frame: the per-frame layout is only
+                    # reached for scenes too irregular to columnarize, which are
+                    # exactly the large ones worth not materializing at once.
+                    f.write('  "states": [\n')
+                    for i, state in enumerate(self.states):
+                        if i > 0:
+                            f.write(",\n")
+                        f.write("    ")
+                        json.dump(state, f)
+                    f.write("\n  ]\n}")
             logger.info("Simulation data successfully saved to %s", output_path)
         except Exception:
             logger.exception("Error saving simulation data to %s", output_path)

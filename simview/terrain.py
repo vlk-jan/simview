@@ -30,6 +30,7 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from simview.columnar import expand_columnar_states, is_columnar
 from simview.utils import read_maybe_gzipped_bytes
 
 BLOB_PREFIX = "__b64__"
@@ -77,6 +78,9 @@ def load_scene(path: str | Path) -> tuple[dict, list]:
         raise ValueError("scene file has no 'model' section")
     if states is None:
         raise ValueError("scene file has no 'states' section")
+    if is_columnar(states):
+        # See simview.diff.load_scene: columnar files are expanded up front.
+        states = expand_columnar_states(states, int(model.get("simBatches") or 1))
     return model, states
 
 

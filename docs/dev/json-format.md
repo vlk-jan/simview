@@ -127,18 +127,55 @@ produces.
     either to emit plain JSON lists instead. The viewer and the file-merge decode binary
     fields transparently. `contacts`, scalars, and `time` are always plain JSON.
 
-!!! note "Server-side columnar repack"
-    This on-disk, per-frame layout never changes (and
-    `simview merge` still reads/writes it as described above); but when serving a scene to
-    the viewer, the server repacks `states` at load time into whole-trajectory columns --
-    one binary blob per body per numeric field (and one per scalar), covering all `T`
-    frames at once -- and serves a small JSON index (`{"version": 4, "times", "bodies",
-    "scalars"}`) whose entries are `/blob/...` URLs, fetched in parallel and decoded into
-    `Float32Array`s. This avoids materializing thousands of tiny per-frame JS objects
-    just to play back a long trajectory. The repack requires the body set, per-body field
-    set, and field widths to be identical across every frame (`contacts` is exempt and may
-    come and go per frame); if a scene doesn't meet that, the server falls back to serving
-    the legacy per-frame JSON array unchanged, which the viewer also still supports.
+## Columnar states (`states` as an object)
+
+`states` may instead be an **object** — the columnar layout — rather than the per-frame
+array described above. Where the per-frame layout stores thousands of small values, this
+stores one binary blob per body per numeric field (and one per scalar), covering all `T`
+frames at once:
+
+```json
+{
+  "version": 4,
+  "times": [0.0, 0.001, 0.002],
+  "bodies": [
+    {
+      "name": "box",
+      "fields": {"bodyTransform": "__b64__<...>", "velocity": "__b64__<...>"},
+      "contacts": [[[0, 3]], null, [[7]]]
+    }
+  ],
+  "scalars": {"energy": "__b64__<...>"}
+}
+```
+
+- **`version`** *(int)* — `4`. Identifies the layout; a plain array means the legacy
+  per-frame layout.
+- **`times`** *(array[float])* — length `T`, one per frame.
+- **`bodies[].fields`** — each blob is little-endian float32, row-major, shape
+  `(T, B, k)`, where `k` is the field's width (7 for `bodyTransform`, 3 for the vectors).
+- **`bodies[].contacts`** *(optional)* — length `T`, one per-frame `contacts` value (or
+  `null` for a frame with none), still plain JSON since it's ragged.
+- **`scalars`** — each blob is little-endian float32, row-major, shape `(T, B)`.
+
+`SimulationScene.save` writes this layout by default; pass `columnar=False` for the
+legacy array, or `columnar=True` to fail loudly rather than fall back. Both layouts are
+read transparently by `SimulationScene.load`, `merge_simulation_files`, `simview
+info`/`diff`/`terrain`, and the viewer.
+
+!!! note "Over the wire vs. on disk"
+    The two are the same document; only how a blob is referenced differs. On disk it's an
+    inline `"__b64__<base64>"` string, exactly like the per-frame binary fields; over HTTP
+    the server rewrites each into a `/blob/...` URL the browser fetches in parallel and
+    decodes into a `Float32Array`. A columnar file therefore needs no repacking at all to
+    be served.
+
+    A **legacy** file still gets repacked into this shape at load time, so the viewer sees
+    one lightweight index plus raw binary either way. That repack requires the body set,
+    per-body field set, and field widths to be identical across every frame (`contacts` is
+    exempt and may come and go per frame); if a scene doesn't meet that, the server serves
+    the per-frame array unchanged, which the viewer also still supports. `simview info`
+    reports which layout a file uses and, for a legacy file, whether it's repackable.
 
 ## Authoring whole trajectories
 

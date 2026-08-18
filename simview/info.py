@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from simview.columnar import expand_columnar_states, is_columnar
 from simview.utils import read_maybe_gzipped_bytes
 
 BLOB_PREFIX = "__b64__"
@@ -150,13 +151,28 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
     }
 
 
-def _summarize_states(states: list, model: dict | None, warnings: list[str]) -> dict:
+def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
+    # A columnar file is expanded to the per-frame layout so every check below
+    # describes the same thing for both layouts; `layout` records which one the
+    # file actually uses, since that's the first thing you want to know about a
+    # scene file you didn't write.
+    layout = "columnar" if is_columnar(states) else "legacy"
+    if layout == "columnar":
+        try:
+            states = expand_columnar_states(
+                states, int((model or {}).get("simBatches") or 1)
+            )
+        except ValueError as e:
+            warnings.append(f"columnar states document is malformed: {e}")
+            states = []
+
     frame_count = len(states)
     dt_from_model = model.get("dt") if model else None
 
     if frame_count == 0:
         warnings.append("states array is empty")
         return {
+            "layout": layout,
             "frame_count": 0,
             "first_time": None,
             "last_time": None,
@@ -324,13 +340,16 @@ def _summarize_states(states: list, model: dict | None, warnings: list[str]) -> 
     body_items = list(bodies_summary.items())
     shown_body_items, bodies_truncated = _cap(body_items)
 
-    if reasons:
+    if reasons and layout == "legacy":
+        # Only worth warning about for a legacy file, where it means the viewer
+        # will fall back to the slow path. A columnar file is already packed.
         warnings.append(
             f"states are not columnar-repack eligible ({len(reasons)} reason(s)); "
             "see states.columnar.reasons"
         )
 
     return {
+        "layout": layout,
         "frame_count": frame_count,
         "first_time": first_time,
         "last_time": last_time,
@@ -506,6 +525,7 @@ def format_text(summary: dict) -> str:
             f"{states['first_time']} -> {states['last_time']}, "
             f"duration {states['duration']})"
         )
+        lines.append(f"  Layout: {states['layout']}")
         if states["dt_from_model"] is not None:
             consistency = (
                 "consistent"
@@ -543,12 +563,13 @@ def format_text(summary: dict) -> str:
             lines.append(f"    ... (+{bodies['count'] - bodies['shown']} more)")
 
         columnar = states["columnar"]
-        lines.append(
-            f"  Columnar-repack eligible: {'yes' if columnar['eligible'] else 'no'}"
-        )
-        if not columnar["eligible"]:
-            for reason in columnar["reasons"][:_MAX_DETAIL_ITEMS]:
-                lines.append(f"    - {reason}")
+        if states["layout"] == "legacy":
+            lines.append(
+                f"  Columnar-repack eligible: {'yes' if columnar['eligible'] else 'no'}"
+            )
+            if not columnar["eligible"]:
+                for reason in columnar["reasons"][:_MAX_DETAIL_ITEMS]:
+                    lines.append(f"    - {reason}")
 
     lines.append("\nWarnings")
     if summary["warnings"]:

@@ -54,9 +54,11 @@ def test_terrain_ships_property_bounds(tmp_path):
 
 
 def test_states_shape(tmp_path):
+    """The legacy per-frame layout, still written on request (and whenever a
+    scene is too irregular to pack columnar)."""
     scene = build_scene(batch_size=2)
     out = tmp_path / "sim.json"
-    scene.save(out)
+    scene.save(out, columnar=False)
 
     states = json.loads(out.read_text())["states"]
     assert len(states) == 3
@@ -204,14 +206,15 @@ def test_model_with_parent_child_bodies_to_json_from_dict_roundtrip():
     ]
 
 
-def test_scene_save_load_save_equivalence(tmp_path):
+@pytest.mark.parametrize("columnar", [None, False])
+def test_scene_save_load_save_equivalence(tmp_path, columnar):
     scene = build_scene(batch_size=2)
     out1 = tmp_path / "sim1.json"
     out2 = tmp_path / "sim2.json"
-    scene.save(out1)
+    scene.save(out1, columnar=columnar)
 
     loaded = SimulationScene.load(out1)
-    loaded.save(out2)
+    loaded.save(out2, columnar=columnar)
 
     data1 = json.loads(out1.read_text())
     data2 = json.loads(out2.read_text())
@@ -258,10 +261,12 @@ def test_scene_save_load_save_equivalence_with_binary_trajectory(tmp_path):
     data1 = json.loads(out1.read_text())
     data2 = json.loads(out2.read_text())
     assert data1 == data2
-    # Binary blob fields survived the load/save round trip intact.
-    body0 = data1["states"][0]["bodies"][0]
-    assert isinstance(body0["bodyTransform"], str)
-    assert body0["bodyTransform"].startswith("__b64__")
+    # Whole-trajectory blobs survived the load/save round trip intact -- the
+    # expansion on load and the repack on save have to be exact inverses for
+    # the equality above to hold at all.
+    assert data1["states"]["version"] == 4
+    body0 = data1["states"]["bodies"][0]
+    assert body0["fields"]["bodyTransform"].startswith("__b64__")
 
 
 # --- Gzip support (gameplan item 16) ----------------------------------------

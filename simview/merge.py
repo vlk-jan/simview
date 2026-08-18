@@ -25,6 +25,7 @@ try:
 except ImportError:
     orjson = None
 
+from .columnar import expand_columnar_states, is_columnar
 from .utils import read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.merge")
@@ -126,7 +127,16 @@ def _decode_per_batch(
 
 def _load_json(path: Path) -> dict:
     raw = read_maybe_gzipped_bytes(path)
-    return orjson.loads(raw) if orjson else json.loads(raw)
+    doc = orjson.loads(raw) if orjson else json.loads(raw)
+    # Merging works frame by frame (resampling onto the first file's timeline),
+    # so a columnar file is expanded to the per-frame layout up front rather
+    # than teaching every step below a second shape. expand_columnar_states is
+    # stdlib-only, so this keeps merge usable on a base install.
+    if isinstance(doc, dict) and is_columnar(doc.get("states")):
+        model = doc.get("model")
+        batch_size = int((model or {}).get("simBatches", 1))
+        doc["states"] = expand_columnar_states(doc["states"], batch_size)
+    return doc
 
 
 def _require(doc, key: str, expected_type: type | tuple[type, ...], label: str):

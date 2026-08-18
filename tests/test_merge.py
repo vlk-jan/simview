@@ -287,7 +287,8 @@ def test_merge_mismatched_terrain_dims_raises(tmp_path):
 def test_merge_mismatched_scalar_names_raises(tmp_path):
     scene_a = build_scene(batch_size=1)
     path_a = tmp_path / "a.json"
-    scene_a.save(path_a)
+    # Legacy layout: this test rewrites per-frame scalar keys by hand.
+    scene_a.save(path_a, columnar=False)
 
     data = json.loads(path_a.read_text())
     data["model"]["scalarNames"] = ["other_scalar"]
@@ -395,13 +396,14 @@ def test_merge_mixed_binary_and_plain_state_fields(tmp_path):
             [0.0, 0.1, 0.2], [BodyTrajectory("Box", pos + tag, quat)], binary=binary
         )
         path = tmp_path / f"{tag}_{binary}.json"
-        scene.save(path)
+        scene.save(path, columnar=False)
         return path
 
     path_bin = build(0.0, binary=True)
     path_plain = build(1.0, binary=False)
 
-    # Sanity check the fixtures actually use different encodings on disk.
+    # Sanity check the fixtures actually use different encodings on disk
+    # (a per-frame distinction, so these are saved in the legacy layout).
     bin_data = json.loads(path_bin.read_text())
     plain_data = json.loads(path_plain.read_text())
     assert isinstance(bin_data["states"][0]["bodies"][0]["bodyTransform"], str)

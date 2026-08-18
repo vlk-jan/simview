@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The columnar ("v4") states layout is now an **on-disk** format, not just a
+  server-side repack: `SimulationScene.save()` writes it by default, producing
+  substantially smaller files that the viewer can load without any repacking.
+  Pass `columnar=False` for the previous per-frame layout, or `columnar=True` to
+  raise instead of falling back when a scene is too irregular to pack. See the
+  [JSON Format Specification](https://vlk-jan.github.io/simview/dev/json-format/).
+- `simview info` reports which `states` layout a file uses.
+
+### Changed
+
+- `SimulationScene.save()` writes columnar `states` by default. Files stay readable
+  by `load`, `merge_simulation_files`, `simview info`/`diff`/`terrain` and the viewer
+  either way, but a third-party tool that parses `states` as a JSON array will need
+  to handle the object form (or be passed `columnar=False`).
+
 ## [4.0.0] - 2026-08-04
 
 ### ⚠ Breaking changes

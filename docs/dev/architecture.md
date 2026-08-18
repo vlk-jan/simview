@@ -14,7 +14,7 @@ Python (authoring or file-on-disk)           Browser
 │  - states (per-frame)     │   /states,     │  - StateStore, Scene,     │
 │                           │   /blob/...    │    AnimationController    │
 │ SimViewServer (FastAPI)   │  ◀──────────── │  - Controls, panels       │
-│  - columnar repack        │   WebSocket    │                           │
+│  - columnar (see below)   │   WebSocket    │                           │
 │  - LiveViewer push_state  │   (live only)  │                           │
 └───────────────────────────┘                └───────────────────────────┘
 ```
@@ -34,14 +34,20 @@ Python (authoring or file-on-disk)           Browser
   `add_state`/`add_trajectory`, and can `save()`/`load()` JSON (optionally gzipped)
   or `show()` a non-blocking viewer (returns a `ViewerHandle`, usable in Jupyter via
   `_repr_html_`).
+- **`columnar.py`** — the columnar ("v4") states layout: one binary blob per body per
+  field covering the whole trajectory, instead of thousands of small per-frame values.
+  Both a wire format and (via `SimulationScene.save`) an on-disk one — the same document
+  either way, with inline `__b64__` blobs on disk and `/blob/` URLs over HTTP.
+  `columnarize_states` (the writer/repacker) needs numpy; `expand_columnar_states` (the
+  inverse) is stdlib-only so every reader, including the base install and the
+  stdlib-only CLI tools, can consume a columnar file.
 - **`server.py`** — `SimViewServer`: FastAPI app serving `templates/index.html` and
-  `static/`, plus `/model` and `/states` (or per-blob endpoints). On load, it tries to
-  repack the legacy per-frame `states` array into a columnar "v4" payload — one binary
-  blob per body per field covering the whole trajectory, fetched in parallel as
-  `Float32Array`s — for much cheaper playback of long recordings; it transparently
-  falls back to serving the legacy per-frame array if the frames aren't uniform enough
-  to columnarize. Also handles WebSocket live-push (see `live.py`) and batch-rename
-  persistence.
+  `static/`, plus `/model` and `/states` (or per-blob endpoints). A columnar file is
+  served as-is (only its inline blobs are rewritten into URLs); a legacy per-frame file
+  is repacked into the columnar payload at load time for much cheaper playback of long
+  recordings, falling back to serving the per-frame array if the frames aren't uniform
+  enough to columnarize. Also handles WebSocket live-push (see `live.py`) and
+  batch-rename persistence.
 - **`live.py`** — `LiveViewer`: starts the server immediately (on a background thread
   via `_ThreadedServer`) and streams `push_state` calls to connected browser tabs over
   WebSocket as a simulation runs, instead of saving-then-viewing after the fact.
@@ -116,7 +122,7 @@ to break that pattern.
 ## Wire format
 
 Python and JavaScript agree on the `model`/`states` JSON shape, binary field encoding,
-parent-relative bodies, and the columnar repack independently — there is no shared
+parent-relative bodies, and the columnar layout independently — there is no shared
 schema file. See [JSON Format Specification](json-format.md) for the full contract;
 read it before changing anything that touches serialization on either side
 (`model.py`/`state.py`/`server.py` in Python, `blobCodec.js`/`bodyTransforms.js` in JS).
@@ -129,6 +135,7 @@ simview/
 │   ├── model.py             # SimViewModel, SimViewBody, SimViewStaticObject, SimViewTerrain
 │   ├── state.py             # SimViewBodyState, BodyTrajectory
 │   ├── scene.py             # SimulationScene, ViewerHandle
+│   ├── columnar.py          # columnar ("v4") states layout (wire + on disk)
 │   ├── server.py            # SimViewServer (FastAPI app, columnar repack)
 │   ├── live.py               # LiveViewer, _ThreadedServer
 │   ├── launcher.py           # SimViewLauncher
