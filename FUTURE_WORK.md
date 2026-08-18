@@ -1,75 +1,46 @@
 # Future work
 
-Carried over from the 2026-08-17 deep-dive review. Items 1–8 and 10 from that
-review (in-memory scene mutation by the server, mesh-body rendering, dead
-drag-selection code, silent blob-fetch failures, merge dropping
-embeddingData/metadata + missing bounds validation, endian-safe state-field
-decode, singleton terrain deduplication, live-mode RL-scale streaming, and
-`simview diff`'s parent-relative pose mismatch) are already fixed — see the
-commit history around this file's introduction, plus the "Smaller leftovers"
-section below. What remains are the larger design items, aimed at making
-SimView a universal viewer that also works at reinforcement-learning scale
-(many envs, long/episodic runs), beyond the current primary consumer
-(../DRIFT).
+The 2026-08-17 deep-dive review's items are all addressed — see the commit
+history around this file's introduction. What follows is what that work
+deliberately left open, plus the one leftover it never covered.
 
-## 9. Make the columnar (v4) format a first-class on-disk format
+## Windowing the whole-run consumers
 
-The columnar layout only exists as a server-side repack: `save()` still writes
-per-frame states with thousands of small base64 strings, and
-`server.py::_columnarize_states` re-parses and re-packs them on every load.
-Since `add_trajectory` already holds whole `(T, B, k)` arrays, writing the
-columnar layout directly would:
+`velocity`/`angularVelocity`/`force`/`torque` are now range-fetched in windows
+around the playhead (`static/js/utils/blobWindow.js`,
+`components/WindowedField.js`), because they're only ever read for the frame on
+screen. `bodyTransform` and the scalars are still materialized in full, and for
+a very long run they're the remaining ceiling.
 
-- shrink files and make `SimulationScene.load` / `merge` much cheaper,
-- remove the silent "falls back to legacy if frames aren't uniform" surprises
-  (e.g. a body whose optional attribute appears mid-run — explicitly tolerated
-  by `save()`'s attribute reconciliation — currently disqualifies the whole
-  scene from columnarization with only a server log line to show for it),
-- let the browser stream/window state data (see item 11) without the server
-  holding everything in RAM (`self.blobs` + gzipped legacy states + model).
+They can't simply be windowed too: every whole-run consumer walks them from
+frame 0 —
 
-Needs a versioned `states` document shape on disk plus reader support in
-`SimulationScene.load`, `merge`, `diff`/`terrain`/`info` CLI, and the viewer
-(which already consumes the v4 shape over HTTP).
+- `SimView.appendBodyHistories` builds each body's `positionHistory` /
+  `quaternionHistory` over the entire timeline (trails, `ErrorMetrics`,
+  `TerrainProfile` all read from it),
+- `ScalarPlotter.initFromStore` pulls each scalar's whole series for its plots.
 
-## 11. RL-scale data model: episodes, many envs, long runs
+So dropping peak memory further means giving those consumers a windowed or
+downsampled view of their own — e.g. decimating the trail/plot data to screen
+resolution and refining on zoom, rather than keeping one point per frame. That's
+a redesign of those panels, not a change to the fetch layer, and it should be
+driven by a real recording that actually hurts rather than done speculatively.
 
-Everything currently assumes one continuous timeline per scene and one
-world-space patch per batch:
+## Instanced per-batch decorations
 
-- **Episode semantics.** RL runs are episodic (resets, variable lengths,
-  per-episode returns). Consider an optional `episodes` section in the model,
-  e.g. `[{"start_index": int, "label": str}, ...]`, with the playback bar
-  showing episode boundaries, "next/previous episode" navigation, and the
-  scalar plotter able to overlay per-episode aggregates (e.g. return). This
-  touches the wire format, so design it together with item 9.
-- **Batch = env count scaling.** The sqrt-grid batch layout
-  (`BatchManager._initialize`) and per-batch THREE groups (terrain mesh, axes,
-  vector arrows per batch in `Body.createBatchGroups`) will not scale to
-  hundreds of envs. Wanted: a "render only focused batch(es)" mode (build
-  scene objects lazily per visible batch), and instanced rendering for
-  per-batch decorations.
-- **Windowed state fetching.** For very long trajectories the browser
-  materializes the entire run. With columnar-on-disk (item 9) the viewer could
-  fetch time windows of the per-body blobs on demand (HTTP range requests or a
-  windowed blob endpoint) and keep only a sliding window in memory.
+`BatchManager`'s focused-batch mode means a scene with hundreds of envs only
+builds and draws one batch's objects, which was the scaling problem in practice.
+The per-batch decorations themselves are still one THREE object each when
+everything *is* drawn: `AxesHelper` and the vector arrows per batch in
+`Body.createBatchGroups`, and one `Points` per batch for point-cloud bodies.
 
-## Smaller leftovers (from the same review)
+Instancing those (an `InstancedMesh` for the arrows, a merged `LineSegments` for
+the axes) would make "Render All Batches" usable at high batch counts too. Only
+worth doing if that mode turns out to be something people actually want at those
+counts — the focused view may simply be the right answer.
 
-Open:
+## Smaller leftovers
 
 - `interactionController`/hover: hovering an `InstancedMesh` would scale all
   batch instances at once — hover effects were removed with the dead selection
   code; if reintroduced, operate per-instance.
-
-Done:
-
-- ~~`BatchManager.setActiveBatch` still forwards an invalid index to
-  `bodyStateWindow.setSelectedBatch` after warning.~~
-- ~~`add_state` with a 0-dim scalar tensor stores a bare float.~~
-- ~~CORS: `allow_credentials=True` with an any-localhost-port origin regex.~~
-- ~~`SimulationScene._clear_internal_data` doesn't clear `embedding_data`.~~
-- ~~CLAUDE.md's repo description predates `info.py`, `diff.py`, `terrain.py`,
-  `render.py` and the `render` extra.~~ (CLAUDE.md is untracked and must not be
-  committed — see its own commit guidelines — so the update lives only in the
-  working tree.)
