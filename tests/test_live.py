@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 
 from simview.live import LiveViewer
 from simview.scene import BodyShapeType, SimulationScene
-from simview.server import SimViewServer
+from simview.server import _CATCHUP_CHUNK_SIZE, SimViewServer
 from simview.state import SimViewBodyState
 
 
@@ -75,6 +75,40 @@ def test_websocket_catchup_replays_buffered_frames(live_client):
                 {"time": 0.1, "bodies": []},
             ]
         }
+
+
+def test_websocket_catchup_is_chunked_for_long_histories(live_client):
+    """A long backlog must arrive as several messages, not one giant string."""
+    server, client = live_client
+    total = _CATCHUP_CHUNK_SIZE * 2 + 7
+    for i in range(total):
+        server.frame_buffer.append({"time": i * 0.1, "bodies": []})
+
+    with client.websocket_connect("/ws/states") as ws:
+        received = []
+        messages = 0
+        while len(received) < total:
+            received.extend(json.loads(ws.receive_text())["states"])
+            messages += 1
+
+    # Split across messages rather than serialized as one giant string...
+    assert messages == 3
+    # ...but the same frames, in the same order.
+    assert len(received) == total
+    assert [frame["time"] for frame in received] == [i * 0.1 for i in range(total)]
+
+
+def test_frame_buffer_is_bounded():
+    server = SimViewServer(
+        data={"model": _minimal_model_data(), "states": []},
+        live=True,
+        frame_buffer_size=3,
+    )
+    for i in range(10):
+        server.frame_buffer.append({"time": float(i), "bodies": []})
+
+    # Oldest frames are forgotten rather than growing without limit.
+    assert [frame["time"] for frame in server.frame_buffer] == [7.0, 8.0, 9.0]
 
 
 def test_websocket_receives_frame_pushed_after_connect(live_client):

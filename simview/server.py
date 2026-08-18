@@ -7,6 +7,7 @@ import json
 import logging
 import secrets
 import time
+from collections import deque
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -62,6 +63,18 @@ _STATE_FIELD_WIDTHS = {
     "force": 3,
     "torque": 3,
 }
+
+# Live mode: how many recent frames to keep for replaying to viewers that
+# connect mid-run. Bounded so an open-ended run (RL training, a long-running
+# sim) doesn't grow the server's memory without limit; a viewer connecting
+# after the cap is reached sees the most recent window rather than the whole
+# run. The full run is still whatever the producer keeps in scene.states.
+_LIVE_FRAME_BUFFER_MAXLEN = 10_000
+# How many frames to put in one catch-up WebSocket message. The client feeds
+# every message through the same processStatesChunk path (SimView.js), so
+# slicing the replay costs nothing there and avoids serializing (and buffering
+# in memory, twice) one multi-megabyte string for a long run.
+_CATCHUP_CHUNK_SIZE = 500
 
 
 class _StatesShapeMismatch(Exception):
@@ -305,6 +318,7 @@ class SimViewServer:
         sim_path: str | Path | Sequence[str | Path] | None = None,
         data: dict | None = None,
         live: bool = False,
+        frame_buffer_size: int = _LIVE_FRAME_BUFFER_MAXLEN,
     ):
         if sim_path is None and data is None:
             raise ValueError("Provide 'sim_path' and/or 'data'")
@@ -318,12 +332,14 @@ class SimViewServer:
         self.live = live
         self.loop = None
         self.ws_clients: set[WebSocket] = set()
-        # All frames pushed so far (live mode only), replayed as the catch-up
-        # message to a client connecting after the run started. Mirrors
-        # scene.states, which LiveViewer.push_state also appends to via
-        # scene.add_state -- kept as a separate list here rather than reaching
-        # into the scene so SimViewServer doesn't need a reference to it.
-        self.frame_buffer: list[dict] = []
+        # Recent frames (live mode only), replayed as the catch-up messages to
+        # a client connecting after the run started. Mirrors scene.states,
+        # which LiveViewer.push_state also appends to via scene.add_state --
+        # kept as a separate buffer here rather than reaching into the scene so
+        # SimViewServer doesn't need a reference to it. Bounded: on a run
+        # longer than the cap the oldest frames are forgotten, so a late viewer
+        # replays the most recent window instead of the entire history.
+        self.frame_buffer: deque[dict] = deque(maxlen=frame_buffer_size)
         if sim_path is None:
             self.sim_paths: list[Path] | None = None
         elif isinstance(sim_path, (str, Path)):
@@ -618,18 +634,13 @@ class SimViewServer:
         if self.live:
             # Only registered in live mode: LiveViewer.push_state broadcasts
             # each new frame to every connected socket (see broadcast_frame).
-            # Frames buffered before this client connected are replayed as one
-            # catch-up message first, so a viewer opened mid-run still sees
-            # the whole timeline so far.
+            # Frames buffered before this client connected are replayed first,
+            # so a viewer opened mid-run still sees the recent timeline.
             @self.app.websocket("/ws/states")
             async def ws_states(websocket: WebSocket):
                 await websocket.accept()
-                self.ws_clients.add(websocket)
                 try:
-                    if self.frame_buffer:
-                        await websocket.send_text(
-                            json.dumps({"states": list(self.frame_buffer)})
-                        )
+                    await self._send_catchup(websocket)
                     while True:
                         # This endpoint is push-only; block here until the
                         # client disconnects (or the connection otherwise dies)
@@ -639,6 +650,31 @@ class SimViewServer:
                     pass
                 finally:
                     self.ws_clients.discard(websocket)
+
+    async def _send_catchup(self, websocket: WebSocket) -> None:
+        """Replay the buffered history to a just-connected client, in slices.
+
+        Registers the socket for live broadcasts only once the replay has
+        caught up, so a frame pushed mid-replay can't overtake the history it
+        belongs after. Because this runs on the server's event loop -- the same
+        loop broadcast_frame runs on -- no frame can be appended between the
+        final "nothing left to replay" check and the registration below.
+
+        (Frames pushed during the replay are picked up by the outer loop. A run
+        that overflows the whole frame buffer *while* one client is catching up
+        could skip a few frames in that client's replay; at that rate the
+        buffer's own bound is already dropping history anyway.)
+        """
+        replayed = 0
+        while True:
+            pending = list(self.frame_buffer)[replayed:]
+            if not pending:
+                self.ws_clients.add(websocket)
+                return
+            for start in range(0, len(pending), _CATCHUP_CHUNK_SIZE):
+                chunk = pending[start : start + _CATCHUP_CHUNK_SIZE]
+                await websocket.send_text(json.dumps({"states": chunk}))
+            replayed += len(pending)
 
     async def broadcast_frame(self, frame: dict) -> None:
         """Send one newly-pushed frame to every connected /ws/states client.
