@@ -171,12 +171,14 @@ export class BatchManager {
     }
 
     setActiveBatch(batchIndex) {
-        if (batchIndex >= 0 && batchIndex < this.simBatches) {
-            this.currentlyActiveBatch = batchIndex;
-            this.changeFocusOnBatchByIndex(batchIndex);
-        } else {
+        if (batchIndex < 0 || batchIndex >= this.simBatches) {
+            // Bail out entirely: forwarding an index we just rejected left the
+            // state window and plots focused on a batch that doesn't exist.
             console.warn("Invalid batch index:", batchIndex);
+            return;
         }
+        this.currentlyActiveBatch = batchIndex;
+        this.changeFocusOnBatchByIndex(batchIndex);
         this.app.bodyStateWindow.setSelectedBatch(batchIndex);
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setFocusedBatch(batchIndex);
