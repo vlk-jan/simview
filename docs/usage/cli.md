@@ -99,6 +99,13 @@ first frame where a batch's trajectory diverges past a given tolerance. Like
 `simview info`/`simview terrain`, this works on gzip-compressed files and
 doesn't require the `authoring` extra.
 
+Poses are compared in **world space**. A parented body's stored transform is
+relative to its parent, so `simview diff` resolves the parent chain first —
+the same thing the viewer's Error Metrics panel does, so the two report the
+same numbers for the same scene. This also means rigidly-attached bodies (a
+constant `localTransform`, never written into the states) can be diffed:
+name them with `--body` like any other body.
+
 Add `--fail-on-exceed` to make `simview diff` machine-checkable in a script
 or CI job: it requires at least one of `--pos-threshold`/`--rot-threshold-deg`,
 and exits non-zero if any diffed body's trajectory exceeds it (after

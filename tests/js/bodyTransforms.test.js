@@ -169,3 +169,86 @@ describe("resolveStateBodies", () => {
         expect(rows[1][1]).toBeCloseTo(1, 5);
     });
 });
+
+// Cross-language agreement with simview/diff.py's parent-chain resolution.
+// `simview diff` compares world poses through its own stdlib port of this
+// composition (there is no shared implementation -- see diff.py's module
+// docstring), so the exact same scene must resolve to the exact same numbers
+// on both sides. The Python half of this pair is
+// tests/test_diff.py::test_parented_body_is_diffed_in_world_space.
+describe("resolveStateBodies matches simview/diff.py", () => {
+    const HALF_SQRT2 = Math.SQRT1_2;
+
+    it("resolves the shared articulated fixture to the same world poses", () => {
+        const meta = buildBodyMeta([
+            { name: "Chassis" },
+            { name: "Arm", parent: "Chassis" },
+        ]);
+        const order = topoSortBodies(meta);
+        const rawBodies = [
+            {
+                name: "Chassis",
+                bodyTransform: [
+                    // batch 0: identity; batch 1: 90 deg yaw about +Z.
+                    [0, 0, 0, 1, 0, 0, 0],
+                    [0, 0, 0, HALF_SQRT2, 0, 0, HALF_SQRT2],
+                ],
+            },
+            {
+                // Same local pose in both batches: 2m along the parent's +X.
+                name: "Arm",
+                bodyTransform: [
+                    [2, 0, 0, 1, 0, 0, 0],
+                    [2, 0, 0, 1, 0, 0, 0],
+                ],
+            },
+        ];
+
+        const rows = resolveStateBodies(meta, order, 2, rawBodies).get("Arm")
+            .bodyTransform;
+
+        // Batch 0 -> (2, 0, 0); batch 1's yaw swings it to (0, 2, 0).
+        expect(rows[0][0]).toBeCloseTo(2, 6);
+        expect(rows[0][1]).toBeCloseTo(0, 6);
+        expect(rows[1][0]).toBeCloseTo(0, 6);
+        expect(rows[1][1]).toBeCloseTo(2, 6);
+
+        // Separation of 2*sqrt(2), the position_error the Python test asserts.
+        const dx = rows[0][0] - rows[1][0];
+        const dy = rows[0][1] - rows[1][1];
+        const dz = rows[0][2] - rows[1][2];
+        expect(Math.hypot(dx, dy, dz)).toBeCloseTo(2 * Math.SQRT2, 6);
+
+        // ...and 90 deg of orientation error, matching the Python assertion.
+        const qa = new THREE.Quaternion(rows[0][4], rows[0][5], rows[0][6], rows[0][3]);
+        const qb = new THREE.Quaternion(rows[1][4], rows[1][5], rows[1][6], rows[1][3]);
+        const angleDeg = THREE.MathUtils.radToDeg(qa.angleTo(qb));
+        expect(angleDeg).toBeCloseTo(90, 6);
+    });
+
+    it("resolves a rigid (constant localTransform) child the same way", () => {
+        const meta = buildBodyMeta([
+            { name: "Chassis" },
+            { name: "Sensor", parent: "Chassis", localTransform: [2, 0, 0, 1, 0, 0, 0] },
+        ]);
+        const order = topoSortBodies(meta);
+        const rawBodies = [
+            {
+                name: "Chassis",
+                bodyTransform: [
+                    [0, 0, 0, 1, 0, 0, 0],
+                    [0, 0, 0, HALF_SQRT2, 0, 0, HALF_SQRT2],
+                ],
+            },
+        ];
+
+        const rows = resolveStateBodies(meta, order, 2, rawBodies).get("Sensor")
+            .bodyTransform;
+
+        expect(rows[0][0]).toBeCloseTo(2, 6);
+        expect(rows[1][1]).toBeCloseTo(2, 6);
+        expect(
+            Math.hypot(rows[0][0] - rows[1][0], rows[0][1] - rows[1][1])
+        ).toBeCloseTo(2 * Math.SQRT2, 6);
+    });
+});

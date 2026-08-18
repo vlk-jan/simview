@@ -301,3 +301,118 @@ def test_quat_angle_matches_known_90_degree_rotation():
     assert result["bodies"]["Box"]["orientation_error_deg"][0] == pytest.approx(
         90.0, abs=1e-3
     )
+
+
+# --- Parent-relative bodies -------------------------------------------------
+#
+# A parented body's wire transform is parent-relative, so diffing it raw gave
+# different numbers than the browser's Error Metrics panel, which resolves the
+# chain to world space first. These pin the resolution that fixed that; the
+# matching JS-side expectations live in tests/js/bodyTransforms.test.js.
+
+# Parent yaws 90 deg about +Z in batch 1 but not in batch 0, so composing the
+# child's local offset differs per batch -- the whole point of resolving.
+_HALF_SQRT2 = math.sqrt(0.5)
+_YAW90 = [_HALF_SQRT2, 0.0, 0.0, _HALF_SQRT2]  # [w, x, y, z]
+_IDENTITY = [1.0, 0.0, 0.0, 0.0]
+
+
+def _articulated_model():
+    return {
+        "simBatches": 2,
+        "bodies": [
+            {"name": "Chassis", "shape": {}},
+            {"name": "Arm", "shape": {}, "parent": "Chassis"},
+        ],
+    }
+
+
+def _articulated_states():
+    # Chassis at the origin in both batches, but rotated in batch 1.
+    chassis = _transform([0.0, 0.0, 0.0], _IDENTITY) + _transform(
+        [0.0, 0.0, 0.0], _YAW90
+    )
+    # Same *local* pose in both batches: 2m out along the parent's +X.
+    arm_local = _transform([2.0, 0.0, 0.0], _IDENTITY)
+    return [
+        {
+            "time": 0.0,
+            "bodies": [
+                {"name": "Chassis", "bodyTransform": _blob(chassis)},
+                {"name": "Arm", "bodyTransform": _blob(arm_local + arm_local)},
+            ],
+        }
+    ]
+
+
+def test_parented_body_is_diffed_in_world_space():
+    result = compute_trajectory_diff(
+        _articulated_model(), _articulated_states(), batch_a=0, batch_b=1
+    )
+
+    # Identical local poses, so the raw wire transforms differ by nothing --
+    # comparing them unresolved would have reported zero error.
+    arm = result["bodies"]["Arm"]
+    # Resolved: batch 0 puts the arm at (2, 0, 0), batch 1's 90 deg yaw puts it
+    # at (0, 2, 0) -- a separation of 2*sqrt(2).
+    assert arm["position_error"][0] == pytest.approx(2.0 * math.sqrt(2.0))
+    # The parent's rotation carries into the child's world orientation too.
+    assert arm["orientation_error_deg"][0] == pytest.approx(90.0)
+
+    # The root body itself is unaffected by resolution.
+    assert result["bodies"]["Chassis"]["position_error"][0] == pytest.approx(0.0)
+
+
+def test_rigidly_attached_body_is_diffable():
+    """A constant localTransform body never appears in the states, so before
+    resolution it could not be diffed at all."""
+    model = {
+        "simBatches": 2,
+        "bodies": [
+            {"name": "Chassis", "shape": {}},
+            {
+                "name": "Sensor",
+                "shape": {},
+                "parent": "Chassis",
+                "localTransform": _transform([2.0, 0.0, 0.0], _IDENTITY),
+            },
+        ],
+    }
+    states = _articulated_states()  # contains Chassis (+ an unrelated Arm entry)
+
+    result = compute_trajectory_diff(model, states, batch_a=0, batch_b=1)
+
+    assert "Sensor" in result["bodies"]
+    sensor = result["bodies"]["Sensor"]
+    assert sensor["summary"]["frame_count"] == 1
+    assert sensor["position_error"][0] == pytest.approx(2.0 * math.sqrt(2.0))
+
+
+def test_unparented_scene_is_unchanged_by_resolution():
+    """Scenes with no parents must diff exactly as they did before."""
+    states = _states_two_bodies(offset=0.5)
+    with_model = compute_trajectory_diff(_model(), states, batch_a=0, batch_b=1)
+
+    assert with_model["bodies"]["Box"]["position_error"] == pytest.approx([0.5] * 3)
+    assert with_model["bodies"]["FL+FR"]["position_error"] == pytest.approx([0.5] * 3)
+
+
+def test_cyclic_parent_chain_raises():
+    model = {
+        "simBatches": 2,
+        "bodies": [
+            {"name": "A", "shape": {}, "parent": "B"},
+            {"name": "B", "shape": {}, "parent": "A"},
+        ],
+    }
+    with pytest.raises(ValueError, match="cycle"):
+        compute_trajectory_diff(model, _articulated_states(), batch_a=0, batch_b=1)
+
+
+def test_unknown_parent_raises():
+    model = {
+        "simBatches": 2,
+        "bodies": [{"name": "Arm", "shape": {}, "parent": "Nonexistent"}],
+    }
+    with pytest.raises(ValueError, match="unknown parent"):
+        compute_trajectory_diff(model, _articulated_states(), batch_a=0, batch_b=1)

@@ -420,7 +420,9 @@ def build_parser() -> argparse.ArgumentParser:
             "With 'simview diff <file>', restrict the trajectory diff to one "
             "body (matched by its full label, e.g. 'wheel_fl+wheel_fr', or by "
             "any single name inside a rigidly-grouped body). Default: diff "
-            "every body present in states."
+            "every body present in states, plus any rigidly-attached body "
+            "resolvable from them. Poses are compared in world space (parent "
+            "chains resolved), matching the viewer's Error Metrics panel."
         ),
     )
     parser.add_argument(

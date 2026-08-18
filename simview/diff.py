@@ -98,6 +98,148 @@ def _decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[f
     )
 
 
+def _build_body_meta(model_data: dict, state_names: list) -> dict[str, dict]:
+    """`name -> {"parent", "localTransform"}` for every body, from the model's
+    `bodies` section. Bodies that appear in the states but not in the model are
+    added as parentless roots, so a hand-edited or third-party file still
+    diffs exactly as it did before parent resolution existed."""
+    meta: dict[str, dict] = {}
+    for entry in model_data.get("bodies") or []:
+        name = entry.get("name")
+        if isinstance(name, str):
+            meta[name] = {
+                "parent": entry.get("parent"),
+                "localTransform": entry.get("localTransform"),
+            }
+    for name in state_names:
+        for single in _iter_names(name):
+            meta.setdefault(single, {"parent": None, "localTransform": None})
+    return meta
+
+
+def _topo_sort_bodies(meta: dict[str, dict]) -> list[str]:
+    """Order body names so every parent precedes its children. Independent
+    stdlib port of `static/js/utils/bodyTransforms.js`'s `topoSortBodies` (see
+    module docstring on why these aren't shared); each body has at most one
+    parent, so a DFS post-order walk suffices."""
+    order: list[str] = []
+    status: dict[str, str] = {}
+
+    def visit(name: str) -> None:
+        if status.get(name) == "done":
+            return
+        if status.get(name) == "visiting":
+            raise ValueError(f"cycle detected in body parent chain involving '{name}'")
+        parent = meta[name]["parent"]
+        if parent is not None:
+            if parent == name:
+                raise ValueError(f"body '{name}' cannot be its own parent")
+            if parent not in meta:
+                raise ValueError(f"body '{name}' references unknown parent '{parent}'")
+            status[name] = "visiting"
+            visit(parent)
+        status[name] = "done"
+        order.append(name)
+
+    for name in meta:
+        visit(name)
+    return order
+
+
+def _quat_mul(qa: list[float], qb: list[float]) -> list[float]:
+    """Hamilton product of two [w, x, y, z] quaternions."""
+    aw, ax, ay, az = qa
+    bw, bx, by, bz = qb
+    return [
+        aw * bw - ax * bx - ay * by - az * bz,
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+    ]
+
+
+def _rotate_vec(q: list[float], v: list[float]) -> list[float]:
+    """Rotate vector `v` by [w, x, y, z] quaternion `q`."""
+    w, x, y, z = q
+    # t = 2 * (q_vec x v); v' = v + w * t + q_vec x t
+    tx = 2 * (y * v[2] - z * v[1])
+    ty = 2 * (z * v[0] - x * v[2])
+    tz = 2 * (x * v[1] - y * v[0])
+    return [
+        v[0] + w * tx + (y * tz - z * ty),
+        v[1] + w * ty + (z * tx - x * tz),
+        v[2] + w * tz + (x * ty - y * tx),
+    ]
+
+
+def _compose(parent_row: list[float], local_row: list[float]) -> list[float]:
+    """Compose a parent-relative pose onto its parent's world pose, both as
+    wire rows `[x, y, z, w, qx, qy, qz]`. Same composition the viewer does in
+    `bodyTransforms.js::resolveStateBodies`."""
+    parent_quat, local_quat = parent_row[3:], local_row[3:]
+    world_pos = _rotate_vec(parent_quat, local_row[:3])
+    return [
+        world_pos[0] + parent_row[0],
+        world_pos[1] + parent_row[1],
+        world_pos[2] + parent_row[2],
+        *_quat_mul(parent_quat, local_quat),
+    ]
+
+
+def _expand_raw_bodies(raw_bodies: list | None) -> dict:
+    """`name -> entry` for one state's `bodies`, expanding grouped (list) name
+    entries so each individual body name maps to the shared entry."""
+    expanded: dict = {}
+    for entry in raw_bodies or []:
+        name = entry.get("name")
+        if name is None:
+            continue
+        for single in _iter_names(name):
+            expanded[single] = entry
+    return expanded
+
+
+def _resolve_frame(
+    meta: dict[str, dict],
+    topo_order: list[str],
+    raw_by_name: dict,
+    batch_size: int,
+    batch_idx: int,
+) -> dict[str, list[float]]:
+    """`name -> absolute-world [x, y, z, w, qx, qy, qz]` for one state and one
+    batch. Bodies whose pose can't be determined this frame (absent from the
+    state, or with an unresolvable parent) are simply left out."""
+    resolved: dict[str, list[float]] = {}
+    for name in topo_order:
+        body_meta = meta[name]
+        raw = raw_by_name.get(name)
+        raw_row = None
+        if raw is not None and "bodyTransform" in raw:
+            raw_row = _decode_transform_row(raw["bodyTransform"], batch_size, batch_idx)
+
+        parent = body_meta["parent"]
+        if parent is None:
+            # Root body: the wire transform is already absolute-world.
+            if raw_row is not None:
+                resolved[name] = raw_row
+            continue
+
+        parent_row = resolved.get(parent)
+        if parent_row is None:
+            continue
+        local_transform = body_meta["localTransform"]
+        if local_transform is not None:
+            # Rigid attachment: a constant local offset, never sent per frame.
+            local_row = [float(x) for x in local_transform]
+        elif raw_row is not None:
+            # Articulated attachment: the wire transform is parent-relative.
+            local_row = raw_row
+        else:
+            continue
+        resolved[name] = _compose(parent_row, local_row)
+    return resolved
+
+
 def _quat_angle_deg(qa: list[float], qb: list[float]) -> float:
     """Angular distance in degrees between two [w, x, y, z] quaternions,
     robust to the double-cover ambiguity (q and -q are the same rotation)."""
@@ -186,6 +328,14 @@ def compute_trajectory_diff(
     and batch `batch_b`'s trajectories in `states_data`, for every body
     present in the states (or just `body` if given).
 
+    Poses are compared in **world space**: a parented body's wire transform is
+    parent-relative, so the parent chain is resolved first (the same
+    composition the browser's Error Metrics panel does via
+    `static/js/utils/bodyTransforms.js`), and the two tools therefore report
+    the same numbers for the same scene. Resolving also makes rigidly-attached
+    bodies -- which carry a constant `localTransform` and never appear in the
+    states -- diffable at all.
+
     Returns a JSON-serializable dict: `{"batch_a", "batch_b", "every",
     "pos_threshold", "rot_threshold_deg", "per_axis", "bodies": {label:
     {"frame_indices", "times", "position_error", "orientation_error_deg",
@@ -219,45 +369,71 @@ def compute_trajectory_diff(
     if not all_names:
         raise ValueError("no bodies found in the scene's states to diff")
 
+    meta = _build_body_meta(model_data, all_names)
+    topo_order = _topo_sort_bodies(meta)
+    # Rigidly-attached children carry a constant localTransform and so never
+    # appear in the states at all -- they're only diffable now that poses are
+    # resolved through the parent chain.
+    for name in topo_order:
+        if (
+            meta[name]["localTransform"] is not None
+            and _body_key(name) not in seen_keys
+        ):
+            seen_keys.add(_body_key(name))
+            all_names.append(name)
+
     target_names = _resolve_body(all_names, body)
+
+    # A grouped ("A+B") state entry shares one transform across its members, so
+    # resolving the first member gives the group's pose.
+    lookup_names = {_body_key(name): next(_iter_names(name)) for name in target_names}
+    series: dict = {
+        _body_key(name): {
+            "frame_indices": [],
+            "times": [],
+            "position_error": [],
+            "orientation_error_deg": [],
+            "err_x": [],
+            "err_y": [],
+            "err_z": [],
+        }
+        for name in target_names
+    }
+
+    for idx, state in enumerate(states_data):
+        if idx % every != 0:
+            continue
+        raw_by_name = _expand_raw_bodies(state.get("bodies"))
+        # Resolved once per frame for the whole scene rather than per body:
+        # a child's world pose needs its ancestors' poses anyway.
+        rows_a = _resolve_frame(meta, topo_order, raw_by_name, batch_size, batch_a)
+        rows_b = _resolve_frame(meta, topo_order, raw_by_name, batch_size, batch_b)
+
+        for name in target_names:
+            key = _body_key(name)
+            row_a = rows_a.get(lookup_names[key])
+            row_b = rows_b.get(lookup_names[key])
+            if row_a is None or row_b is None:
+                continue
+            out = series[key]
+            out["frame_indices"].append(idx)
+            out["times"].append(state.get("time"))
+            out["position_error"].append(math.dist(row_a[:3], row_b[:3]))
+            out["orientation_error_deg"].append(_quat_angle_deg(row_a[3:], row_b[3:]))
+            if per_axis:
+                out["err_x"].append(row_a[0] - row_b[0])
+                out["err_y"].append(row_a[1] - row_b[1])
+                out["err_z"].append(row_a[2] - row_b[2])
 
     bodies_out = {}
     for name in target_names:
-        key = _body_key(name)
+        out = series[_body_key(name)]
         label = _body_label(name)
-        frame_indices: list[int] = []
-        times: list = []
-        position_error: list[float] = []
-        orientation_error_deg: list[float] = []
-        err_x: list[float] = []
-        err_y: list[float] = []
-        err_z: list[float] = []
-
-        for idx, state in enumerate(states_data):
-            if idx % every != 0:
-                continue
-            entry = next(
-                (
-                    e
-                    for e in state.get("bodies") or []
-                    if _body_key(e.get("name")) == key
-                ),
-                None,
-            )
-            if entry is None or "bodyTransform" not in entry:
-                continue
-
-            row_a = _decode_transform_row(entry["bodyTransform"], batch_size, batch_a)
-            row_b = _decode_transform_row(entry["bodyTransform"], batch_size, batch_b)
-
-            frame_indices.append(idx)
-            times.append(state.get("time"))
-            position_error.append(math.dist(row_a[:3], row_b[:3]))
-            orientation_error_deg.append(_quat_angle_deg(row_a[3:], row_b[3:]))
-            if per_axis:
-                err_x.append(row_a[0] - row_b[0])
-                err_y.append(row_a[1] - row_b[1])
-                err_z.append(row_a[2] - row_b[2])
+        frame_indices = out["frame_indices"]
+        times = out["times"]
+        position_error = out["position_error"]
+        orientation_error_deg = out["orientation_error_deg"]
+        err_x, err_y, err_z = out["err_x"], out["err_y"], out["err_z"]
 
         summary = {
             "frame_count": len(frame_indices),
