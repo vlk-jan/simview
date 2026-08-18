@@ -4,14 +4,18 @@ additions to SimViewServer: /states reporting {"live": true} and the
 
 Protocol-level tests drive a live-mode SimViewServer directly via
 fastapi.testclient.TestClient (an in-process ASGI transport -- no real socket
-needed, so no dependency on a running server thread). The final test exercises
-the real thing: a background-thread LiveViewer, a real bound TCP port, and a
-real `websockets` client -- verifying the caller-thread -> server-loop bridge
-that asyncio.run_coroutine_threadsafe implements in push_state.
+needed, so no dependency on a running server thread). The integration test
+exercises the real thing: a background-thread LiveViewer, a real bound TCP
+port, and a real `websockets` client -- verifying the caller -> sender thread
+-> server-loop bridge that push_state and _sender_loop implement between them.
+The backpressure tests at the end cover the guarantee that matters most for
+long runs: push_state never waits on the browser.
 """
 
 import asyncio
 import json
+import threading
+import time
 
 import pytest
 
@@ -156,3 +160,96 @@ def test_live_viewer_stop_is_idempotent():
     live = LiveViewer(scene, preferred_port=5997, open_browser=False)
     live.stop()
     live.stop()  # must not raise
+
+
+# --- Backpressure: the caller's loop must never wait on the browser ---------
+
+
+def test_push_state_does_not_block_on_a_stalled_broadcast():
+    """A wedged broadcast must cost the caller nothing.
+
+    The old implementation waited on the broadcast future for every frame, so
+    a hung client stalled the simulation loop by up to 5s *per frame*.
+    """
+    scene = build_minimal_scene()
+    pos = torch.tensor([[0.0, 0.0, 1.0]])
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+
+    with LiveViewer(scene, preferred_port=5996, open_browser=False) as live:
+        release = threading.Event()
+        first_broadcast = threading.Event()
+
+        # Wedge the sender thread inside its very first broadcast.
+        def _stalled_broadcast(frame: dict) -> None:
+            first_broadcast.set()
+            release.wait(timeout=10.0)
+
+        live._broadcast = _stalled_broadcast
+
+        live.push_state(0.0, [SimViewBodyState("Box", pos, quat)])
+        assert first_broadcast.wait(timeout=5.0), "sender never started"
+
+        started = time.monotonic()
+        for i in range(1, 20):
+            live.push_state(i * 0.1, [SimViewBodyState("Box", pos, quat)])
+        elapsed = time.monotonic() - started
+
+        # Generously above any plausible add_state cost, far below the 5s per
+        # frame the blocking implementation would have charged.
+        assert elapsed < 2.0, f"push_state blocked on the stalled sender ({elapsed}s)"
+        # Every frame is still recorded regardless of the wedged stream.
+        assert len(scene.states) == 20
+
+        release.set()
+
+
+def test_full_queue_drops_oldest_frames_but_keeps_recording():
+    scene = build_minimal_scene()
+    pos = torch.tensor([[0.0, 0.0, 1.0]])
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+
+    with LiveViewer(
+        scene, preferred_port=5995, open_browser=False, queue_size=4
+    ) as live:
+        release = threading.Event()
+        first_broadcast = threading.Event()
+
+        def _stalled_broadcast(frame: dict) -> None:
+            first_broadcast.set()
+            release.wait(timeout=10.0)
+
+        live._broadcast = _stalled_broadcast
+
+        live.push_state(0.0, [SimViewBodyState("Box", pos, quat)])
+        assert first_broadcast.wait(timeout=5.0), "sender never started"
+
+        for i in range(1, 16):
+            live.push_state(i * 0.1, [SimViewBodyState("Box", pos, quat)])
+
+        # The queue is capped at 4, so the surplus was decimated off the wire.
+        assert live.dropped_frames > 0
+        # ...but neither the scene nor the catch-up buffer lost anything.
+        assert len(scene.states) == 16
+        assert len(live.server.frame_buffer) == 16
+
+        release.set()
+
+
+def test_stop_flushes_queued_frames_before_shutting_down():
+    scene = build_minimal_scene()
+    pos = torch.tensor([[0.0, 0.0, 1.0]])
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+
+    live = LiveViewer(scene, preferred_port=5994, open_browser=False)
+    sent: list[dict] = []
+
+    def _record(frame: dict) -> None:
+        sent.append(frame)
+
+    live._broadcast = _record
+
+    for i in range(5):
+        live.push_state(i * 0.1, [SimViewBodyState("Box", pos, quat)])
+    live.stop()
+
+    assert len(sent) == 5
