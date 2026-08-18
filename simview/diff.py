@@ -32,7 +32,7 @@ from simview.utils import read_maybe_gzipped_bytes
 BLOB_PREFIX = "__b64__"
 
 # [x, y, z, w, qx, qy, qz] -- same width as server.py's
-# _STATE_FIELD_WIDTHS["bodyTransform"] (kept in sync manually, not imported
+# STATE_FIELD_WIDTHS["bodyTransform"] (kept in sync manually, not imported
 # -- see module docstring).
 _TRANSFORM_WIDTH = 7
 _MAX_SERIES_ROWS = 10
@@ -82,7 +82,7 @@ def _flat_floats(value: Any) -> list[float]:
 def _decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[float]:
     """Decode one state's `bodyTransform` field value for a single batch into
     a flat 7-element `[x, y, z, w, qx, qy, qz]` row. Mirrors the shapes
-    `server.py`'s `_decode_state_field_rows` handles (blob = always
+    `columnar.py`'s `_decode_state_field_rows` handles (blob = always
     batch_size rows; plain list = nested one-row-per-batch, or flat 7 floats
     when batch_size == 1), reimplemented without numpy."""
     flat = _flat_floats(value)

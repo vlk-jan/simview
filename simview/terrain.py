@@ -221,7 +221,7 @@ def _grid_coord(index: int, min_b: float, max_b: float, shape: int) -> float:
 
 
 # [x, y, z, w, qx, qy, qz] -- same width as server.py's
-# _STATE_FIELD_WIDTHS["bodyTransform"] (kept in sync manually, not imported
+# STATE_FIELD_WIDTHS["bodyTransform"] (kept in sync manually, not imported
 # -- see module docstring). Independent copy of diff.py's same-named
 # constant.
 _TRANSFORM_WIDTH = 7

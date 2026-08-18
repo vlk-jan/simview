@@ -1,6 +1,6 @@
 """Tests for the server's columnar states repack (wire format v4).
 
-See README.md "Binary state fields" and simview/server.py::_columnarize_states.
+See README.md "Binary state fields" and simview/columnar.py::columnarize_states.
 The on-disk JSON format and merge.py are unaffected -- this only covers the
 repack the server does at load time before serving `/states`.
 """

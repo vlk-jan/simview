@@ -20,7 +20,7 @@ from simview.utils import read_maybe_gzipped_bytes
 
 BLOB_PREFIX = "__b64__"
 
-# Same fields/widths as server.py's _STATE_FIELD_WIDTHS (kept in sync
+# Same fields/widths as columnar.py's STATE_FIELD_WIDTHS (kept in sync
 # manually, not imported -- see module docstring).
 _STATE_FIELD_WIDTHS = {
     "bodyTransform": 7,
@@ -218,7 +218,7 @@ def _summarize_states(states: list, model: dict | None, warnings: list[str]) -> 
         if missing:
             reasons.append(f"scalar '{name}' is missing from {len(missing)} frame(s)")
 
-    # Per-body walk, mirroring server.py's _columnarize_states structural
+    # Per-body walk, mirroring columnar.py's columnarize_states structural
     # checks (field-set consistency, first-appearance-at-frame-0, no
     # dropping out) but never decoding/shaping blob values -- see module
     # docstring.
