@@ -33,6 +33,17 @@ produces.
   engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
   read-only in `simview info` and the browser's "Scene Info" GUI folder so a scene saved
   months ago stays self-describing.
+- **`episodes`** *(array, optional)* — episode boundaries for an episodic (e.g. RL)
+  recording. Each entry:
+  - **`startIndex`** *(integer)* — index into `states` of the episode's first frame.
+    Must be `>= 0` and strictly increasing across entries; each episode implicitly ends
+    where the next begins (the last runs to the end of `states`).
+  - **`label`** *(string, optional)* — display name; falls back to `"Episode <n>"`.
+
+    Purely descriptive: playback itself is unchanged, but the viewer draws boundaries on
+    the playback bar, offers episode navigation, and aggregates scalars per episode (see
+    [Episodes](../usage/episodes.md)). Omit the key entirely for an ordinary continuous
+    timeline.
 - **`bodies`** *(array)* — dynamic bodies. Each entry:
   - **`name`** *(string)* — unique identifier, referenced from each state.
   - **`shape`** *(object)* — geometry, keyed by a **string** `type`:

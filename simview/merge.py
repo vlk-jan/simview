@@ -724,4 +724,22 @@ def merge_simulation_files(paths: Sequence[str | Path]) -> dict:
     }
     if source_metadata:
         merged_model["metadata"] = {"sources": source_metadata}
+
+    # Episode boundaries are indices into a specific timeline. The merged
+    # timeline *is* the first file's (everything else is resampled onto it), so
+    # only its episodes still mean anything -- the others' indices would point
+    # at the wrong frames.
+    if models[0].get("episodes"):
+        merged_model["episodes"] = models[0]["episodes"]
+    dropped = [
+        label for model, label in zip(models[1:], labels[1:]) if model.get("episodes")
+    ]
+    if dropped:
+        logger.warning(
+            "Dropping episode boundaries from %s: they index their own "
+            "timeline, and the merged scene uses '%s'’s timeline.",
+            ", ".join(f"'{label}'" for label in dropped),
+            labels[0],
+        )
+
     return {"model": merged_model, "states": merged_states}

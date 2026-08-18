@@ -24,6 +24,8 @@ Once the visualizer is running, you can interact with the simulation using the f
   exactly one loop, then automatically stops and downloads the file.
 - **Screenshot**: `S` or Click the camera button next to Record to save the current frame as a PNG.
 - **Playback Speed**: Adjust speed (0.1x to 5x) via the dropdown next to the timeline
+- **Previous/Next Episode**: `[` / `]` or the |◀ / ▶| buttons. Only shown for a scene
+  that declares [episodes](episodes.md); boundaries are also ticked on the timeline bar.
 
 ## Batch Selection
 

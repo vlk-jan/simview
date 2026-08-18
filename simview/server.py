@@ -463,18 +463,34 @@ class SimViewServer:
                 await websocket.send_text(json.dumps({"states": chunk}))
             replayed += len(pending)
 
-    async def broadcast_frame(self, frame: dict) -> None:
-        """Send one newly-pushed frame to every connected /ws/states client.
+    def set_episodes(self, episodes: list[dict]) -> None:
+        """Replace the served model's episode boundaries (live mode).
 
-        Must run on self.loop (the server thread's event loop) -- LiveViewer
-        schedules this via asyncio.run_coroutine_threadsafe rather than
-        calling it directly from the caller's thread. A dead/broken socket is
-        dropped rather than allowed to raise, since one slow/gone client must
-        never break the broadcast (or the caller's push_state) for the rest.
+        Re-serializes `/model` so a viewer connecting later sees them; already
+        connected viewers are told separately via `broadcast_episodes`.
+        """
+        if self.model_data is None:
+            return
+        self.model_data["episodes"] = episodes
+        self.model_bytes = gzip.compress(self._dumps(self.model_data), compresslevel=1)
+
+    async def broadcast_episodes(self, episodes: list[dict]) -> None:
+        """Push updated episode boundaries to every connected /ws/states client.
+
+        A separate message kind from the frame broadcasts -- episodes describe
+        the model, not a frame, and arrive far more rarely. See the onmessage
+        handler in SimView.js.
+        """
+        await self._broadcast_text(json.dumps({"episodes": episodes}))
+
+    async def _broadcast_text(self, message: str) -> None:
+        """Send one already-serialized message to every connected client.
+
+        A dead/broken socket is dropped rather than allowed to raise, since one
+        slow/gone client must never break the broadcast for the rest.
         """
         if not self.ws_clients:
             return
-        message = json.dumps({"states": [frame]})
         dead = []
         for client in self.ws_clients:
             try:
@@ -483,6 +499,15 @@ class SimViewServer:
                 dead.append(client)
         for client in dead:
             self.ws_clients.discard(client)
+
+    async def broadcast_frame(self, frame: dict) -> None:
+        """Send one newly-pushed frame to every connected /ws/states client.
+
+        Must run on self.loop (the server thread's event loop) -- LiveViewer
+        schedules this via asyncio.run_coroutine_threadsafe from its sender
+        thread rather than calling it directly.
+        """
+        await self._broadcast_text(json.dumps({"states": [frame]}))
 
     def run(
         self,

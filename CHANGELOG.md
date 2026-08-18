@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raise instead of falling back when a scene is too irregular to pack. See the
   [JSON Format Specification](https://vlk-jan.github.io/simview/dev/json-format/).
 - `simview info` reports which `states` layout a file uses.
+- **Episodes.** An episodic (e.g. RL) recording can mark its resets with
+  `SimulationScene.mark_episode()` / `LiveViewer.mark_episode()`, serialized as an
+  optional `model.episodes` array. The viewer ticks episode boundaries on the playback
+  bar, adds |◀ / ▶| navigation (`[` / `]`), and overlays per-episode aggregates
+  (including the episode return) on the scalar plots. See
+  [Episodes](https://vlk-jan.github.io/simview/usage/episodes/).
 
 ### Changed
 

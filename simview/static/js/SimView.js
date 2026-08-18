@@ -206,7 +206,15 @@ export class SimView {
         this.showLiveBadge();
 
         socket.onmessage = (event) => {
-            const { states } = JSON.parse(event.data);
+            const message = JSON.parse(event.data);
+            // Two message kinds share this socket: batches of new frames, and
+            // (far more rarely) updated episode boundaries when the producer
+            // calls LiveViewer.mark_episode mid-run.
+            if (message.episodes) {
+                this.applyEpisodes(message.episodes);
+                return;
+            }
+            const { states } = message;
             if (!states || states.length === 0) return;
             this.processStatesChunk(states);
             if (splash) splash.remove();
@@ -219,6 +227,16 @@ export class SimView {
         socket.onerror = (event) => {
             console.error("Live stream error:", event);
         };
+    }
+
+    // Hands episode boundaries to the consumers that visualize them. Safe to
+    // call before the playback controls exist (they're built with the store),
+    // since onStoreReady calls it again once they do.
+    applyEpisodes(episodes) {
+        this.episodes = Array.isArray(episodes) ? episodes : [];
+        const controls = this.animationController?.playbackControls;
+        if (controls) controls.setEpisodes(this.episodes);
+        if (this.scalarPlotter) this.scalarPlotter.setEpisodes(this.episodes);
     }
 
     showLiveBadge() {
@@ -306,6 +324,9 @@ export class SimView {
     onStoreReady() {
         if (this.animationController) {
             this.animationController.loadAnimation(this.store);
+            // loadAnimation builds the PlaybackControls, so episodes can only
+            // be handed over afterwards.
+            this.applyEpisodes(this.episodes);
             if (this.scalarPlotter) {
                 this.scalarPlotter.initFromStore(this.store);
             }
@@ -383,6 +404,11 @@ export class SimView {
             // (see SimViewModel.metadata) -- no meaning to the viewer itself,
             // just displayed read-only in the "Scene Info" GUI folder.
             this.metadata = model.metadata ?? null;
+
+            // Episode boundaries for an episodic (RL) recording, applied to
+            // the playback bar once the store exists (see onStoreReady).
+            // Absent for an ordinary single-timeline scene.
+            this.episodes = Array.isArray(model.episodes) ? model.episodes : [];
 
             this.batchManager = new BatchManager(this, model);
             this.bodies = new Map();

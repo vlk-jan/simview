@@ -506,6 +506,61 @@ class SimViewStaticObject:
         )
 
 
+@dataclass
+class SimViewEpisode:
+    """One episode boundary in an otherwise continuous timeline.
+
+    RL runs are episodic: the states array is one long recording, but it is
+    really a sequence of resets. An episode marks the frame a run *starts* at,
+    so `episodes` is a list of starts and each episode implicitly ends where
+    the next one begins (the last runs to the end of the states).
+
+    Purely descriptive metadata -- the viewer uses it to draw boundaries on the
+    playback bar, offer next/previous-episode navigation, and aggregate scalars
+    per episode. Nothing about playback itself changes.
+    """
+
+    start_index: int
+    label: str | None = None
+
+    def __post_init__(self):
+        if not isinstance(self.start_index, int) or isinstance(self.start_index, bool):
+            raise ValueError(
+                f"Episode start_index must be an int, got {type(self.start_index).__name__}"
+            )
+        if self.start_index < 0:
+            raise ValueError(f"Episode start_index must be >= 0, got {self.start_index}")
+
+    def to_json(self) -> dict:
+        r: dict = {"startIndex": self.start_index}
+        if self.label is not None:
+            r["label"] = self.label
+        return r
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimViewEpisode":
+        try:
+            start_index = d["startIndex"]
+        except (KeyError, TypeError) as e:
+            raise ValueError(f"Episode dict is missing required key: {e}") from e
+        return cls(start_index=int(start_index), label=d.get("label"))
+
+
+def _validate_episodes(episodes: list[SimViewEpisode] | None) -> None:
+    """Episode starts must be strictly increasing -- they partition one
+    timeline, so an out-of-order or duplicated start has no meaning."""
+    if not episodes:
+        return
+    previous = -1
+    for episode in episodes:
+        if episode.start_index <= previous:
+            raise ValueError(
+                "Episode start_index values must be strictly increasing; got "
+                f"{episode.start_index} after {previous}"
+            )
+        previous = episode.start_index
+
+
 def _validate_parent_ref(name: str, parent: str | None, known_bodies: dict) -> None:
     """Raise ValueError if `parent` is self-referential or isn't already in
     `known_bodies`. Requiring the parent to already be known (rather than doing
@@ -537,12 +592,16 @@ class SimViewModel:
     # git commit, CLI args, ...) with no meaning to the viewer itself -- just
     # carried through so a scene saved months ago is still self-describing.
     metadata: dict[str, Any] | None = None
+    # Optional episode boundaries for an episodic (e.g. RL) recording -- see
+    # SimViewEpisode. None means "one continuous timeline", the default.
+    episodes: list[SimViewEpisode] | None = None
 
     def __post_init__(self):
         if self.batch_names is not None and len(self.batch_names) != self.batch_size:
             raise ValueError(
                 f"batch_names length ({len(self.batch_names)}) must match batch size ({self.batch_size})"
             )
+        _validate_episodes(self.episodes)
 
     def add_terrain(self, terrain: SimViewTerrain) -> None:
         if self.terrain is not None:
@@ -743,6 +802,8 @@ class SimViewModel:
             r["batchNames"] = self.batch_names
         if self.metadata is not None:
             r["metadata"] = self.metadata
+        if self.episodes:
+            r["episodes"] = [e.to_json() for e in self.episodes]
         return r
 
     @classmethod
@@ -787,6 +848,11 @@ class SimViewModel:
             static_objects=static_objects,
             batch_names=d.get("batchNames"),
             metadata=d.get("metadata"),
+            episodes=(
+                [SimViewEpisode.from_dict(e) for e in d["episodes"]]
+                if d.get("episodes")
+                else None
+            ),
         )
 
     @property

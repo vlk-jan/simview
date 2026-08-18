@@ -215,6 +215,40 @@ class LiveViewer:
         self.server.frame_buffer.append(frame)
         self._enqueue(frame)
 
+    def mark_episode(self, label: str | None = None, start_index: int | None = None):
+        """Mark the start of an episode at the current point in the stream.
+
+        The episodic counterpart to `push_state`: call it on each reset, before
+        pushing that episode's first frame. Connected viewers update their
+        playback bar immediately; a viewer that connects later picks the
+        boundaries up from `/model`. Returns the created `SimViewEpisode`.
+
+        Like `push_state`, this never blocks the caller on the network.
+        """
+        episode = self.scene.mark_episode(label=label, start_index=start_index)
+        episodes = [e.to_json() for e in (self.scene.model.episodes or [])]
+        self.server.set_episodes(episodes)
+
+        loop = self.server.loop
+        if loop is not None:
+            # Fire-and-forget: episode markers are rare (once per reset), so
+            # unlike frames they don't need the sender thread's queue and its
+            # backpressure -- scheduling one coroutine per episode can't pile
+            # up. The callback exists only so a failure isn't swallowed as an
+            # unretrieved-future warning.
+            future = asyncio.run_coroutine_threadsafe(
+                self.server.broadcast_episodes(episodes), loop
+            )
+            future.add_done_callback(self._log_broadcast_failure)
+        return episode
+
+    @staticmethod
+    def _log_broadcast_failure(future) -> None:
+        try:
+            future.result()
+        except Exception:
+            logger.exception("Error broadcasting live episode update")
+
     @property
     def dropped_frames(self) -> int:
         """How many frames were skipped on the wire because the viewer could

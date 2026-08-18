@@ -1,10 +1,24 @@
 import { FREQ_CONFIG } from "../config.js";
 import { isMp4RecordingSupported } from "../components/AnimationController.js";
+import {
+    episodeIndexAt,
+    episodeLabel,
+    episodeSegments,
+    nextEpisodeStart,
+    normalizeEpisodes,
+    previousEpisodeStart,
+} from "../utils/episodes.js";
 
 const buttonHeight = 25;
 export class PlaybackControls {
     constructor(animationController) {
         this.animationController = animationController;
+        // Episode boundaries, set later via setEpisodes() -- they come from the
+        // model, which may not be loaded yet, and in live mode can arrive (and
+        // change) at any point during the run. `rawEpisodes` is kept so the
+        // list can be re-normalized as the timeline grows.
+        this.rawEpisodes = [];
+        this.episodes = [];
         this.minRenderDelay = 1000 / FREQ_CONFIG.playbackControls;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
         this.container = document.createElement("div");
@@ -78,6 +92,24 @@ export class PlaybackControls {
             this.animationController.setSpeed(parseFloat(e.target.value));
         };
 
+        this.prevEpisodeButtonClick = () => {
+            this.#jumpToFrame(
+                previousEpisodeStart(
+                    this.episodes,
+                    this.animationController.getCurrentStateIndex()
+                )
+            );
+        };
+
+        this.nextEpisodeButtonClick = () => {
+            this.#jumpToFrame(
+                nextEpisodeStart(
+                    this.episodes,
+                    this.animationController.getCurrentStateIndex()
+                )
+            );
+        };
+
         this.progressBarContainerClick = (event) => {
             const rect = this.progressBarContainer.getBoundingClientRect();
             const x = event.clientX - rect.left;
@@ -115,6 +147,12 @@ export class PlaybackControls {
                 return;
 
             switch (key) {
+                case "[":
+                    this.prevEpisodeButton.click();
+                    break;
+                case "]":
+                    this.nextEpisodeButton.click();
+                    break;
                 case "r":
                     this.recordButton.click();
                     break;
@@ -176,6 +214,30 @@ export class PlaybackControls {
             "40px"
         );
 
+        // Episode navigation. Hidden entirely for a non-episodic scene (the
+        // common case) rather than shown disabled -- see #refreshEpisodeUI.
+        this.prevEpisodeButton = this.#createButton(
+            "|◀",
+            this.prevEpisodeButtonClick,
+            "40px"
+        );
+        this.prevEpisodeButton.title = "Previous episode ([)";
+        this.nextEpisodeButton = this.#createButton(
+            "▶|",
+            this.nextEpisodeButtonClick,
+            "40px"
+        );
+        this.nextEpisodeButton.title = "Next episode (])";
+        this.episodeLabelSpan = document.createElement("span");
+        Object.assign(this.episodeLabelSpan.style, {
+            color: "white",
+            display: "none",
+            alignItems: "center",
+            height: "30px",
+            fontFamily: "monospace",
+            whiteSpace: "nowrap",
+        });
+
         this.speedSelect = document.createElement("select");
         [0.1, 0.25, 0.5, 1, 2, 5].forEach((speed) => {
             const option = document.createElement("option");
@@ -206,7 +268,9 @@ export class PlaybackControls {
             width: "100%",
             marginLeft: "15px",
             marginRight: "15px",
-            display: "flex",
+            // `relative` so the absolutely-positioned episode ticks below are
+            // placed against the bar rather than the page.
+            position: "relative",
             height: "8px",
             backgroundColor: "#222",
             borderRadius: "4px",
@@ -222,6 +286,15 @@ export class PlaybackControls {
             borderRadius: "4px",
         });
         this.progressBarContainer.appendChild(this.progressBar);
+        // Ticks live in their own overlay so redrawing them never disturbs the
+        // progress fill, which updates every frame.
+        this.episodeTicks = document.createElement("div");
+        Object.assign(this.episodeTicks.style, {
+            position: "absolute",
+            inset: "0",
+            pointerEvents: "none",
+        });
+        this.progressBarContainer.appendChild(this.episodeTicks);
         this.progressBarContainer.addEventListener(
             "click",
             this.progressBarContainerClick
@@ -235,8 +308,11 @@ export class PlaybackControls {
             this.stepBackButton,
             this.playButton,
             this.stepForwardButton,
+            this.prevEpisodeButton,
+            this.nextEpisodeButton,
             this.speedSelect,
             this.frameCounter,
+            this.episodeLabelSpan,
         ].forEach((element) => this.controlsRow.appendChild(element));
 
         this.container.appendChild(this.controlsRow);
@@ -246,7 +322,89 @@ export class PlaybackControls {
         // Attach document-level listener
         document.addEventListener("keydown", this.keydownListener);
 
+        this.#refreshEpisodeUI();
         this.updateElements();
+    }
+
+    // Called by SimView once the model is known, and again whenever live mode
+    // pushes updated boundaries mid-run (see the onmessage handler there).
+    setEpisodes(rawEpisodes) {
+        this.rawEpisodes = rawEpisodes;
+        this.refreshEpisodes();
+    }
+
+    // Re-normalizes against the current frame count. Separate from
+    // setEpisodes() because in live mode the timeline grows under a fixed
+    // episode list, which moves every tick's position and can bring an
+    // already-marked episode into range.
+    refreshEpisodes() {
+        const frameCount = this.animationController.store
+            ? this.animationController.store.length
+            : 0;
+        this.episodes = normalizeEpisodes(this.rawEpisodes, frameCount);
+        this.#refreshEpisodeUI();
+    }
+
+    #jumpToFrame(frameIndex) {
+        if (frameIndex == null) return;
+        this.animationController.pause();
+        this.playButton.textContent = "Play";
+        this.animationController.seekToIndex(frameIndex);
+        this.animationController.forceRedrawStaticElements();
+        this.forceRedraw();
+    }
+
+    // Shows/hides the episode controls and redraws the boundary ticks. Cheap
+    // enough to redo wholesale, since it only runs when the episode list (not
+    // the playhead) changes.
+    #refreshEpisodeUI() {
+        const hasEpisodes = this.episodes.length > 0;
+        const display = hasEpisodes ? "inline-flex" : "none";
+        this.prevEpisodeButton.style.display = display;
+        this.nextEpisodeButton.style.display = display;
+        this.episodeLabelSpan.style.display = hasEpisodes ? "flex" : "none";
+
+        this.episodeTicks.replaceChildren();
+        if (!hasEpisodes) return;
+
+        const frameCount = this.animationController.store
+            ? this.animationController.store.length
+            : 0;
+        if (frameCount <= 1) return;
+        for (const episode of this.episodes) {
+            // Frame 0 is the timeline's own start, not a visible boundary.
+            if (episode.startIndex === 0) continue;
+            const tick = document.createElement("div");
+            Object.assign(tick.style, {
+                position: "absolute",
+                top: "0",
+                bottom: "0",
+                width: "2px",
+                marginLeft: "-1px",
+                backgroundColor: "rgba(255, 255, 255, 0.75)",
+                left: `${(episode.startIndex / (frameCount - 1)) * 100}%`,
+            });
+            this.episodeTicks.appendChild(tick);
+        }
+        // updateElements() only runs on a playback tick, so a scene sitting
+        // paused right after load would otherwise show an empty label until
+        // the user pressed play.
+        this.#updateEpisodeLabel();
+    }
+
+    #updateEpisodeLabel() {
+        if (this.episodes.length === 0) {
+            this.episodeLabelSpan.textContent = "";
+            return;
+        }
+        const frameIndex = this.animationController.getCurrentStateIndex();
+        const index = episodeIndexAt(this.episodes, frameIndex);
+        const segments = episodeSegments(
+            this.episodes,
+            this.animationController.store ? this.animationController.store.length : 0
+        );
+        const segment = segments.find((s) => s.index === index);
+        this.episodeLabelSpan.textContent = segment ? `| ${episodeLabel(segment)}` : "";
     }
 
     updateElements() {
@@ -255,6 +413,7 @@ export class PlaybackControls {
         this.frameCounter.textContent = `time: ${currentTime} / ${totalTime}`;
         const progress = currentTime / totalTime;
         this.progressBar.style.width = `${(progress * 100).toFixed(1)}%`;
+        this.#updateEpisodeLabel();
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
     }
 
@@ -282,6 +441,14 @@ export class PlaybackControls {
         this.stepForwardButton.removeEventListener(
             "click",
             this.stepForwardButtonClick
+        );
+        this.prevEpisodeButton.removeEventListener(
+            "click",
+            this.prevEpisodeButtonClick
+        );
+        this.nextEpisodeButton.removeEventListener(
+            "click",
+            this.nextEpisodeButtonClick
         );
         this.speedSelect.removeEventListener("change", this.speedSelectChange);
         this.progressBarContainer.removeEventListener(

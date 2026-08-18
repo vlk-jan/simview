@@ -17,10 +17,12 @@ from .model import (
     BodyShapeType,  # If used directly by users of SimulationData for body creation
     OptionalBodyStateAttribute,  # If used directly
     SimViewBody,
+    SimViewEpisode,
     SimViewModel,
     SimViewStaticObject,
     SimViewTerrain,
     _encode_blob,
+    _validate_episodes,
 )
 from .server import SimViewServer
 from .state import (
@@ -172,6 +174,7 @@ class SimulationScene:
         static_objects: dict[str, SimViewStaticObject] | None = None,
         batch_names: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        episodes: list[SimViewEpisode] | None = None,
     ) -> None:
         """
         Initializes the simulation data container.
@@ -182,6 +185,10 @@ class SimulationScene:
         viewer -- it's carried through to `simview info` and the browser so a
         saved scene stays self-describing. Can also be set/updated later via
         `self.model.metadata`.
+
+        `episodes` marks the frames an episodic (e.g. RL) recording resets at.
+        Usually easier to build up as you go with `mark_episode()` than to pass
+        here up front.
         """
         self.model = SimViewModel(
             batch_size=batch_size,
@@ -193,8 +200,36 @@ class SimulationScene:
             static_objects=static_objects if static_objects is not None else {},
             batch_names=batch_names,
             metadata=metadata,
+            episodes=episodes,
         )
         self.states: list[dict] = []
+
+    def mark_episode(
+        self, label: str | None = None, start_index: int | None = None
+    ) -> SimViewEpisode:
+        """Mark the start of an episode in this scene's timeline.
+
+        Call it right before adding the first frame of a new episode (a reset),
+        which is what the default `start_index` -- the index the next added
+        frame will land at -- means::
+
+            for episode in range(num_episodes):
+                scene.mark_episode(label=f"episode {episode}")
+                for t in range(episode_length):
+                    scene.add_state(...)
+
+        Pass `start_index` explicitly to annotate an already-recorded scene.
+        Episode starts must be strictly increasing; a repeated or out-of-order
+        index raises ValueError. Returns the created `SimViewEpisode`.
+        """
+        if start_index is None:
+            start_index = len(self.states)
+        episode = SimViewEpisode(start_index=start_index, label=label)
+        episodes = list(self.model.episodes or [])
+        episodes.append(episode)
+        _validate_episodes(episodes)
+        self.model.episodes = episodes
+        return episode
 
     @classmethod
     def from_dict(cls, d: dict) -> "SimulationScene":
@@ -230,6 +265,7 @@ class SimulationScene:
             static_objects=model.static_objects,
             batch_names=model.batch_names,
             metadata=model.metadata,
+            episodes=model.episodes,
         )
         scene.states = list(states)
         return scene
