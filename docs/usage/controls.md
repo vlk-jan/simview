@@ -27,6 +27,19 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **Previous/Next Episode**: `[` / `]` or the |◀ / ▶| buttons. Only shown for a scene
   that declares [episodes](episodes.md); boundaries are also ticked on the timeline bar.
 
+## Rendering Many Batches
+
+Each batch gets its own patch of world — its own terrain mesh, axes, arrows and
+point clouds — which is fine for a handful and hopeless for the hundreds of
+parallel environments an RL run produces.
+
+**Render All Batches** (in "Body Options") switches between drawing every batch
+and drawing only the focused one. Above 32 batches, focused-only is the
+default, and a batch's per-batch scene objects are built the first time you
+focus it — so a 256-env scene loads as fast as a single-env one, and batches
+you never look at cost nothing. Split-screen's two batches stay drawn either
+way.
+
 ## Batch Selection
 
 - **Move Selection**: `Shift` + Arrow keys

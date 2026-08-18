@@ -237,6 +237,22 @@ export class Terrain {
             batchGroup.position.set(batch_offset.x, batch_offset.y, batch_offset.z);
             this.group.add(batchGroup);
         }
+        this.refreshBatchVisibility();
+    }
+
+    // Hides the batches BatchManager isn't rendering (see
+    // utils/batchVisibility.js), so a scene with hundreds of envs doesn't pay
+    // for hundreds of heightfield meshes every frame. Unlike Body's per-batch
+    // objects these are still *built* up front -- the geometry is shared for a
+    // singleton terrain, and a per-batch terrain needs its heightfield decoded
+    // anyway for the terrain-query tooling.
+    refreshBatchVisibility() {
+        const batchManager = this.app.batchManager;
+        if (!batchManager?.isBatchVisible || !this.group) return;
+        for (let i = 0; i < batchManager.simBatches; i++) {
+            const batchGroup = this.group.getObjectByName(`batch${i}`);
+            if (batchGroup) batchGroup.visible = batchManager.isBatchVisible(i);
+        }
     }
 
     // Normalize a value into [0, 1] against an explicit [min, max] range.

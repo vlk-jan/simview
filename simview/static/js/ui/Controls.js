@@ -1,5 +1,6 @@
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import { colorMapOptions } from "../../lib/js-colormaps.js";
+import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
 import { serializeViewState, toggleMapFromUiState } from "../utils/viewState.js";
 
 export class UIControls {
@@ -144,6 +145,23 @@ export class UIControls {
                 .onChange((value) => {
                     this.updateSmoothInterpolation(value);
                 });
+
+            // Only worth offering with enough batches for it to matter; with a
+            // handful, everything is drawn and the toggle is just noise.
+            if (this.app.batchManager.simBatches > 1) {
+                const renderControls = {
+                    renderAllBatches:
+                        this.app.batchManager.renderMode === RENDER_ALL,
+                };
+                this.bodyFolder
+                    .add(renderControls, "renderAllBatches")
+                    .name("Render All Batches")
+                    .onChange((value) => {
+                        this.app.batchManager.setRenderMode(
+                            value ? RENDER_ALL : RENDER_FOCUSED
+                        );
+                    });
+            }
 
             // Only shown when at least one body ships a per-point similarity
             // embedding (see Body.js's pointEmbedding / recolorBySimilarity).

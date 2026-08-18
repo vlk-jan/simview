@@ -145,6 +145,28 @@ export class StaticObject {
         }
     }
 
+    // Hides the batches BatchManager isn't rendering (see
+    // utils/batchVisibility.js). Only meaningful for non-singleton static
+    // objects, which get one group per batch; the singleton path is a single
+    // instanced draw covering all of them.
+    refreshBatchVisibility() {
+        const batchManager = this.app.batchManager;
+        if (!batchManager?.isBatchVisible) return;
+        this.batchGroups.forEach((batchGroup, i) => {
+            if (batchGroup) batchGroup.visible = batchManager.isBatchVisible(i);
+        });
+        // Singleton point clouds are one object per batch rather than a group.
+        const points = this.representations["points"];
+        if (this.isSingleton && Array.isArray(points)) {
+            points.forEach((object, i) => {
+                if (!object) return;
+                object.visible =
+                    batchManager.isBatchVisible(i) &&
+                    this.app.uiState.bodyVisualizationMode === "points";
+            });
+        }
+    }
+
     /** Update visualization mode (mesh, wireframe, points) */
     updateVisualizationMode(mode) {
         for (const [type, obj] of Object.entries(this.representations)) {

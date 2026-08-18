@@ -1,12 +1,23 @@
 import * as THREE from "three";
 import { BATCH_PALETTE_GENERATION_CONFIG } from "../config.js";
 import { generateDivergingPalette } from "../objects/utils.js";
+import {
+    RENDER_ALL,
+    RENDER_FOCUSED,
+    defaultRenderMode,
+    visibleBatchSet,
+} from "../utils/batchVisibility.js";
 
 export class BatchManager {
     constructor(app, modelData) {
         this.app = app;
         this.simBatches = 1; // Default to single batch
         this.currentlyActiveBatch = 0; // Default to the first batch
+        // Which batches actually get built and drawn -- see
+        // utils/batchVisibility.js. Set properly in _initialize once the batch
+        // count is known.
+        this.renderMode = RENDER_ALL;
+        this.visibleBatches = new Set([0]);
 
         // Batch offset configuration
         this.spacing = 0.5; // Spacing between batches in meters
@@ -46,6 +57,15 @@ export class BatchManager {
             });
         }
         console.debug("Batch offsets initialized:", this.batchOffsets);
+
+        this.renderMode = defaultRenderMode(this.simBatches);
+        if (this.renderMode === RENDER_FOCUSED) {
+            console.log(
+                `${this.simBatches} batches: rendering only the focused one. ` +
+                    "Toggle 'Render All Batches' in Controls to draw them all."
+            );
+        }
+        this._recomputeVisibleBatches();
 
         this.batchPalette = generateDivergingPalette(
             BATCH_PALETTE_GENERATION_CONFIG.colors,
@@ -179,6 +199,9 @@ export class BatchManager {
         }
         this.currentlyActiveBatch = batchIndex;
         this.changeFocusOnBatchByIndex(batchIndex);
+        // In focused mode the newly-active batch is (probably) not the one
+        // currently built/drawn, so refresh before the panels read from it.
+        this._recomputeVisibleBatches();
         this.app.bodyStateWindow.setSelectedBatch(batchIndex);
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setFocusedBatch(batchIndex);
@@ -194,5 +217,56 @@ export class BatchManager {
             return;
         }
         this.setActiveBatch(batchIndex);
+    }
+
+    // --- Which batches get rendered (see utils/batchVisibility.js) ---------
+
+    isBatchVisible(batchIndex) {
+        return this.visibleBatches.has(batchIndex);
+    }
+
+    setRenderMode(mode) {
+        if (mode !== RENDER_ALL && mode !== RENDER_FOCUSED) return;
+        if (this.renderMode === mode) return;
+        this.renderMode = mode;
+        this._recomputeVisibleBatches();
+    }
+
+    // Batches that must stay drawn even in focused mode, because a comparison
+    // view is showing them next to the active one.
+    _pinnedBatches() {
+        const pinned = [];
+        const uiState = this.app.uiState;
+        if (uiState?.splitScreen) {
+            pinned.push(uiState.splitBatchA, uiState.splitBatchB);
+        }
+        return pinned;
+    }
+
+    _recomputeVisibleBatches() {
+        const previous = this.visibleBatches;
+        this.visibleBatches = visibleBatchSet(
+            this.renderMode,
+            this.simBatches,
+            this.currentlyActiveBatch,
+            this._pinnedBatches()
+        );
+        if (
+            previous &&
+            previous.size === this.visibleBatches.size &&
+            [...this.visibleBatches].every((i) => previous.has(i))
+        ) {
+            return; // unchanged; nothing to rebuild
+        }
+        this.applyBatchVisibility();
+    }
+
+    // Pushes the current visible set out to everything that owns per-batch
+    // scene objects. Each of these builds a newly-visible batch's objects on
+    // demand, so a batch never focused is never built at all.
+    applyBatchVisibility() {
+        this.app.bodies?.forEach((body) => body.refreshBatchVisibility?.());
+        this.app.staticObjects?.forEach((so) => so.refreshBatchVisibility?.());
+        this.app.terrain?.refreshBatchVisibility?.();
     }
 }

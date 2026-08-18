@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (including the episode return) on the scalar plots. See
   [Episodes](https://vlk-jan.github.io/simview/usage/episodes/).
 
+- **Focused-batch rendering.** Above 32 batches the viewer now draws only the focused
+  batch by default, and builds each batch's per-batch scene objects (axes, arrows,
+  point clouds, contact points) the first time it's rendered rather than all up front —
+  so a scene with hundreds of parallel envs loads and runs like a single-env one.
+  Toggle with "Render All Batches" in Body Options.
+
 ### Changed
 
 - `SimulationScene.save()` writes columnar `states` by default. Files stay readable
