@@ -662,4 +662,5 @@ class SimulationScene:
             self.model.terrain.height_data = []
             self.model.terrain.normals = []
             self.model.terrain.properties = {}
+            self.model.terrain.embedding_data = None
         logger.info("SimulationScene: Internal data cleared.")
