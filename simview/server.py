@@ -369,10 +369,12 @@ class SimViewServer:
         self.app.state.server = self
 
         # Local viewer only: restrict cross-origin requests to localhost/127.0.0.1.
+        # No allow_credentials: the API doesn't use cookies or auth headers, and
+        # combining credentials with an any-localhost-port origin regex would let
+        # any other local dev server read a scene's data with the user's session.
         self.app.add_middleware(
             CORSMiddleware,
             allow_origin_regex=_ALLOWED_ORIGIN_REGEX,
-            allow_credentials=True,
             allow_methods=["GET", "POST"],
             allow_headers=["*"],
         )
