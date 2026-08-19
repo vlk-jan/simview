@@ -131,6 +131,9 @@ export class AnimationController {
             this.totalTime = this.store.lastTime();
         }
         if (this.playbackControls) {
+            // The timeline just got longer, so every episode tick's position
+            // changed -- re-place them before redrawing.
+            this.playbackControls.refreshEpisodes();
             this.playbackControls.forceRedraw();
         }
     }

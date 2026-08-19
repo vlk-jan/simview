@@ -1,6 +1,12 @@
 import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
+import {
+    episodeAggregates,
+    episodeIndexAt,
+    episodeLabel,
+    normalizeEpisodes,
+} from "../utils/episodes.js";
 import { injectStyles } from "../utils/injectStyles.js";
 
 export class ScalarPlotter {
@@ -24,6 +30,14 @@ export class ScalarPlotter {
         this.fullDataPoints = new Map();
         this.times = [];
         this.indices = [];
+        // Episode boundaries (see utils/episodes.js), drawn over each chart
+        // with the focused batch's per-episode aggregate. Empty for an
+        // ordinary non-episodic scene, in which case nothing extra is drawn.
+        this.rawEpisodes = [];
+        this.episodes = [];
+        // {scalarName -> per-batch array of per-episode aggregates}, rebuilt
+        // only when the episodes or the underlying series change.
+        this.episodeAggregateCache = new Map();
         this.seriesRenderCallback = null;
         this.opacityRenderCallback = null;
         this.minRenderDelay = 1000 / FREQ_CONFIG.scalarPlotter;
@@ -280,10 +294,101 @@ export class ScalarPlotter {
         }
 
         this._initializePlots();
+        // The timeline length is only known now, so episodes handed over
+        // before the store arrived have to be re-normalized against it.
+        this._refreshEpisodes();
         if (this.isExpanded) {
             this.setEndIndex(this.currentEndIndex, true);
             this.setFocusedBatch(this.currentFocusedBatch, true);
         }
+    }
+
+    // Episode boundaries from the model (or, in live mode, pushed mid-run).
+    // Invalidates the aggregate cache and repaints; safe to call before the
+    // store arrives, since initFromStore re-normalizes afterwards.
+    setEpisodes(rawEpisodes) {
+        this.rawEpisodes = rawEpisodes;
+        this._refreshEpisodes();
+    }
+
+    _refreshEpisodes() {
+        this.episodes = normalizeEpisodes(this.rawEpisodes, this.times.length);
+        this.episodeAggregateCache.clear();
+        for (const chart of this.charts.values()) chart.redraw();
+    }
+
+    // Per-episode aggregates of one scalar, per batch. Cached: recomputing on
+    // every uPlot draw would walk the whole trajectory each frame.
+    _episodeAggregatesFor(scalarName) {
+        let cached = this.episodeAggregateCache.get(scalarName);
+        if (cached) return cached;
+        const series = this.scalarSeries.get(scalarName);
+        if (!series) return [];
+        cached = series.map((batchSeries) =>
+            episodeAggregates(this.episodes, batchSeries, this.times.length)
+        );
+        this.episodeAggregateCache.set(scalarName, cached);
+        return cached;
+    }
+
+    // uPlot `draw` hook: a dashed vertical rule at each episode boundary, plus
+    // a horizontal segment at the focused batch's mean across each episode --
+    // the "how did this episode do overall" read that per-frame lines bury.
+    _drawEpisodeOverlay(u, scalarName) {
+        if (this.episodes.length === 0) return;
+        const aggregatesByBatch = this._episodeAggregatesFor(scalarName);
+        const aggregates = aggregatesByBatch[this.currentFocusedBatch];
+        if (!aggregates) return;
+
+        const ctx = u.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height);
+        ctx.clip();
+
+        for (const aggregate of aggregates) {
+            const startTime = this.times[aggregate.start];
+            if (startTime !== undefined && aggregate.start > 0) {
+                const x = u.valToPos(startTime, "x", true);
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, u.bbox.top);
+                ctx.lineTo(x, u.bbox.top + u.bbox.height);
+                ctx.stroke();
+            }
+
+            if (aggregate.mean === null) continue;
+            const endTime = this.times[Math.min(aggregate.end - 1, this.times.length - 1)];
+            if (startTime === undefined || endTime === undefined) continue;
+            ctx.setLineDash([]);
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            const y = u.valToPos(aggregate.mean, "y", true);
+            ctx.moveTo(u.valToPos(startTime, "x", true), y);
+            ctx.lineTo(u.valToPos(endTime, "x", true), y);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // Extra tooltip lines describing the episode the cursor is inside, for the
+    // focused batch. `sum` is what an RL run calls the episode return.
+    _episodeTooltipText(scalarName, frameIndex) {
+        if (this.episodes.length === 0) return "";
+        const aggregatesByBatch = this._episodeAggregatesFor(scalarName);
+        const aggregates = aggregatesByBatch[this.currentFocusedBatch];
+        if (!aggregates) return "";
+        const index = episodeIndexAt(this.episodes, frameIndex);
+        const aggregate = aggregates.find((a) => a.index === index);
+        if (!aggregate || aggregate.mean === null) return "";
+        const format = (v) => (Math.abs(v) >= 1e4 ? v.toExponential(2) : v.toFixed(3));
+        return (
+            `<br>${episodeLabel(aggregate)}: ` +
+            `sum ${format(aggregate.sum)}, mean ${format(aggregate.mean)}`
+        );
     }
 
     getChartInterval(min, max) {
@@ -372,6 +477,11 @@ export class ScalarPlotter {
                                 this._updateTooltip(u, name);
                             },
                         ],
+                        draw: [
+                            (u) => {
+                                this._drawEpisodeOverlay(u, name);
+                            },
+                        ],
                     },
                 },
                 [[], ...new Array(this.app.batchManager.simBatches).fill([])],
@@ -442,7 +552,9 @@ export class ScalarPlotter {
         const color = this.app.batchManager.getColorForBatch(batchIndex);
 
         tooltip.style.color = color;
-        tooltip.innerHTML = `Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}`;
+        tooltip.innerHTML =
+            `Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}` +
+            this._episodeTooltipText(name, idx);
         tooltip.style.display = "block";
 
         const left = u.cursor.left + 12;

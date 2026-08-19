@@ -98,12 +98,20 @@ export function createGeometry(shape, geometryConfig) {
             break;
         case "mesh":
             geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(shape.vertices.flat());
+            // Tensor-authored vertices/faces arrive blob-decoded as flat
+            // Float32Arrays (which have no .flat()); hand-authored data as
+            // nested lists -- same dual shape toFlatFloat32Array covers for
+            // points. Faces additionally need an integer index buffer: Uint32,
+            // not Uint16, so meshes past 65535 vertices don't silently wrap.
+            const positions = toFlatFloat32Array(shape.vertices);
             geometry.setAttribute(
                 "position",
                 new THREE.BufferAttribute(positions, 3)
             );
-            const indices = new Uint16Array(shape.faces.flat());
+            const faceSource = ArrayBuffer.isView(shape.faces)
+                ? shape.faces
+                : shape.faces.flat();
+            const indices = new Uint32Array(faceSource);
             geometry.setIndex(new THREE.BufferAttribute(indices, 1));
             geometry.computeVertexNormals();
             break;

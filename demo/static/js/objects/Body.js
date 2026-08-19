@@ -74,6 +74,8 @@ export class Body {
         // Reusable temporaries for hot-path matrix updates (avoid per-frame allocations)
         this._worldPos = new THREE.Vector3();
         this._unitScale = new THREE.Vector3(1, 1, 1);
+        // Used to hide an instanced batch, which has no per-instance visibility.
+        this._zeroScale = new THREE.Vector3(0, 0, 0);
         this._matrix = new THREE.Matrix4();
         this._normalizedVec = new THREE.Vector3();
 
@@ -94,6 +96,10 @@ export class Body {
         this.quaternionHistory = [];
         this.trails = [];
         this._trailStateIndex = -1;
+        // Capacity of the trail position buffers, and how much of it has
+        // actually been written -- see finalizeTrails.
+        this._trailCapacity = 0;
+        this._trailFilledCount = 0;
     }
 
     // --- History (position/orientation over all states) ---
@@ -154,27 +160,60 @@ export class Body {
 
     // --- Trails ---
 
+    // Brings the trail lines up to date with `validStates`. Called once per
+    // loaded chunk, which in live mode means once per pushed frame -- so it
+    // must not do work proportional to the whole run each time, or a long live
+    // stream costs O(T^2) overall. It appends only the newly-recorded points
+    // into the existing buffers, and reallocates just when the geometry has
+    // none yet or is out of capacity (amortized O(1) per point, since the
+    // capacity follows positionHistory's doubling growth).
     finalizeTrails() {
-        this.disposeTrails();
         const count = this.validStates || 0;
         if (count < 2) return;
+        if (this.trails.length !== this.simBatches || this._trailCapacity < count) {
+            this._rebuildTrails(count);
+        } else {
+            this._appendTrailPoints(count);
+        }
+        this._trailStateIndex = -1;
+        const currentIndex = this.app.animationController
+            ? this.app.animationController.getCurrentStateIndex()
+            : 0;
+        this.updateTrails(currentIndex);
+    }
+
+    _batchOffset(batchIndex) {
+        return this.app.batchManager
+            ? this.app.batchManager.getBatchOffset(batchIndex)
+            : { x: 0, y: 0, z: 0 };
+    }
+
+    // Writes local history points [from, to) into a batch's world-space trail
+    // buffer. Batch offsets are fixed once BatchManager._initialize has run, so
+    // points written in an earlier pass stay valid.
+    _writeTrailPoints(worldPositions, batchIndex, from, to) {
+        const offset = this._batchOffset(batchIndex);
+        const localPositions = this.positionHistory[batchIndex];
+        for (let s = from; s < to; s++) {
+            const base = s * 3;
+            worldPositions[base] = localPositions[base] + offset.x;
+            worldPositions[base + 1] = localPositions[base + 1] + offset.y;
+            worldPositions[base + 2] = localPositions[base + 2] + offset.z;
+        }
+    }
+
+    _rebuildTrails(count) {
+        this.disposeTrails();
+        // Match positionHistory's allocation so the trail buffer only has to be
+        // rebuilt when that one grows (i.e. O(log T) times over a live run).
+        const capacity = Math.max(this.allocatedStates || 0, count);
         for (let i = 0; i < this.simBatches; i++) {
-            const offset = this.app.batchManager
-                ? this.app.batchManager.getBatchOffset(i)
-                : { x: 0, y: 0, z: 0 };
-            const localPositions = this.positionHistory[i];
-            const worldPositions = new Float32Array(count * 3);
-            for (let s = 0; s < count; s++) {
-                const base = s * 3;
-                worldPositions[base] = localPositions[base] + offset.x;
-                worldPositions[base + 1] = localPositions[base + 1] + offset.y;
-                worldPositions[base + 2] = localPositions[base + 2] + offset.z;
-            }
+            const worldPositions = new Float32Array(capacity * 3);
+            this._writeTrailPoints(worldPositions, i, 0, count);
             const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute(
-                "position",
-                new THREE.BufferAttribute(worldPositions, 3)
-            );
+            const attribute = new THREE.BufferAttribute(worldPositions, 3);
+            attribute.setUsage(THREE.DynamicDrawUsage);
+            geometry.setAttribute("position", attribute);
             geometry.setDrawRange(0, 1);
             const color = this.app.batchManager
                 ? this.app.batchManager.getColorForBatch(i)
@@ -190,11 +229,23 @@ export class Body {
             this.group.add(line);
             this.trails[i] = line;
         }
-        this._trailStateIndex = -1;
-        const currentIndex = this.app.animationController
-            ? this.app.animationController.getCurrentStateIndex()
-            : 0;
-        this.updateTrails(currentIndex);
+        this._trailCapacity = capacity;
+        this._trailFilledCount = count;
+    }
+
+    _appendTrailPoints(count) {
+        const from = this._trailFilledCount || 0;
+        if (count <= from) return;
+        for (let i = 0; i < this.simBatches; i++) {
+            const line = this.trails[i];
+            if (!line) continue;
+            const attribute = line.geometry.getAttribute("position");
+            this._writeTrailPoints(attribute.array, i, from, count);
+            // Re-upload only the appended slice rather than the whole buffer.
+            attribute.addUpdateRange(from * 3, (count - from) * 3);
+            attribute.needsUpdate = true;
+        }
+        this._trailFilledCount = count;
     }
 
     updateTrails(stateIndex) {
@@ -219,6 +270,8 @@ export class Body {
             }
         }
         this.trails = [];
+        this._trailCapacity = 0;
+        this._trailFilledCount = 0;
     }
 
     createBatchGroups(bodyData) {
@@ -282,42 +335,118 @@ export class Body {
             this.initializeInstancedContactPoints(points);
         }
 
-        // We still need batch groups for individual axes or other non-instanced elements
-        for (let i = 0; i < this.simBatches; i++) {
-            const batchGroup = new THREE.Group();
-            batchGroup.name = `${this.name}_batch_${i}`;
-            this.group.add(batchGroup);
-            this.batchGroups.push(batchGroup);
-
-            // Axes helper is not instanced for now as it's for debugging
-            const axes = new THREE.AxesHelper(1);
-            axes.visible = this.app.uiState.axesVisible;
-            batchGroup.add(axes);
-
-            // Body vectors (arrows) are also not instanced yet
-            this.initializeBodyVectors(batchGroup, BODY_VECTOR_CONFIG, i);
-        }
+        // Per-batch groups (axes, arrows) and per-batch point clouds are built
+        // lazily, one batch at a time -- with hundreds of RL envs, eagerly
+        // constructing them all is both the startup cost and the memory
+        // footprint, and in focused mode most are never looked at.
+        this.refreshBatchVisibility();
 
         // Initial update of instances
         this.updateAllInstances();
     }
 
+    // Ensures the per-batch scene objects exist for every currently-visible
+    // batch, and hides the rest. Called at construction and again whenever
+    // BatchManager's visible set changes (focus moved, render mode toggled).
+    refreshBatchVisibility() {
+        for (let i = 0; i < this.simBatches; i++) {
+            const visible = this.#isBatchVisible(i);
+            if (visible) this.#ensureBatchObjects(i);
+
+            if (this.batchGroups[i]) this.batchGroups[i].visible = visible;
+            const pointsRep = this.representations["points"];
+            if (Array.isArray(pointsRep) && pointsRep[i]) {
+                pointsRep[i].visible =
+                    visible && this.app.uiState.bodyVisualizationMode === "points";
+            }
+            if (this.contactPoints[i]) {
+                this.contactPoints[i].visible =
+                    visible && (this.app.uiState.attributeVisible.contacts || false);
+            }
+        }
+        // Instanced representations are a single draw call covering every
+        // batch, so hidden batches are collapsed to a zero-scale matrix rather
+        // than removed (see updateInstanceMatrix).
+        this.updateAllInstances();
+    }
+
+    #isBatchVisible(batchIndex) {
+        const batchManager = this.app.batchManager;
+        return batchManager?.isBatchVisible
+            ? batchManager.isBatchVisible(batchIndex)
+            : true;
+    }
+
+    #ensureBatchObjects(batchIndex) {
+        if (this.batchGroups[batchIndex]) return;
+
+        const batchGroup = new THREE.Group();
+        batchGroup.name = `${this.name}_batch_${batchIndex}`;
+        this.group.add(batchGroup);
+        this.batchGroups[batchIndex] = batchGroup;
+
+        // Axes helper is not instanced for now as it's for debugging
+        const axes = new THREE.AxesHelper(1);
+        axes.visible = this.app.uiState.axesVisible;
+        batchGroup.add(axes);
+
+        // Body vectors (arrows) are also not instanced yet
+        this.initializeBodyVectors(batchGroup, BODY_VECTOR_CONFIG, batchIndex);
+
+        this.#ensurePointsForBatch(batchIndex);
+        this.#ensureContactPointsForBatch(batchIndex);
+        this.updateInstanceMatrix(batchIndex);
+    }
+
+    // Builds this batch's point cloud, if the body has one and it hasn't been
+    // built yet. A point cloud can't be instanced (each batch needs its own
+    // per-point colors for similarity recoloring), so these are exactly the
+    // objects worth not creating for batches nobody looks at.
+    #ensurePointsForBatch(batchIndex) {
+        const pointsRep = this.representations["points"];
+        if (!Array.isArray(pointsRep) || pointsRep[batchIndex]) return;
+        const source = this._pointsSource;
+        if (!source) return;
+
+        const points = createPoints(
+            source.geometry,
+            source.config,
+            true,
+            this.pointColors
+        );
+        if (!points) return;
+        points.visible = this.app.uiState.bodyVisualizationMode === "points";
+        // Lets InteractionController resolve a raycast hit back to this
+        // body/batch without a reverse lookup.
+        points.userData.bodyName = this.name;
+        points.userData.batchIndex = batchIndex;
+        this.group.add(points);
+        pointsRep[batchIndex] = points;
+    }
+
+    #ensureContactPointsForBatch(batchIndex) {
+        const source = this._contactPointsSource;
+        if (!source || this.contactPoints[batchIndex]) return;
+
+        const contactPoints = createContactPoints(source, BODY_CONFIG.contactPoints);
+        if (!contactPoints) return;
+        const pointCount = source.length;
+        this.contactPointSizes[batchIndex] = new Float32Array(pointCount).fill(0);
+        contactPoints.geometry.setAttribute(
+            "size",
+            new THREE.Float32BufferAttribute(this.contactPointSizes[batchIndex], 1)
+        );
+        contactPoints.visible = this.app.uiState.attributeVisible.contacts || false;
+        this.group.add(contactPoints);
+        this.contactPoints[batchIndex] = contactPoints;
+    }
+
     createInstancedRepresentation(type, source, config, bodyData) {
         if (type === "points") {
-            const pointsList = [];
-            for (let i = 0; i < this.simBatches; i++) {
-                const points = createPoints(source, config, true, this.pointColors);
-                if (points) {
-                    points.visible = this.app.uiState.bodyVisualizationMode === "points";
-                    // Lets InteractionController resolve a raycast hit back to
-                    // this body/batch without a reverse lookup.
-                    points.userData.bodyName = this.name;
-                    points.userData.batchIndex = i;
-                    this.group.add(points);
-                    pointsList.push(points);
-                }
-            }
-            return pointsList;
+            // The per-batch Points objects themselves are built on demand by
+            // #ensurePointsForBatch; keep what they're built from.
+            this._pointsSource = { geometry: source, config };
+            return [];
         } else {
             let material;
             if (type === "mesh") {
@@ -344,20 +473,9 @@ export class Body {
 
     initializeInstancedContactPoints(points) {
         if (!points?.length) return;
-        for (let i = 0; i < this.simBatches; i++) {
-            const contactPoints = createContactPoints(points, BODY_CONFIG.contactPoints);
-            if (contactPoints) {
-                const pointCount = points.length;
-                this.contactPointSizes[i] = new Float32Array(pointCount).fill(0);
-                contactPoints.geometry.setAttribute(
-                    "size",
-                    new THREE.Float32BufferAttribute(this.contactPointSizes[i], 1)
-                );
-                contactPoints.visible = this.app.uiState.attributeVisible.contacts || false;
-                this.group.add(contactPoints);
-                this.contactPoints[i] = contactPoints;
-            }
-        }
+        // Same lazy treatment as the point clouds: remember the source, build
+        // each batch's object in #ensureContactPointsForBatch on demand.
+        this._contactPointsSource = points;
     }
 
     updateAllInstances() {
@@ -394,7 +512,13 @@ export class Body {
             position.z + offset.z
         );
 
-        this._matrix.compose(this._worldPos, quaternion, this._unitScale);
+        // One InstancedMesh covers every batch in a single draw call, so a
+        // hidden batch is collapsed to zero scale (there's no per-instance
+        // visibility flag) rather than being removed.
+        const scale = this.#isBatchVisible(batchIndex)
+            ? this._unitScale
+            : this._zeroScale;
+        this._matrix.compose(this._worldPos, quaternion, scale);
 
         // Update InstancedMesh instances without setting needsUpdate yet
         if (this.representations["mesh"] instanceof THREE.InstancedMesh) {
@@ -403,6 +527,9 @@ export class Body {
         if (this.representations["wireframe"] instanceof THREE.InstancedMesh) {
             this.representations["wireframe"].setMatrixAt(batchIndex, this._matrix);
         }
+        // Everything below positions real objects, which are simply hidden
+        // when the batch isn't visible -- so recompose at unit scale.
+        this._matrix.compose(this._worldPos, quaternion, this._unitScale);
 
         // Update non-instanced representations with strict index checks
         const pointsRep = this.representations["points"];

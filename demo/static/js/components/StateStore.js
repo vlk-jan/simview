@@ -70,11 +70,26 @@ class ColumnarStateStore {
         if (i === this._memoIndex) return this._memoFrame;
 
         const state = { time: this.times[i], bodies: [] };
+        // Set when a windowed field wasn't resident yet, so this frame isn't
+        // memoized -- otherwise coming back to it after the window landed
+        // would keep serving the incomplete version.
+        let incomplete = false;
         for (const body of this._bodies) {
             const bodyState = { name: body.name };
             for (const field in body.fields) {
+                const value = body.fields[field];
+                // A windowed field (see WindowedField.js) returns its rows
+                // directly, or null while the covering window is still in
+                // flight -- in which case the key is left off entirely, which
+                // consumers already treat as "not provided this frame".
+                if (value && typeof value.rowsAt === "function") {
+                    const rows = value.rowsAt(i);
+                    if (rows) bodyState[field] = rows;
+                    else incomplete = true;
+                    continue;
+                }
                 bodyState[field] = this._sliceField(
-                    body.fields[field],
+                    value,
                     COLUMNAR_FIELD_WIDTHS[field],
                     i
                 );
@@ -91,8 +106,10 @@ class ColumnarStateStore {
             state[name] = Array.from(flat.subarray(base, base + B));
         }
 
-        this._memoIndex = i;
-        this._memoFrame = state;
+        if (!incomplete) {
+            this._memoIndex = i;
+            this._memoFrame = state;
+        }
         return state;
     }
 

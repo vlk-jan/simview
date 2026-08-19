@@ -24,6 +24,8 @@ import {
     STATE_FIELD_WIDTHS,
 } from "./utils/blobCodec.js";
 import { StateStore } from "./components/StateStore.js";
+import { WindowedField } from "./components/WindowedField.js";
+import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
 import { parseViewState } from "./utils/viewState.js";
 
@@ -125,6 +127,10 @@ export class SimView {
                 // a lightweight index plus /blob/... URLs for the actual
                 // whole-trajectory float32 data, fetched in parallel below.
                 console.debug(`Received ${statesPayload.times.length} states (columnar)`);
+                // Long trajectories: swap the biggest current-frame-only
+                // fields for windowed readers before the bulk fetch, so they
+                // are never materialized in full (see utils/blobWindow.js).
+                this.windowLargeStateFields(statesPayload);
                 console.time("fetch_state_blobs");
                 await this.fetchBlobs(statesPayload);
                 console.timeEnd("fetch_state_blobs");
@@ -148,6 +154,47 @@ export class SimView {
         }
     }
 
+    // Replaces the blob URL of every large, current-frame-only per-body field
+    // with a WindowedField, so fetchBlobs skips it and it's read in windows
+    // around the playhead instead. Static demo mode is excluded: it serves
+    // pre-dumped flat files with no Range support.
+    //
+    // bodyTransform, contacts and the scalars are deliberately untouched --
+    // trails, error metrics, the terrain profile and the scalar plots all walk
+    // the whole trajectory, so windowing those would just move the cost.
+    windowLargeStateFields(statesPayload) {
+        if (this.staticBase) return;
+        const totalFrames = statesPayload.times.length;
+        const batchCount = this.batchManager.simBatches;
+        // Overridable so tests can exercise windowing without a fixture big
+        // enough to cross the real threshold (same spirit as
+        // window.__debugSimView); undefined in normal use.
+        const threshold = window.__simviewWindowThresholdBytes;
+
+        let windowed = 0;
+        for (const body of statesPayload.bodies || []) {
+            for (const field of Object.keys(body.fields || {})) {
+                const url = body.fields[field];
+                const width = STATE_FIELD_WIDTHS[field];
+                if (typeof url !== "string" || !width) continue;
+                const totalBytes = totalFrames * bytesPerFrame(batchCount, width);
+                if (!shouldWindowField(field, totalBytes, threshold)) continue;
+
+                body.fields[field] = new WindowedField(url, {
+                    totalFrames,
+                    batchCount,
+                    width,
+                });
+                windowed++;
+            }
+        }
+        if (windowed > 0) {
+            console.log(
+                `Windowing ${windowed} large state field(s) instead of loading them in full.`
+            );
+        }
+    }
+
     // Walks any JSON-shaped object/array (the model, or the columnar states
     // payload) collecting every "/blob/..." reference, then fetches them all
     // in parallel and replaces each in place with its decoded Float32Array --
@@ -162,6 +209,10 @@ export class SimView {
         const refs = [];
         const collect = (node) => {
             if (!node || typeof node !== 'object') return;
+            // A WindowedField holds its own blob URL and fetches ranges of it
+            // itself -- recursing in would "helpfully" replace that URL with
+            // the very full-blob download the windowing exists to avoid.
+            if (node instanceof WindowedField) return;
             for (const key of Object.keys(node)) {
                 const val = node[key];
                 if (typeof val === 'string' && val.startsWith('/blob/')) {
@@ -180,6 +231,12 @@ export class SimView {
         await Promise.all(
             refs.map(async ({ container, key, url }) => {
                 const res = await fetch(url);
+                // Without this check a 404/500 body (an error page) would be
+                // silently reinterpreted as float32 data, corrupting whatever
+                // geometry/trajectory referenced this blob.
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch blob ${url}: ${res.status} ${res.statusText}`);
+                }
                 const arrayBuffer = await res.arrayBuffer();
                 container[key] = SimView.decodeFloat32Blob(arrayBuffer);
             })
@@ -200,7 +257,15 @@ export class SimView {
         this.showLiveBadge();
 
         socket.onmessage = (event) => {
-            const { states } = JSON.parse(event.data);
+            const message = JSON.parse(event.data);
+            // Two message kinds share this socket: batches of new frames, and
+            // (far more rarely) updated episode boundaries when the producer
+            // calls LiveViewer.mark_episode mid-run.
+            if (message.episodes) {
+                this.applyEpisodes(message.episodes);
+                return;
+            }
+            const { states } = message;
             if (!states || states.length === 0) return;
             this.processStatesChunk(states);
             if (splash) splash.remove();
@@ -213,6 +278,16 @@ export class SimView {
         socket.onerror = (event) => {
             console.error("Live stream error:", event);
         };
+    }
+
+    // Hands episode boundaries to the consumers that visualize them. Safe to
+    // call before the playback controls exist (they're built with the store),
+    // since onStoreReady calls it again once they do.
+    applyEpisodes(episodes) {
+        this.episodes = Array.isArray(episodes) ? episodes : [];
+        const controls = this.animationController?.playbackControls;
+        if (controls) controls.setEpisodes(this.episodes);
+        if (this.scalarPlotter) this.scalarPlotter.setEpisodes(this.episodes);
     }
 
     showLiveBadge() {
@@ -300,6 +375,9 @@ export class SimView {
     onStoreReady() {
         if (this.animationController) {
             this.animationController.loadAnimation(this.store);
+            // loadAnimation builds the PlaybackControls, so episodes can only
+            // be handed over afterwards.
+            this.applyEpisodes(this.episodes);
             if (this.scalarPlotter) {
                 this.scalarPlotter.initFromStore(this.store);
             }
@@ -377,6 +455,11 @@ export class SimView {
             // (see SimViewModel.metadata) -- no meaning to the viewer itself,
             // just displayed read-only in the "Scene Info" GUI folder.
             this.metadata = model.metadata ?? null;
+
+            // Episode boundaries for an episodic (RL) recording, applied to
+            // the playback bar once the store exists (see onStoreReady).
+            // Absent for an ordinary single-timeline scene.
+            this.episodes = Array.isArray(model.episodes) ? model.episodes : [];
 
             this.batchManager = new BatchManager(this, model);
             this.bodies = new Map();
