@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-08-19
+
 ### Added
 
+- **Remote scene files.** Anywhere the CLI takes an input file (view, `info`, `diff`,
+  `terrain`, `render`, and multi-file merges) it now also accepts an scp-style
+  `host:path`, fetched over the system `ssh` and cached locally. Transfers are
+  compressed (gzipped on the remote, or `ssh -C` when it has no `gzip`), and the cache
+  entry carries the remote file's mtime, so freshness is a plain `stat` comparison.
+  Adds `--refresh`/`--offline`, and `simview clear` knows about the new cache. See
+  [CLI](https://vlk-jan.github.io/simview/usage/cli/).
 - The columnar ("v4") states layout is now an **on-disk** format, not just a
   server-side repack: `SimulationScene.save()` writes it by default, producing
   substantially smaller files that the viewer can load without any repacking.
@@ -40,6 +49,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by `load`, `merge_simulation_files`, `simview info`/`diff`/`terrain` and the viewer
   either way, but a third-party tool that parses `states` as a JSON array will need
   to handle the object form (or be passed `columnar=False`).
+- A fully shared (singleton) terrain now ships exactly one copy of its height, normals,
+  properties and embedding data instead of one identical copy per batch — a real saving
+  for many-batch (e.g. RL-scale) scenes. Readers resolve the layout from the data
+  length, so files written by older versions (which broadcast the singleton) keep
+  working; a mixed terrain still broadcasts its shared fields.
+
+### Fixed
+
+- `LiveViewer.push_state` no longer blocks the simulation loop on a slow or hung viewer
+  tab (up to 5 s per frame before). Frames go through a bounded queue drained by a
+  sender thread, dropping the oldest pending frame when it fills so the live view keeps
+  tracking the simulation; dropped frames still land in `scene.states` and the catch-up
+  buffer, and `stop()` flushes the backlog.
+- The live frame buffer is now bounded (`frame_buffer_size`, 10k frames by default)
+  instead of growing for the length of a run, and a viewer connecting mid-run replays
+  the recent window in 500-frame slices rather than one `json.dumps` of the whole
+  history. It is registered for live broadcasts only once the replay has caught up, so
+  a new frame can no longer overtake the history it follows.
+- Trails are now appended to in place instead of being rebuilt per loaded chunk, which
+  in live mode cost O(T²) geometry reallocation over a run.
+- `simview diff` resolves parent chains and compares world poses, like the viewer's
+  Error Metrics panel does — the two used to report different numbers for the same
+  scene. Rigidly-attached bodies (a constant `localTransform`, absent from `states`)
+  are now diffable and addressable via `--body`.
+- Mesh bodies authored from tensors crashed the viewer on load: `createGeometry` called
+  `.flat()` on vertices that always arrive blob-decoded as flat `Float32Array`s. Meshes
+  are also indexed with `Uint32Array` now, so more than 65535 vertices no longer wrap.
+- Serving an in-memory scene (`show()`, `LiveViewer`, `SimViewLauncher`) no longer
+  rewrites the caller's model in place, which left a later `save()` writing dead
+  `/blob/...` URLs and a second `show()` serving stale blob references.
+- `merge_simulation_files` carries terrain `embeddingData` (the features color mode was
+  silently lost on merged scenes) and each model's `metadata` (namespaced under
+  `metadata.sources`) through the merge, groups b64-decoded terrain normals back into
+  per-vertex vec3s, and rejects inputs whose terrain x/y bounds differ instead of
+  merging them into spatially misaligned batches.
+- `add_state` normalizes a 0-dim scalar tensor/array to the per-batch list every other
+  frame stores, which `merge_simulation_files` used to raise on.
+- `SimulationScene`'s internal-data cleanup frees the terrain's per-cell `embedding_data`
+  too, potentially the largest of its arrays.
+- A blob fetch that returns an HTTP error now fails loudly on the load-error splash
+  instead of being decoded as float32 garbage, and inline `__b64__` state fields decode
+  endian-safely like the standalone blob path already did.
+- `setActiveBatch` no longer forwards an out-of-range batch index to the body state
+  window, scalar plotter and batch legend right after warning that it rejected it.
+- Dropped `allow_credentials` from the CORS config: combined with the any-localhost-port
+  origin regex it let any other local dev server read scene data with the user's
+  credentials. The API uses no cookies or auth headers, so nothing needed it.
+
+### Removed
+
+- The ctrl+drag box-selection code path, which never worked — it crashed on mouseup,
+  raycast against an always-empty list, and checked event keys that don't exist. Click
+  handling, the data probe tooltip and shift+arrow batch switching are unaffected.
 
 ## [4.0.0] - 2026-08-04
 
@@ -258,7 +320,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/vlk-jan/simview/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/vlk-jan/simview/compare/v3.6...v4.0.0
 [3.6]: https://github.com/vlk-jan/simview/compare/v3.5...v3.6
 [3.5]: https://github.com/vlk-jan/simview/compare/v3.4...v3.5
