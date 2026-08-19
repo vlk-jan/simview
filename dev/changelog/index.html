@@ -1157,9 +1157,17 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v4.0.0...HEAD">Unreleased</a></h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v4.1.0...HEAD">Unreleased</a></h2>
+<h2 id="410-2026-08-19"><a href="https://github.com/vlk-jan/simview/compare/v4.0.0...v4.1.0">4.1.0</a> - 2026-08-19</h2>
 <h3 id="added">Added</h3>
 <ul>
+<li><strong>Remote scene files.</strong> Anywhere the CLI takes an input file (view, <code>info</code>, <code>diff</code>,
+  <code>terrain</code>, <code>render</code>, and multi-file merges) it now also accepts an scp-style
+  <code>host:path</code>, fetched over the system <code>ssh</code> and cached locally. Transfers are
+  compressed (gzipped on the remote, or <code>ssh -C</code> when it has no <code>gzip</code>), and the cache
+  entry carries the remote file's mtime, so freshness is a plain <code>stat</code> comparison.
+  Adds <code>--refresh</code>/<code>--offline</code>, and <code>simview clear</code> knows about the new cache. See
+  <a href="https://vlk-jan.github.io/simview/usage/cli/">CLI</a>.</li>
 <li>The columnar ("v4") states layout is now an <strong>on-disk</strong> format, not just a
   server-side repack: <code>SimulationScene.save()</code> writes it by default, producing
   substantially smaller files that the viewer can load without any repacking.
@@ -1191,6 +1199,59 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   by <code>load</code>, <code>merge_simulation_files</code>, <code>simview info</code>/<code>diff</code>/<code>terrain</code> and the viewer
   either way, but a third-party tool that parses <code>states</code> as a JSON array will need
   to handle the object form (or be passed <code>columnar=False</code>).</li>
+<li>A fully shared (singleton) terrain now ships exactly one copy of its height, normals,
+  properties and embedding data instead of one identical copy per batch — a real saving
+  for many-batch (e.g. RL-scale) scenes. Readers resolve the layout from the data
+  length, so files written by older versions (which broadcast the singleton) keep
+  working; a mixed terrain still broadcasts its shared fields.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><code>LiveViewer.push_state</code> no longer blocks the simulation loop on a slow or hung viewer
+  tab (up to 5 s per frame before). Frames go through a bounded queue drained by a
+  sender thread, dropping the oldest pending frame when it fills so the live view keeps
+  tracking the simulation; dropped frames still land in <code>scene.states</code> and the catch-up
+  buffer, and <code>stop()</code> flushes the backlog.</li>
+<li>The live frame buffer is now bounded (<code>frame_buffer_size</code>, 10k frames by default)
+  instead of growing for the length of a run, and a viewer connecting mid-run replays
+  the recent window in 500-frame slices rather than one <code>json.dumps</code> of the whole
+  history. It is registered for live broadcasts only once the replay has caught up, so
+  a new frame can no longer overtake the history it follows.</li>
+<li>Trails are now appended to in place instead of being rebuilt per loaded chunk, which
+  in live mode cost O(T²) geometry reallocation over a run.</li>
+<li><code>simview diff</code> resolves parent chains and compares world poses, like the viewer's
+  Error Metrics panel does — the two used to report different numbers for the same
+  scene. Rigidly-attached bodies (a constant <code>localTransform</code>, absent from <code>states</code>)
+  are now diffable and addressable via <code>--body</code>.</li>
+<li>Mesh bodies authored from tensors crashed the viewer on load: <code>createGeometry</code> called
+  <code>.flat()</code> on vertices that always arrive blob-decoded as flat <code>Float32Array</code>s. Meshes
+  are also indexed with <code>Uint32Array</code> now, so more than 65535 vertices no longer wrap.</li>
+<li>Serving an in-memory scene (<code>show()</code>, <code>LiveViewer</code>, <code>SimViewLauncher</code>) no longer
+  rewrites the caller's model in place, which left a later <code>save()</code> writing dead
+  <code>/blob/...</code> URLs and a second <code>show()</code> serving stale blob references.</li>
+<li><code>merge_simulation_files</code> carries terrain <code>embeddingData</code> (the features color mode was
+  silently lost on merged scenes) and each model's <code>metadata</code> (namespaced under
+  <code>metadata.sources</code>) through the merge, groups b64-decoded terrain normals back into
+  per-vertex vec3s, and rejects inputs whose terrain x/y bounds differ instead of
+  merging them into spatially misaligned batches.</li>
+<li><code>add_state</code> normalizes a 0-dim scalar tensor/array to the per-batch list every other
+  frame stores, which <code>merge_simulation_files</code> used to raise on.</li>
+<li><code>SimulationScene</code>'s internal-data cleanup frees the terrain's per-cell <code>embedding_data</code>
+  too, potentially the largest of its arrays.</li>
+<li>A blob fetch that returns an HTTP error now fails loudly on the load-error splash
+  instead of being decoded as float32 garbage, and inline <code>__b64__</code> state fields decode
+  endian-safely like the standalone blob path already did.</li>
+<li><code>setActiveBatch</code> no longer forwards an out-of-range batch index to the body state
+  window, scalar plotter and batch legend right after warning that it rejected it.</li>
+<li>Dropped <code>allow_credentials</code> from the CORS config: combined with the any-localhost-port
+  origin regex it let any other local dev server read scene data with the user's
+  credentials. The API uses no cookies or auth headers, so nothing needed it.</li>
+</ul>
+<h3 id="removed">Removed</h3>
+<ul>
+<li>The ctrl+drag box-selection code path, which never worked — it crashed on mouseup,
+  raycast against an always-empty list, and checked event keys that don't exist. Click
+  handling, the data probe tooltip and shift+arrow batch switching are unaffected.</li>
 </ul>
 <h2 id="400-2026-08-04"><a href="https://github.com/vlk-jan/simview/compare/v3.6...v4.0.0">4.0.0</a> - 2026-08-04</h2>
 <h3 id="breaking-changes">⚠ Breaking changes</h3>
@@ -1227,7 +1288,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   location, computed client-side — a new "similarity" Point Color Mode for point
   clouds and "features" terrain color mode, both with a matching colormap legend.</li>
 </ul>
-<h3 id="fixed">Fixed</h3>
+<h3 id="fixed_1">Fixed</h3>
 <ul>
 <li>Clicking now only recolors a point cloud/terrain by similarity when the matching
   mode is already selected from its dropdown; otherwise it's an ordinary selection,
@@ -1267,7 +1328,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   distinct from the usage/parse-error exit 1, so scripts and CI can use an
   exported scene as a regression tripwire.</li>
 </ul>
-<h3 id="fixed_1">Fixed</h3>
+<h3 id="fixed_2">Fixed</h3>
 <ul>
 <li>Focusing a batch while a Scalars plot was open threw
   <code>s.stroke is not a function</code> on the next redraw (uPlot expects
@@ -1336,7 +1397,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   available, silencing the <code>websockets.legacy</code> deprecation warning.</li>
 <li>Raise the CI coverage floor from 80% to 83%.</li>
 </ul>
-<h3 id="removed">Removed</h3>
+<h3 id="removed_1">Removed</h3>
 <ul>
 <li>Unused <code>collapsedMode</code>/<code>focusedMode</code> placeholder flags from <code>BatchManager</code>.</li>
 </ul>
@@ -1353,7 +1414,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
   covered by an e2e test.</li>
 </ul>
-<h3 id="fixed_2">Fixed</h3>
+<h3 id="fixed_3">Fixed</h3>
 <ul>
 <li>Unblock CI: guard the optional <code>numpy</code> import and add <code>--no-launch</code> to
   <code>example.py</code>.</li>
@@ -1375,7 +1436,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   repack), backed by a <code>Float32Array</code> <code>StateStore</code>, for much cheaper playback of
   long recordings.</li>
 </ul>
-<h3 id="fixed_3">Fixed</h3>
+<h3 id="fixed_4">Fixed</h3>
 <ul>
 <li>Binary-search seek for non-uniform timelines, parallel blob fetches, and
   versioned immutable blob URLs.</li>
