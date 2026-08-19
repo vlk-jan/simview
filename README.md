@@ -29,6 +29,7 @@ Want to try it without installing anything? There's a
 - **Interactive UI**: Web-based controls for playback, camera, and data inspection.
 - **Python API**: Easy-to-use API for generating scenes and launching the visualizer directly from your code.
 - **JSON Support**: Load and save simulation data using a portable JSON format.
+- **Remote Files**: Open a scene straight off a compute host with `simview host:path/to/scene.json` — fetched over SSH, compressed on the wire, and cached locally.
 
 ---
 

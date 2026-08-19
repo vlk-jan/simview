@@ -1086,3 +1086,156 @@ def test_save_merged_requires_at_least_two_inputs(capsys, monkeypatch, tmp_path)
     assert exc_info.value.code == 1
     assert "at least 2" in capsys.readouterr().err
     assert not out_path.exists()
+
+
+# --------------------------------------------------------------------------
+# remote 'host:path' inputs
+#
+# The ssh boundary is faked (simview.remote has its own tests for that); what
+# matters here is that every CLI branch resolves a remote spec and that
+# everything downstream still receives an ordinary local Path.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_remote(monkeypatch, tmp_path):
+    """Serve 'rci:~/sim.json' from a real scene file in a fake cache dir."""
+    from simview import remote
+
+    source = tmp_path / "remote_sim.json"
+    build_scene(batch_size=2).save(source)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    fetched = []
+
+    def fake_fetch_remote(host, remote_path, *, refresh=False, offline=False):
+        fetched.append((host, remote_path, refresh, offline))
+        dest = remote.cache_entry_path(host, remote_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(source.read_bytes())
+        return dest
+
+    monkeypatch.setattr(remote, "fetch_remote", fake_fetch_remote)
+    return fetched
+
+
+def test_remote_spec_reaches_the_server_as_a_local_path(monkeypatch, fake_remote):
+    calls = []
+    monkeypatch.setattr(
+        cli.SimViewServer, "start", staticmethod(lambda **kw: calls.append(kw))
+    )
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "rci:~/sim.json"])
+    cli.main()
+
+    assert fake_remote == [("rci", "~/sim.json", False, False)]
+    (kwargs,) = calls
+    sim_path = kwargs["sim_path"]
+    assert sim_path.is_file()
+    # The remote basename survives, because merge labels batches with it.
+    assert sim_path.name == "sim.json"
+
+
+def test_mixed_local_and_remote_inputs_are_merged(monkeypatch, tmp_path, fake_remote):
+    local = tmp_path / "local.json"
+    build_scene(batch_size=1).save(local)
+    calls = []
+    monkeypatch.setattr(
+        cli.SimViewServer, "start", staticmethod(lambda **kw: calls.append(kw))
+    )
+    monkeypatch.setattr(cli.sys, "argv", ["simview", str(local), "rci:~/sim.json"])
+    cli.main()
+
+    (kwargs,) = calls
+    paths = kwargs["sim_path"]
+    assert [p.name for p in paths] == ["local.json", "sim.json"]
+    assert all(p.is_file() for p in paths)
+
+
+def test_refresh_and_offline_are_forwarded(monkeypatch, fake_remote):
+    monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(lambda **kw: None))
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", "rci:~/sim.json", "--refresh", "--offline"]
+    )
+    cli.main()
+    assert fake_remote == [("rci", "~/sim.json", True, True)]
+
+
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["simview", "info", "rci:~/sim.json"], "Bodies"),
+        (["simview", "diff", "rci:~/sim.json", "--batches", "0", "1"], "pos_err"),
+        (["simview", "terrain", "rci:~/sim.json", "--point", "0", "0"], "height"),
+    ],
+)
+def test_inspection_subcommands_accept_remote_specs(
+    monkeypatch, capsys, fake_remote, argv, expected
+):
+    monkeypatch.setattr(cli.sys, "argv", argv)
+    cli.main()
+
+    assert fake_remote == [("rci", "~/sim.json", False, False)]
+    assert expected.lower() in capsys.readouterr().out.lower()
+
+
+def test_render_accepts_a_remote_spec(monkeypatch, tmp_path, fake_remote):
+    seen = []
+    monkeypatch.setattr(cli, "run_render", lambda path, args: seen.append(path))
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", "render", "rci:~/sim.json", "--output", str(tmp_path / "f.png")],
+    )
+    cli.main()
+
+    (path,) = seen
+    assert path.is_file() and path.name == "sim.json"
+
+
+def test_remote_fetch_failure_exits_cleanly(monkeypatch, capsys, tmp_path):
+    from simview import remote
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+    def boom(host, remote_path, *, refresh=False, offline=False):
+        raise remote.RemoteError("ssh rci failed (exit 255): host unreachable")
+
+    monkeypatch.setattr(remote, "fetch_remote", boom)
+    monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(_fail_if_called))
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "rci:~/sim.json"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "host unreachable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flag", ["--save-merged", "--output"])
+def test_remote_output_paths_are_rejected(monkeypatch, capsys, tmp_path, flag):
+    scene_file = tmp_path / "sim.json"
+    build_scene(batch_size=1).save(scene_file)
+    monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(_fail_if_called))
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", str(scene_file), flag, "rci:~/out.json"]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert flag in err and "only supported for inputs" in err
+
+
+def test_clear_removes_the_remote_cache(monkeypatch, tmp_path, capsys):
+    from simview import remote
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    entry = remote.cache_entry_path("rci", "~/sim.json")
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_bytes(b"x" * 4096)
+
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "clear"])
+    cli.main()
+
+    assert not entry.exists()
+    assert not remote.cache_dir().exists()
+    assert "Cache cleared" in capsys.readouterr().err

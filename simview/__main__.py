@@ -7,7 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from simview import CACHE_DIR, __version__
+from simview import CACHE_DIR, __version__, remote
 from simview.server import SimViewServer
 
 logger = logging.getLogger("simview.cli")
@@ -43,12 +43,33 @@ def _package_version() -> str:
     return __version__
 
 
+def _dir_size(path: Path) -> int:
+    total = 0
+    for entry in path.rglob("*"):
+        try:
+            if entry.is_file():
+                total += entry.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
 def clear_cache():
-    # Legacy cache directories (kept for cleanup of older installs).
-    for cache_dir in (Path("/tmp") / CACHE_DIR, Path.home() / ".cache" / CACHE_DIR):
-        if cache_dir.exists():
-            logger.info("Removing %s", cache_dir)
-            shutil.rmtree(cache_dir, ignore_errors=True)
+    """Remove simview's on-disk cache: scene files fetched from remote hosts
+    (see `simview.remote`), plus locations left behind by older installs."""
+    freed = 0
+    seen: set[Path] = set()
+    for cache_dir in (
+        remote.cache_dir(),
+        Path("/tmp") / CACHE_DIR,
+        Path.home() / ".cache" / CACHE_DIR,
+    ):
+        if cache_dir in seen or not cache_dir.is_dir():
+            continue
+        seen.add(cache_dir)
+        freed += _dir_size(cache_dir)
+        logger.info("Removing %s", cache_dir)
+        shutil.rmtree(cache_dir, ignore_errors=True)
 
     # Temp scenes written by SimViewLauncher (tempfile.mkstemp with this prefix);
     # these leak if a launched viewer is killed before cleanup runs.
@@ -61,6 +82,8 @@ def clear_cache():
             logger.warning("Could not remove %s: %s", leftover, e)
     if removed:
         logger.info("Removed %d leftover temporary scene file(s).", removed)
+    if freed:
+        logger.info("Freed %s.", remote.human_bytes(freed))
 
     logger.info("Cache cleared.")
 
@@ -294,6 +317,21 @@ def save_merged(paths: list[Path], out_path: Path) -> None:
     logger.info("Merged scene written to %s", out_path)
 
 
+def _resolve_input(spec: str, args: argparse.Namespace) -> Path:
+    """Resolve one CLI input to a local file, first fetching it over SSH if it
+    is an scp-style 'host:path' spec (see `simview.remote`). Everything
+    downstream only ever sees an ordinary local path."""
+    try:
+        path = remote.resolve_input(spec, refresh=args.refresh, offline=args.offline)
+    except remote.RemoteError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    if not (path.exists() and path.is_file()):
+        logger.error("Error: File '%s' not found or is not a file.", path)
+        sys.exit(1)
+    return path
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="SimView CLI")
     parser.add_argument(
@@ -308,7 +346,10 @@ def build_parser() -> argparse.ArgumentParser:
             "a PNG screenshot (needs the 'render' extra). Multiple "
             "visualize-mode files are merged into one scene, each file's "
             "batches appended as extra batches (e.g. a real-world recording "
-            "plus a simulated rerun)."
+            "plus a simulated rerun). Any input may instead be an scp-style "
+            "'host:path' spec (e.g. 'rci:~/results/scene.json'), which is "
+            "fetched over ssh -- compressed on the wire -- into a local cache "
+            "and re-fetched only when the remote file changes."
         ),
     )
     parser.add_argument(
@@ -491,6 +532,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Re-fetch remote 'host:path' inputs even if the cached copy still "
+            "matches the remote file."
+        ),
+    )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help=(
+            "Use the cached copy of remote 'host:path' inputs without contacting "
+            "the host at all; fails if nothing is cached for them yet."
+        ),
+    )
+    parser.add_argument(
         "--no-browser",
         action="store_true",
         help="Don't automatically open a browser tab once the server starts.",
@@ -553,6 +610,18 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    # Remote specs are an input-side convenience only; writing back over ssh is
+    # deliberately out of scope, so catch it here rather than at open() time.
+    for flag, value in (("--output", args.output), ("--save-merged", args.save_merged)):
+        if value is not None and remote.is_remote_spec(value):
+            logger.error(
+                "Error: %s must be a local path, but '%s' looks like a remote "
+                "'host:path' spec; remote specs are only supported for inputs.",
+                flag,
+                value,
+            )
+            sys.exit(1)
+
     if args.inputs and args.inputs[0] == "info":
         info_args = args.inputs[1:]
         if len(info_args) != 1:
@@ -561,10 +630,7 @@ def main():
                 "'simview info scene.json'."
             )
             sys.exit(1)
-        info_path = Path(info_args[0])
-        if not (info_path.exists() and info_path.is_file()):
-            logger.error("Error: File '%s' not found or is not a file.", info_path)
-            sys.exit(1)
+        info_path = _resolve_input(info_args[0], args)
         run_info(info_path, as_json=args.json)
         return
 
@@ -576,10 +642,7 @@ def main():
                 "e.g. 'simview terrain scene.json --point 0 0'."
             )
             sys.exit(1)
-        terrain_path = Path(terrain_args[0])
-        if not (terrain_path.exists() and terrain_path.is_file()):
-            logger.error("Error: File '%s' not found or is not a file.", terrain_path)
-            sys.exit(1)
+        terrain_path = _resolve_input(terrain_args[0], args)
         run_terrain(terrain_path, args)
         return
 
@@ -591,10 +654,7 @@ def main():
                 "e.g. 'simview diff scene.json --batches 0 1'."
             )
             sys.exit(1)
-        diff_path = Path(diff_args[0])
-        if not (diff_path.exists() and diff_path.is_file()):
-            logger.error("Error: File '%s' not found or is not a file.", diff_path)
-            sys.exit(1)
+        diff_path = _resolve_input(diff_args[0], args)
         run_diff(diff_path, args)
         return
 
@@ -606,10 +666,7 @@ def main():
                 "e.g. 'simview render scene.json --output frame.png'."
             )
             sys.exit(1)
-        render_path = Path(render_args[0])
-        if not (render_path.exists() and render_path.is_file()):
-            logger.error("Error: File '%s' not found or is not a file.", render_path)
-            sys.exit(1)
+        render_path = _resolve_input(render_args[0], args)
         run_render(render_path, args)
         return
 
@@ -617,11 +674,7 @@ def main():
         clear_cache()
         return
 
-    paths = [Path(p) for p in args.inputs]
-    for path in paths:
-        if not (path.exists() and path.is_file()):
-            logger.error("Error: File '%s' not found or is not a file.", path)
-            sys.exit(1)
+    paths = [_resolve_input(spec, args) for spec in args.inputs]
 
     if args.save_merged:
         save_merged(paths, Path(args.save_merged))

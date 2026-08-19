@@ -2,10 +2,12 @@
 
 ## Cache Management
 
-SimView caches some temporary files for visualization. It also cleans up any
-`simview_viz_*.json` temp scene files left behind by older versions (a launched viewer
-now serves an in-memory `SimulationScene` directly, without writing one). You can clear
-all of this using the following command:
+SimView caches scene files fetched from remote hosts (see [Opening a file on a remote
+host](#opening-a-file-on-a-remote-host)) under `$XDG_CACHE_HOME/.simview_cache`
+(`~/.cache/.simview_cache` by default). It also cleans up any `simview_viz_*.json` temp
+scene files left behind by older versions (a launched viewer now serves an in-memory
+`SimulationScene` directly, without writing one). You can clear all of this using the
+following command:
 
 ```bash
 simview clear
@@ -140,6 +142,59 @@ simview scene.json --host 0.0.0.0 --port 8080  # bind to a specific host/port
 simview scene.json --no-browser                # don't auto-open a browser tab
 simview --version                               # print the installed version
 ```
+
+## Opening a file on a remote host
+
+Anywhere the CLI takes an input file, you can give an scp-style `host:path` spec instead
+of a local path, and SimView will fetch it over SSH for you:
+
+```bash
+simview rci:~/projects/DRIFT/results/comparison.json
+```
+
+`host` is passed straight to `ssh`, so `~/.ssh/config` aliases, `ProxyJump`, agent keys
+and password prompts all work exactly as they do for `ssh` and `scp`. Nothing needs to
+be installed on the remote — just a shell, and `gzip` if you want the transfer
+compressed. `user@host:path`, `[::1]:path` and `ssh://host/path` are accepted too.
+
+This works for every input, not just the viewer, including mixing local and remote files
+in one merged scene:
+
+```bash
+simview info rci:~/results/comparison.json
+simview diff rci:~/results/comparison.json --batches 0 1
+simview local_rerun.json rci:~/results/real_world.json   # merged into one scene
+```
+
+**Transfers are compressed.** A plain-JSON scene is gzipped on the remote before it goes
+over the wire and unpacked on arrival, which typically cuts the transfer by 5-10x on
+scene data this redundant; a file that's already `*.gz` is streamed as-is. The saving is
+reported when the fetch finishes:
+
+```
+Fetching rci:~/results/comparison.json (312.4MB)...
+Fetched 41.2MB over the wire (312.4MB on disk, 7.6x smaller). Cached at ...
+```
+
+**Files are cached and only re-fetched when they change.** The cached copy is
+byte-identical to the remote file and carries its modification time, so each run costs
+one cheap `ssh` stat call to check:
+
+```
+Using cached copy of rci:~/results/comparison.json (remote unchanged).
+```
+
+Useful flags:
+
+```bash
+simview rci:~/results/scene.json --refresh   # re-fetch even if the cache is current
+simview rci:~/results/scene.json --offline   # use the cache, don't contact the host
+simview clear                                # drop the cache entirely
+```
+
+Remote specs are for *inputs* only — `--output` and `--save-merged` must be local paths.
+A local file whose name happens to contain a colon always wins over the remote reading,
+so `simview weird:name.json` still opens the file sitting next to you.
 
 ## Headless rendering (`simview render`)
 
