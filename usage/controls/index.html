@@ -541,6 +541,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../jupyter/" class="md-nav__link">
         
   
@@ -644,6 +672,17 @@
     <span class="md-ellipsis">
       
         Timeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rendering-many-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering Many Batches
       
     </span>
   </a>
@@ -1273,6 +1312,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rendering-many-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering Many Batches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#batch-selection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1393,7 +1443,19 @@
   exactly one loop, then automatically stops and downloads the file.</li>
 <li><strong>Screenshot</strong>: <code>S</code> or Click the camera button next to Record to save the current frame as a PNG.</li>
 <li><strong>Playback Speed</strong>: Adjust speed (0.1x to 5x) via the dropdown next to the timeline</li>
+<li><strong>Previous/Next Episode</strong>: <code>[</code> / <code>]</code> or the |◀ / ▶| buttons. Only shown for a scene
+  that declares <a href="../episodes/">episodes</a>; boundaries are also ticked on the timeline bar.</li>
 </ul>
+<h2 id="rendering-many-batches">Rendering Many Batches</h2>
+<p>Each batch gets its own patch of world — its own terrain mesh, axes, arrows and
+point clouds — which is fine for a handful and hopeless for the hundreds of
+parallel environments an RL run produces.</p>
+<p><strong>Render All Batches</strong> (in "Body Options") switches between drawing every batch
+and drawing only the focused one. Above 32 batches, focused-only is the
+default, and a batch's per-batch scene objects are built the first time you
+focus it — so a 256-env scene loads as fast as a single-env one, and batches
+you never look at cost nothing. Split-screen's two batches stay drawn either
+way.</p>
 <h2 id="batch-selection">Batch Selection</h2>
 <ul>
 <li><strong>Move Selection</strong>: <code>Shift</code> + Arrow keys</li>

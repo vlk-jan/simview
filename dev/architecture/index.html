@@ -536,6 +536,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/jupyter/" class="md-nav__link">
         
   
@@ -1340,7 +1368,7 @@ beyond the <a href="../json-format/">JSON wire format</a> they agree on.</p>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│  - states (per-frame)     │   /states,     │  - StateStore, Scene,     │
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│                           │   /blob/...    │    AnimationController    │
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│ SimViewServer (FastAPI)   │  ◀──────────── │  - Controls, panels       │
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│  - columnar repack        │   WebSocket    │                           │
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│  - columnar (see below)   │   WebSocket    │                           │
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│  - LiveViewer push_state  │   (live only)  │                           │
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>└───────────────────────────┘                └───────────────────────────┘
 </span></code></pre></div>
@@ -1359,14 +1387,20 @@ beyond the <a href="../json-format/">JSON wire format</a> they agree on.</p>
   <code>add_state</code>/<code>add_trajectory</code>, and can <code>save()</code>/<code>load()</code> JSON (optionally gzipped)
   or <code>show()</code> a non-blocking viewer (returns a <code>ViewerHandle</code>, usable in Jupyter via
   <code>_repr_html_</code>).</li>
+<li><strong><code>columnar.py</code></strong> — the columnar ("v4") states layout: one binary blob per body per
+  field covering the whole trajectory, instead of thousands of small per-frame values.
+  Both a wire format and (via <code>SimulationScene.save</code>) an on-disk one — the same document
+  either way, with inline <code>__b64__</code> blobs on disk and <code>/blob/</code> URLs over HTTP.
+  <code>columnarize_states</code> (the writer/repacker) needs numpy; <code>expand_columnar_states</code> (the
+  inverse) is stdlib-only so every reader, including the base install and the
+  stdlib-only CLI tools, can consume a columnar file.</li>
 <li><strong><code>server.py</code></strong> — <code>SimViewServer</code>: FastAPI app serving <code>templates/index.html</code> and
-  <code>static/</code>, plus <code>/model</code> and <code>/states</code> (or per-blob endpoints). On load, it tries to
-  repack the legacy per-frame <code>states</code> array into a columnar "v4" payload — one binary
-  blob per body per field covering the whole trajectory, fetched in parallel as
-  <code>Float32Array</code>s — for much cheaper playback of long recordings; it transparently
-  falls back to serving the legacy per-frame array if the frames aren't uniform enough
-  to columnarize. Also handles WebSocket live-push (see <code>live.py</code>) and batch-rename
-  persistence.</li>
+  <code>static/</code>, plus <code>/model</code> and <code>/states</code> (or per-blob endpoints). A columnar file is
+  served as-is (only its inline blobs are rewritten into URLs); a legacy per-frame file
+  is repacked into the columnar payload at load time for much cheaper playback of long
+  recordings, falling back to serving the per-frame array if the frames aren't uniform
+  enough to columnarize. Also handles WebSocket live-push (see <code>live.py</code>) and
+  batch-rename persistence.</li>
 <li><strong><code>live.py</code></strong> — <code>LiveViewer</code>: starts the server immediately (on a background thread
   via <code>_ThreadedServer</code>) and streams <code>push_state</code> calls to connected browser tabs over
   WebSocket as a simulation runs, instead of saving-then-viewing after the fact.</li>
@@ -1423,7 +1457,10 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
   (encode/decode the shareable view-link URL hash), <code>liveFollow.js</code> (should new live
   frames auto-scroll playback), <code>terrainSample.js</code> (bilinear terrain layer sampling for
   the Analysis panel's Terrain tab, plus <code>hasBodyTrajectory</code> gating whether that tab
-  shows up for a given body).</li>
+  shows up for a given body), <code>episodes.js</code> (episode segments, navigation and
+  per-episode aggregates), <code>batchVisibility.js</code> (which batches get built and drawn),
+  <code>blobWindow.js</code> (window arithmetic for range-fetching a long trajectory's field blobs,
+  used by <code>components/WindowedField.js</code>).</li>
 </ul>
 <h3 id="vendored-third-party-libraries">Vendored third-party libraries</h3>
 <p><a href="https://github.com/leeoniya/uPlot"><strong>uPlot</strong></a> (MIT), <a href="https://github.com/mrdoob/three.js"><strong>three.js</strong></a>
@@ -1435,7 +1472,7 @@ restrictions on commercial use. Don't add new CDN-loaded dependencies without a 
 to break that pattern.</p>
 <h2 id="wire-format">Wire format</h2>
 <p>Python and JavaScript agree on the <code>model</code>/<code>states</code> JSON shape, binary field encoding,
-parent-relative bodies, and the columnar repack independently — there is no shared
+parent-relative bodies, and the columnar layout independently — there is no shared
 schema file. See <a href="../json-format/">JSON Format Specification</a> for the full contract;
 read it before changing anything that touches serialization on either side
 (<code>model.py</code>/<code>state.py</code>/<code>server.py</code> in Python, <code>blobCodec.js</code>/<code>bodyTransforms.js</code> in JS).</p>
@@ -1445,34 +1482,35 @@ read it before changing anything that touches serialization on either side
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>│   ├── model.py             # SimViewModel, SimViewBody, SimViewStaticObject, SimViewTerrain
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│   ├── state.py             # SimViewBodyState, BodyTrajectory
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│   ├── scene.py             # SimulationScene, ViewerHandle
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│   ├── server.py            # SimViewServer (FastAPI app, columnar repack)
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│   ├── live.py               # LiveViewer, _ThreadedServer
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│   ├── launcher.py           # SimViewLauncher
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│   ├── merge.py               # merge_simulation_files
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│   ├── diff.py                 # simview diff backend
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>│   ├── terrain.py              # simview terrain backend
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│   ├── info.py                  # simview info backend
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│   ├── render.py                 # simview render backend (Playwright)
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│   ├── utils.py                   # shared helpers
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│   ├── __main__.py                 # simview CLI entry point
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│   ├── templates/                   # index.html
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│   └── static/
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│       ├── css/
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│       ├── js/
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│       │   ├── main.js               # entry point
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>│       │   ├── SimView.js             # top-level SimView class
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│       │   ├── components/
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│       │   ├── objects/
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│       │   ├── ui/
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>│       │   └── utils/
-</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>│       ├── lib/                       # vendored three.js, chroma-js, uPlot, ...
-</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>│       └── textures/
-</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
-</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>├── example.py                 # authoring example (see Quick Start)
-</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>├── example_live.py             # LiveViewer example
-</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>├── mkdocs.yml                    # this documentation site
-</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>├── docs/                          # documentation source
-</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>└── pyproject.toml                  # package metadata, ruff/pyright config, uv dependency-groups
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│   ├── columnar.py          # columnar (&quot;v4&quot;) states layout (wire + on disk)
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│   ├── server.py            # SimViewServer (FastAPI app, columnar repack)
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│   ├── live.py               # LiveViewer, _ThreadedServer
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│   ├── launcher.py           # SimViewLauncher
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│   ├── merge.py               # merge_simulation_files
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>│   ├── diff.py                 # simview diff backend
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│   ├── terrain.py              # simview terrain backend
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│   ├── info.py                  # simview info backend
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│   ├── render.py                 # simview render backend (Playwright)
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│   ├── utils.py                   # shared helpers
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│   ├── __main__.py                 # simview CLI entry point
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│   ├── templates/                   # index.html
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│   └── static/
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│       ├── css/
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│       ├── js/
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>│       │   ├── main.js               # entry point
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│       │   ├── SimView.js             # top-level SimView class
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│       │   ├── components/
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│       │   ├── objects/
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>│       │   ├── ui/
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>│       │   └── utils/
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>│       ├── lib/                       # vendored three.js, chroma-js, uPlot, ...
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>│       └── textures/
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>├── example.py                 # authoring example (see Quick Start)
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>├── example_live.py             # LiveViewer example
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>├── mkdocs.yml                    # this documentation site
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>├── docs/                          # documentation source
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>└── pyproject.toml                  # package metadata, ruff/pyright config, uv dependency-groups
 </span></code></pre></div>
 
 

@@ -536,6 +536,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/jupyter/" class="md-nav__link">
         
   
@@ -791,6 +819,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simview.model.SimViewEpisode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SimViewEpisode
+      
+    </span>
+  </a>
   
 </li>
         
@@ -1387,6 +1426,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#simview.model.SimViewEpisode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SimViewEpisode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.model.SimViewModel" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1696,6 +1746,64 @@ the existing generic <code>__b64__</code> blob mechanism -- no new wire format.<
 
 
 
+<h3 id="simview.model.SimViewEpisode" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">SimViewEpisode</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">SimViewEpisode</span><span class="p">(</span><span class="n">start_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>One episode boundary in an otherwise continuous timeline.</p>
+<p>RL runs are episodic: the states array is one long recording, but it is
+really a sequence of resets. An episode marks the frame a run <em>starts</em> at,
+so <code>episodes</code> is a list of starts and each episode implicitly ends where
+the next one begins (the last runs to the end of the states).</p>
+<p>Purely descriptive metadata -- the viewer uses it to draw boundaries on the
+playback bar, offer next/previous-episode navigation, and aggregate scalars
+per episode. Nothing about playback itself changes.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
 <h3 id="simview.model.SimViewModel" class="doc doc-heading">
             <span class="doc doc-object-name doc-class-name">SimViewModel</span>
 
@@ -1715,7 +1823,8 @@ the existing generic <code>__b64__</code> blob mechanism -- no new wire format.<
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">static_objects</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">SimViewStaticObject</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(),</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">batch_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">episodes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">SimViewEpisode</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">

@@ -617,6 +617,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#opening-a-file-on-a-remote-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opening a file on a remote host
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#headless-rendering-simview-render" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -662,6 +673,34 @@
     
   
     Live Streaming
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
   
 
     
@@ -1318,6 +1357,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#opening-a-file-on-a-remote-host" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opening a file on a remote host
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#headless-rendering-simview-render" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1361,10 +1411,12 @@
 
 <h1 id="cli-utilities">CLI Utilities</h1>
 <h2 id="cache-management">Cache Management</h2>
-<p>SimView caches some temporary files for visualization. It also cleans up any
-<code>simview_viz_*.json</code> temp scene files left behind by older versions (a launched viewer
-now serves an in-memory <code>SimulationScene</code> directly, without writing one). You can clear
-all of this using the following command:</p>
+<p>SimView caches scene files fetched from remote hosts (see <a href="#opening-a-file-on-a-remote-host">Opening a file on a remote
+host</a>) under <code>$XDG_CACHE_HOME/.simview_cache</code>
+(<code>~/.cache/.simview_cache</code> by default). It also cleans up any <code>simview_viz_*.json</code> temp
+scene files left behind by older versions (a launched viewer now serves an in-memory
+<code>SimulationScene</code> directly, without writing one). You can clear all of this using the
+following command:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>simview<span class="w"> </span>clear
 </span></code></pre></div>
 <h2 id="inspecting-a-scene-file">Inspecting a scene file</h2>
@@ -1429,6 +1481,12 @@ and <code>--pos-threshold METERS</code>/<code>--rot-threshold-deg DEGREES</code>
 first frame where a batch's trajectory diverges past a given tolerance. Like
 <code>simview info</code>/<code>simview terrain</code>, this works on gzip-compressed files and
 doesn't require the <code>authoring</code> extra.</p>
+<p>Poses are compared in <strong>world space</strong>. A parented body's stored transform is
+relative to its parent, so <code>simview diff</code> resolves the parent chain first —
+the same thing the viewer's Error Metrics panel does, so the two report the
+same numbers for the same scene. This also means rigidly-attached bodies (a
+constant <code>localTransform</code>, never written into the states) can be diffed:
+name them with <code>--body</code> like any other body.</p>
 <p>Add <code>--fail-on-exceed</code> to make <code>simview diff</code> machine-checkable in a script
 or CI job: it requires at least one of <code>--pos-threshold</code>/<code>--rot-threshold-deg</code>,
 and exits non-zero if any diffed body's trajectory exceeds it (after
@@ -1469,22 +1527,57 @@ transparently — no separate flag needed.</p>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--no-browser<span class="w">                </span><span class="c1"># don&#39;t auto-open a browser tab</span>
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>simview<span class="w"> </span>--version<span class="w">                               </span><span class="c1"># print the installed version</span>
 </span></code></pre></div>
+<h2 id="opening-a-file-on-a-remote-host">Opening a file on a remote host</h2>
+<p>Anywhere the CLI takes an input file, you can give an scp-style <code>host:path</code> spec instead
+of a local path, and SimView will fetch it over SSH for you:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>simview<span class="w"> </span>rci:~/projects/DRIFT/results/comparison.json
+</span></code></pre></div>
+<p><code>host</code> is passed straight to <code>ssh</code>, so <code>~/.ssh/config</code> aliases, <code>ProxyJump</code>, agent keys
+and password prompts all work exactly as they do for <code>ssh</code> and <code>scp</code>. Nothing needs to
+be installed on the remote — just a shell, and <code>gzip</code> if you want the transfer
+compressed. <code>user@host:path</code>, <code>[::1]:path</code> and <code>ssh://host/path</code> are accepted too.</p>
+<p>This works for every input, not just the viewer, including mixing local and remote files
+in one merged scene:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>simview<span class="w"> </span>info<span class="w"> </span>rci:~/results/comparison.json
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>simview<span class="w"> </span>diff<span class="w"> </span>rci:~/results/comparison.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>simview<span class="w"> </span>local_rerun.json<span class="w"> </span>rci:~/results/real_world.json<span class="w">   </span><span class="c1"># merged into one scene</span>
+</span></code></pre></div>
+<p><strong>Transfers are compressed.</strong> A plain-JSON scene is gzipped on the remote before it goes
+over the wire and unpacked on arrival, which typically cuts the transfer by 5-10x on
+scene data this redundant; a file that's already <code>*.gz</code> is streamed as-is. The saving is
+reported when the fetch finishes:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Fetching rci:~/results/comparison.json (312.4MB)...
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Fetched 41.2MB over the wire (312.4MB on disk, 7.6x smaller). Cached at ...
+</span></code></pre></div>
+<p><strong>Files are cached and only re-fetched when they change.</strong> The cached copy is
+byte-identical to the remote file and carries its modification time, so each run costs
+one cheap <code>ssh</code> stat call to check:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Using cached copy of rci:~/results/comparison.json (remote unchanged).
+</span></code></pre></div>
+<p>Useful flags:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>simview<span class="w"> </span>rci:~/results/scene.json<span class="w"> </span>--refresh<span class="w">   </span><span class="c1"># re-fetch even if the cache is current</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>simview<span class="w"> </span>rci:~/results/scene.json<span class="w"> </span>--offline<span class="w">   </span><span class="c1"># use the cache, don&#39;t contact the host</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>simview<span class="w"> </span>clear<span class="w">                                </span><span class="c1"># drop the cache entirely</span>
+</span></code></pre></div>
+<p>Remote specs are for <em>inputs</em> only — <code>--output</code> and <code>--save-merged</code> must be local paths.
+A local file whose name happens to contain a colon always wins over the remote reading,
+so <code>simview weird:name.json</code> still opens the file sitting next to you.</p>
 <h2 id="headless-rendering-simview-render">Headless rendering (<code>simview render</code>)</h2>
 <p>To save a single PNG screenshot of a scene without opening a browser — e.g.
 from a SLURM job or CI runner with no display — use <code>simview render</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png
 </span></code></pre></div>
 <p>This starts the server in the background, drives a headless Chromium browser
 via <a href="https://playwright.dev/">Playwright</a>, waits for the scene to load, and
 saves one screenshot. It requires the optional <code>render</code> extra plus a
 one-time browser download:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;simview[render]&quot;</span><span class="w">   </span><span class="c1"># or: uv sync --extra render</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>playwright<span class="w"> </span>install<span class="w"> </span>chromium
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;simview[render]&quot;</span><span class="w">   </span><span class="c1"># or: uv sync --extra render</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>playwright<span class="w"> </span>install<span class="w"> </span>chromium
 </span></code></pre></div>
 <p>Useful flags:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--width<span class="w"> </span><span class="m">1920</span><span class="w"> </span>--height<span class="w"> </span><span class="m">1080</span><span class="w">  </span><span class="c1"># custom resolution (default 1280x720)</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--view<span class="w"> </span>&lt;hash&gt;<span class="w">                </span><span class="c1"># restore a &quot;Copy view link&quot; hash first</span>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">   </span><span class="c1"># bind the background server explicitly</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--width<span class="w"> </span><span class="m">1920</span><span class="w"> </span>--height<span class="w"> </span><span class="m">1080</span><span class="w">  </span><span class="c1"># custom resolution (default 1280x720)</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--view<span class="w"> </span>&lt;hash&gt;<span class="w">                </span><span class="c1"># restore a &quot;Copy view link&quot; hash first</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">   </span><span class="c1"># bind the background server explicitly</span>
 </span></code></pre></div>
 <p><code>--view</code> accepts the hash produced by the viewer's "Copy view link" button
 (with or without the leading <code>#</code>), so a screenshot can reproduce a specific
@@ -1493,7 +1586,7 @@ of the viewer's default startup state.</p>
 <h2 id="comparing-multiple-runs-eg-real-world-vs-simulated">Comparing multiple runs (e.g. real-world vs. simulated)</h2>
 <p>Pass multiple JSON files to merge them into a single scene, each file's batches appended
 as extra batches in the viewer:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json
 </span></code></pre></div>
 <p>The files must describe the same physical setup (identical bodies and terrain grid) —
 that's what makes the batches comparable. They don't need to share a timeline: the
@@ -1510,7 +1603,7 @@ including a <code>batchNames</code> array directly in the JSON's <code>model</co
 precedence over this once saved.</p>
 <p>To merge files without launching the viewer, e.g. to inspect or re-share the merged
 scene, pass <code>--save-merged</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz
 </span></code></pre></div>
 <p>The output is gzipped if the path ends in <code>.gz</code>.</p>
 

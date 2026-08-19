@@ -536,6 +536,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/jupyter/" class="md-nav__link">
         
   
@@ -865,6 +893,17 @@
     <span class="md-ellipsis">
       
         load
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simview.scene.SimulationScene.mark_episode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mark_episode
       
     </span>
   </a>
@@ -1524,6 +1563,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#simview.scene.SimulationScene.mark_episode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mark_episode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.scene.SimulationScene.save" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1661,7 +1711,8 @@ returned by <code>SimulationScene.show()</code>.</p>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">batch_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">episodes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">SimViewEpisode</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1675,6 +1726,9 @@ name, checkpoint path, git commit, CLI args) with no meaning to the
 viewer -- it's carried through to <code>simview info</code> and the browser so a
 saved scene stays self-describing. Can also be set/updated later via
 <code>self.model.metadata</code>.</p>
+<p><code>episodes</code> marks the frames an episodic (e.g. RL) recording resets at.
+Usually easier to build up as you go with <code>mark_episode()</code> than to pass
+here up front.</p>
 
 
 
@@ -2273,6 +2327,10 @@ enabling the viewer's click-to-similarity "features" color mode.</p>
 <code>add_trajectory(binary=True)</code>) are left as-is, matching the on-disk
 wire format, so a subsequent <code>save()</code> reproduces the same bytes for
 those fields without a decode/re-encode round trip.</p>
+<p>Accepts either <code>states</code> layout (see :mod:<code>simview.columnar</code>). A
+columnar document is expanded back into the per-frame list <code>states</code>
+is in memory, so every authoring API keeps working unchanged; the
+expansion is exact, so re-saving columnar reproduces the same blobs.</p>
 
 
     </div>
@@ -2309,12 +2367,49 @@ from Python: <code>SimulationScene.load(p).save(p2)</code>.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="simview.scene.SimulationScene.mark_episode" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">mark_episode</span>
+
+
+</h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">mark_episode</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">start_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SimViewEpisode</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Mark the start of an episode in this scene's timeline.</p>
+<p>Call it right before adding the first frame of a new episode (a reset),
+which is what the default <code>start_index</code> -- the index the next added
+frame will land at -- means::</p>
+<div class="language-text highlight"><pre><span></span><code>for episode in range(num_episodes):
+    scene.mark_episode(label=f&quot;episode {episode}&quot;)
+    for t in range(episode_length):
+        scene.add_state(...)
+</code></pre></div>
+<p>Pass <code>start_index</code> explicitly to annotate an already-recorded scene.
+Episode starts must be strictly increasing; a repeated or out-of-order
+index raises ValueError. Returns the created <code>SimViewEpisode</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="simview.scene.SimulationScene.save" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">save</span>
 
 
 </h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">save</span><span class="p">(</span><span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="n">compress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">save</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">filepath</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">compress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">columnar</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2370,8 +2465,35 @@ appended so the extension reflects the actual file contents.</p>
                   <code>False</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>columnar</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Which <code>states</code> layout to write (see
+:mod:<code>simview.columnar</code>). <code>None</code> (the default) writes the
+columnar layout when the states allow it and silently falls
+back to the legacy per-frame array when they don't. <code>True</code>
+requires it, raising ValueError rather than falling back --
+useful in a pipeline that depends on the smaller output.
+<code>False</code> always writes the legacy array.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
       </tbody>
     </table>
+        <p>The columnar layout stores one whole-trajectory binary blob per body
+per field instead of thousands of small per-frame ones, which makes
+both the file and the viewer's load of it dramatically cheaper. Both
+layouts are read transparently by <code>load</code>, <code>merge_simulation_files</code>,
+the viewer and the CLI tools.</p>
 
 
     </div>

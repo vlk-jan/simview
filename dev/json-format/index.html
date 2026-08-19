@@ -536,6 +536,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/jupyter/" class="md-nav__link">
         
   
@@ -1021,6 +1049,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#columnar-states-states-as-an-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Columnar states (states as an object)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authoring-whole-trajectories" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1240,6 +1279,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#columnar-states-states-as-an-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Columnar states (states as an object)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#authoring-whole-trajectories" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1335,64 +1385,78 @@ of breaking changes in this release.</p>
   engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
   read-only in <code>simview info</code> and the browser's "Scene Info" GUI folder so a scene saved
   months ago stays self-describing.</li>
-<li><strong><code>bodies</code></strong> <em>(array)</em> — dynamic bodies. Each entry:</li>
-<li><strong><code>name</code></strong> <em>(string)</em> — unique identifier, referenced from each state.</li>
-<li><strong><code>shape</code></strong> <em>(object)</em> — geometry, keyed by a <strong>string</strong> <code>type</code>:<ul>
-<li><code>"box"</code> — requires <code>hx</code>, <code>hy</code>, <code>hz</code> (half-extents).</li>
-<li><code>"sphere"</code> — requires <code>radius</code>.</li>
-<li><code>"cylinder"</code> — requires <code>radius</code>, <code>height</code>.</li>
-<li><code>"pointcloud"</code> — requires <code>points</code> <em>(array[array[3]])</em> in the body's local frame.
+<li><strong><code>episodes</code></strong> <em>(array, optional)</em> — episode boundaries for an episodic (e.g. RL)
+  recording. Each entry:</li>
+<li><strong><code>startIndex</code></strong> <em>(integer)</em> — index into <code>states</code> of the episode's first frame.
+    Must be <code>&gt;= 0</code> and strictly increasing across entries; each episode implicitly ends
+    where the next begins (the last runs to the end of <code>states</code>).</li>
+<li>
+<p><strong><code>label</code></strong> <em>(string, optional)</em> — display name; falls back to <code>"Episode &lt;n&gt;"</code>.</p>
+<p>Purely descriptive: playback itself is unchanged, but the viewer draws boundaries on
+the playback bar, offers episode navigation, and aggregates scalars per episode (see
+<a href="../../usage/episodes/">Episodes</a>). Omit the key entirely for an ordinary continuous
+timeline.
+- <strong><code>bodies</code></strong> <em>(array)</em> — dynamic bodies. Each entry:
+  - <strong><code>name</code></strong> <em>(string)</em> — unique identifier, referenced from each state.
+  - <strong><code>shape</code></strong> <em>(object)</em> — geometry, keyed by a <strong>string</strong> <code>type</code>:
+- <code>"box"</code> — requires <code>hx</code>, <code>hy</code>, <code>hz</code> (half-extents).
+- <code>"sphere"</code> — requires <code>radius</code>.
+- <code>"cylinder"</code> — requires <code>radius</code>, <code>height</code>.
+- <code>"pointcloud"</code> — requires <code>points</code> <em>(array[array[3]])</em> in the body's local frame.
   Optional <code>color</code> <em>(array[array[3]], values in [0, 1])</em> — a static per-point RGB
   color for vertex-colored rendering. Optional <code>embedding</code> <em>(array[array[K]])</em> — a
   per-point K-wide feature vector (e.g. a reduced-dim PCA projection of a learned
   backbone's features); enables the viewer's click-to-similarity "similarity" Point
   Color Mode, computed client-side as cosine similarity to a clicked point (see
-  <a href="../../usage/controls/#point-cloud-and-terrain-similarity-coloring">Controls</a>).</li>
-<li><code>"mesh"</code> — requires <code>vertices</code> <em>(array[array[3]])</em> and <code>faces</code> <em>(array[array[3]])</em>.</li>
-</ul>
-</li>
-<li><strong><code>availableAttributes</code></strong> <em>(array[string], optional)</em> — which optional per-state
-    fields this body provides. Any of <code>"contacts"</code>, <code>"velocity"</code>, <code>"angularVelocity"</code>,
-    <code>"force"</code>, <code>"torque"</code>.</li>
-<li><strong><code>parent</code></strong> <em>(string, optional)</em> — name of another <code>model.bodies[]</code> entry this
-    body is attached to. When set, this body's pose is no longer absolute world
-    space; see <code>localTransform</code> below and the <code>bodyTransform</code> note under
-    <a href="#states-dynamic-data">States</a>.</li>
-<li><strong><code>localTransform</code></strong> <em>(array[7], optional)</em> — <code>[x, y, z, w, qx, qy, qz]</code> constant
-    offset from <code>parent</code>, for bodies <strong>rigidly</strong> attached (e.g. a wheel bolted to a
-    chassis). Set only together with <code>parent</code>. A body with <code>localTransform</code> never
-    appears in any state's <code>bodies[]</code> — its world pose is derived every frame from
-    its parent's current pose plus this fixed offset, saving the cost of repeating
-    an unchanging transform every frame. For an <strong>articulated</strong> attachment (e.g. an
-    arm joint) instead, set only <code>parent</code> and keep providing a per-frame
-    <code>bodyTransform</code> in <code>states[].bodies[]</code> as usual — it's then interpreted as local
-    to the parent's current-frame pose rather than world space.</li>
-<li><strong><code>staticObjects</code></strong> <em>(array, optional)</em> — non-moving geometry. Each entry has <code>name</code>,
+  <a href="../../usage/controls/#point-cloud-and-terrain-similarity-coloring">Controls</a>).
+- <code>"mesh"</code> — requires <code>vertices</code> <em>(array[array[3]])</em> and <code>faces</code> <em>(array[array[3]])</em>.
+  - <strong><code>availableAttributes</code></strong> <em>(array[string], optional)</em> — which optional per-state
+fields this body provides. Any of <code>"contacts"</code>, <code>"velocity"</code>, <code>"angularVelocity"</code>,
+<code>"force"</code>, <code>"torque"</code>.
+  - <strong><code>parent</code></strong> <em>(string, optional)</em> — name of another <code>model.bodies[]</code> entry this
+body is attached to. When set, this body's pose is no longer absolute world
+space; see <code>localTransform</code> below and the <code>bodyTransform</code> note under
+<a href="#states-dynamic-data">States</a>.
+  - <strong><code>localTransform</code></strong> <em>(array[7], optional)</em> — <code>[x, y, z, w, qx, qy, qz]</code> constant
+offset from <code>parent</code>, for bodies <strong>rigidly</strong> attached (e.g. a wheel bolted to a
+chassis). Set only together with <code>parent</code>. A body with <code>localTransform</code> never
+appears in any state's <code>bodies[]</code> — its world pose is derived every frame from
+its parent's current pose plus this fixed offset, saving the cost of repeating
+an unchanging transform every frame. For an <strong>articulated</strong> attachment (e.g. an
+arm joint) instead, set only <code>parent</code> and keep providing a per-frame
+<code>bodyTransform</code> in <code>states[].bodies[]</code> as usual — it's then interpreted as local
+to the parent's current-frame pose rather than world space.
+- <strong><code>staticObjects</code></strong> <em>(array, optional)</em> — non-moving geometry. Each entry has <code>name</code>,
   <code>isSingleton</code> <em>(boolean)</em>, and either <code>shape</code> (when singleton) or <code>shapes</code>
-  <em>(array, one per batch)</em> using the same shape objects as bodies.</li>
-<li><strong><code>terrain</code></strong> <em>(object)</em> — heightfield shared or per-batch:</li>
-<li><strong><code>dimensions</code></strong>: <code>sizeX</code>, <code>sizeY</code> <em>(float)</em> and <code>resolutionX</code>, <code>resolutionY</code> <em>(int)</em>.</li>
-<li><strong><code>bounds</code></strong>: <code>minX</code>, <code>maxX</code>, <code>minY</code>, <code>maxY</code>, <code>minZ</code>, <code>maxZ</code> — purely spatial; a
-    named property's own value range lives on the property itself (see <code>properties</code>
-    below), not here.</li>
-<li><strong><code>isSingleton</code></strong> <em>(boolean)</em> — <code>true</code> when one terrain is shared by all batches;
-    <code>false</code> when each batch has its own.</li>
-<li><strong><code>heightData</code></strong> <em>(array[array[float]])</em> — one flattened <code>resolutionX * resolutionY</code>
-    grid per batch (a single flat array is also accepted and treated as one batch).</li>
-<li><strong><code>normals</code></strong> <em>(array[array[array[3]]])</em> — per-batch surface normals, one <code>[x, y, z]</code>
-    per grid point.</li>
-<li><strong><code>properties</code></strong> <em>(object, optional)</em> — arbitrary named per-cell scalar fields over
-    the grid (e.g. <code>friction</code>, <code>stiffness</code>, or any custom name), each selectable as a
-    terrain color mode with no viewer code changes. Keyed by property name, each entry
-    is <code>{"data": array[array[float]] | null, "min": float | null, "max": float | null}</code>
-    — <code>data</code> follows the same per-batch flattened-grid shape as <code>heightData</code>; <code>min</code>/<code>max</code>
-    are the property's own value range, used by the viewer to normalize its color map.
-    Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.</li>
-<li><strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
-    K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
-    enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
-    <code>color</code>/<code>embedding</code> on point-cloud bodies above. Not a named property (no min/max,
-    similarity-colored), so it stays a separate top-level field.</li>
+  <em>(array, one per batch)</em> using the same shape objects as bodies.
+- <strong><code>terrain</code></strong> <em>(object)</em> — heightfield shared or per-batch:
+  - <strong><code>dimensions</code></strong>: <code>sizeX</code>, <code>sizeY</code> <em>(float)</em> and <code>resolutionX</code>, <code>resolutionY</code> <em>(int)</em>.
+  - <strong><code>bounds</code></strong>: <code>minX</code>, <code>maxX</code>, <code>minY</code>, <code>maxY</code>, <code>minZ</code>, <code>maxZ</code> — purely spatial; a
+named property's own value range lives on the property itself (see <code>properties</code>
+below), not here.
+  - <strong><code>isSingleton</code></strong> <em>(boolean)</em> — <code>true</code> when one terrain is shared by all batches;
+<code>false</code> when each batch has its own. A singleton terrain ships exactly <strong>one</strong>
+copy of <code>heightData</code>/<code>normals</code>/each property's <code>data</code>/<code>embeddingData</code> (the
+shared row is detected by its resolution-sized length); readers also still
+accept the legacy layout where singleton data was broadcast to <code>simBatches</code>
+identical copies.
+  - <strong><code>heightData</code></strong> <em>(array[array[float]])</em> — one flattened <code>resolutionX * resolutionY</code>
+grid per batch (a single flat array is also accepted and treated as one batch).
+  - <strong><code>normals</code></strong> <em>(array[array[array[3]]])</em> — per-batch surface normals, one <code>[x, y, z]</code>
+per grid point.
+  - <strong><code>properties</code></strong> <em>(object, optional)</em> — arbitrary named per-cell scalar fields over
+the grid (e.g. <code>friction</code>, <code>stiffness</code>, or any custom name), each selectable as a
+terrain color mode with no viewer code changes. Keyed by property name, each entry
+is <code>{"data": array[array[float]] | null, "min": float | null, "max": float | null}</code>
+— <code>data</code> follows the same per-batch flattened-grid shape as <code>heightData</code>; <code>min</code>/<code>max</code>
+are the property's own value range, used by the viewer to normalize its color map.
+Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.
+  - <strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
+K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
+enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
+<code>color</code>/<code>embedding</code> on point-cloud bodies above. Not a named property (no min/max,
+similarity-colored), so it stays a separate top-level field.</p>
+</li>
 </ul>
 <h2 id="states-dynamic-data">States (Dynamic Data)</h2>
 <p><code>states</code> is an array; each element is one snapshot:</p>
@@ -1427,19 +1491,60 @@ batched array in row-major order (<code>bodyTransform</code> is width 7, the vec
 either to emit plain JSON lists instead. The viewer and the file-merge decode binary
 fields transparently. <code>contacts</code>, scalars, and <code>time</code> are always plain JSON.</p>
 </div>
+<h2 id="columnar-states-states-as-an-object">Columnar states (<code>states</code> as an object)</h2>
+<p><code>states</code> may instead be an <strong>object</strong> — the columnar layout — rather than the per-frame
+array described above. Where the per-frame layout stores thousands of small values, this
+stores one binary blob per body per numeric field (and one per scalar), covering all <code>T</code>
+frames at once:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;times&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span><span class="w"> </span><span class="mf">0.002</span><span class="p">],</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;bodies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="p">{</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;box&quot;</span><span class="p">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;bodyTransform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;__b64__&lt;...&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;velocity&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;__b64__&lt;...&gt;&quot;</span><span class="p">},</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">&quot;contacts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[[[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">]],</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="p">[[</span><span class="mi">7</span><span class="p">]]]</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="p">],</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="nt">&quot;scalars&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;__b64__&lt;...&gt;&quot;</span><span class="p">}</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<ul>
+<li><strong><code>version</code></strong> <em>(int)</em> — <code>4</code>. Identifies the layout; a plain array means the legacy
+  per-frame layout.</li>
+<li><strong><code>times</code></strong> <em>(array[float])</em> — length <code>T</code>, one per frame.</li>
+<li><strong><code>bodies[].fields</code></strong> — each blob is little-endian float32, row-major, shape
+  <code>(T, B, k)</code>, where <code>k</code> is the field's width (7 for <code>bodyTransform</code>, 3 for the vectors).</li>
+<li><strong><code>bodies[].contacts</code></strong> <em>(optional)</em> — length <code>T</code>, one per-frame <code>contacts</code> value (or
+  <code>null</code> for a frame with none), still plain JSON since it's ragged.</li>
+<li><strong><code>scalars</code></strong> — each blob is little-endian float32, row-major, shape <code>(T, B)</code>.</li>
+</ul>
+<p><code>SimulationScene.save</code> writes this layout by default; pass <code>columnar=False</code> for the
+legacy array, or <code>columnar=True</code> to fail loudly rather than fall back. Both layouts are
+read transparently by <code>SimulationScene.load</code>, <code>merge_simulation_files</code>, <code>simview
+info</code>/<code>diff</code>/<code>terrain</code>, and the viewer.</p>
 <div class="admonition note">
-<p class="admonition-title">Server-side columnar repack</p>
-<p>This on-disk, per-frame layout never changes (and
-<code>simview merge</code> still reads/writes it as described above); but when serving a scene to
-the viewer, the server repacks <code>states</code> at load time into whole-trajectory columns --
-one binary blob per body per numeric field (and one per scalar), covering all <code>T</code>
-frames at once -- and serves a small JSON index (<code>{"version": 4, "times", "bodies",
-"scalars"}</code>) whose entries are <code>/blob/...</code> URLs, fetched in parallel and decoded into
-<code>Float32Array</code>s. This avoids materializing thousands of tiny per-frame JS objects
-just to play back a long trajectory. The repack requires the body set, per-body field
-set, and field widths to be identical across every frame (<code>contacts</code> is exempt and may
-come and go per frame); if a scene doesn't meet that, the server falls back to serving
-the legacy per-frame JSON array unchanged, which the viewer also still supports.</p>
+<p class="admonition-title">Range requests</p>
+<p>Blobs are served with <code>Accept-Ranges: bytes</code>, so the viewer can fetch a slice of a
+field rather than the whole thing. It uses this for long trajectories: the per-body
+vector fields (<code>velocity</code>, <code>angularVelocity</code>, <code>force</code>, <code>torque</code>) are only ever read
+for the frame on screen, so above 8 MB they're streamed in windows around the
+playhead. <code>bodyTransform</code> and the scalars are always fetched whole — trails, the
+error metrics, the terrain profile and the scalar plots all walk every frame of them.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Over the wire vs. on disk</p>
+<p>The two are the same document; only how a blob is referenced differs. On disk it's an
+inline <code>"__b64__&lt;base64&gt;"</code> string, exactly like the per-frame binary fields; over HTTP
+the server rewrites each into a <code>/blob/...</code> URL the browser fetches in parallel and
+decodes into a <code>Float32Array</code>. A columnar file therefore needs no repacking at all to
+be served.</p>
+<p>A <strong>legacy</strong> file still gets repacked into this shape at load time, so the viewer sees
+one lightweight index plus raw binary either way. That repack requires the body set,
+per-body field set, and field widths to be identical across every frame (<code>contacts</code> is
+exempt and may come and go per frame); if a scene doesn't meet that, the server serves
+the per-frame array unchanged, which the viewer also still supports. <code>simview info</code>
+reports which layout a file uses and, for a legacy file, whether it's repackable.</p>
 </div>
 <h2 id="authoring-whole-trajectories">Authoring whole trajectories</h2>
 <p>Building states one frame at a time (<code>add_state</code>) is fine for short scenes, but for long,
@@ -1448,19 +1553,19 @@ time-series in one call, converting each body's tensors once instead of per fram
 noticeably faster save/load than the same data built frame-by-frame. Both paths pack the
 numeric fields as the binary blobs described above by default, so file size is comparable
 either way:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">simview</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimulationScene</span><span class="p">,</span> <span class="n">BodyShapeType</span><span class="p">,</span> <span class="n">BodyTrajectory</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">scene</span> <span class="o">=</span> <span class="n">SimulationScene</span><span class="p">(</span><span class="n">batch_size</span><span class="o">=</span><span class="n">B</span><span class="p">,</span> <span class="n">scalar_names</span><span class="o">=</span><span class="p">[],</span> <span class="n">dt</span><span class="o">=</span><span class="mf">0.001</span><span class="p">)</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_terrain</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">hx</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">hy</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">hz</span><span class="o">=</span><span class="mf">0.15</span><span class="p">)</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># positions: (T, B, 3), orientations: (T, B, 4) as [w, x, y, z]</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># (2-D (T, 3) / (T, 4) is accepted when batch_size == 1)</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">scene</span><span class="o">.</span><span class="n">add_trajectory</span><span class="p">(</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">times</span><span class="o">=</span><span class="n">times</span><span class="p">,</span>                                  <span class="c1"># length-T sequence or tensor</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">trajectories</span><span class="o">=</span><span class="p">[</span><span class="n">BodyTrajectory</span><span class="p">(</span><span class="s2">&quot;box&quot;</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">orientations</span><span class="p">)],</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">)</span>
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">scene</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;scene.json&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">simview</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimulationScene</span><span class="p">,</span> <span class="n">BodyShapeType</span><span class="p">,</span> <span class="n">BodyTrajectory</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">scene</span> <span class="o">=</span> <span class="n">SimulationScene</span><span class="p">(</span><span class="n">batch_size</span><span class="o">=</span><span class="n">B</span><span class="p">,</span> <span class="n">scalar_names</span><span class="o">=</span><span class="p">[],</span> <span class="n">dt</span><span class="o">=</span><span class="mf">0.001</span><span class="p">)</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_terrain</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">hx</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">hy</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">hz</span><span class="o">=</span><span class="mf">0.15</span><span class="p">)</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># positions: (T, B, 3), orientations: (T, B, 4) as [w, x, y, z]</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># (2-D (T, 3) / (T, 4) is accepted when batch_size == 1)</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">scene</span><span class="o">.</span><span class="n">add_trajectory</span><span class="p">(</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">times</span><span class="o">=</span><span class="n">times</span><span class="p">,</span>                                  <span class="c1"># length-T sequence or tensor</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="n">trajectories</span><span class="o">=</span><span class="p">[</span><span class="n">BodyTrajectory</span><span class="p">(</span><span class="s2">&quot;box&quot;</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">orientations</span><span class="p">)],</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">)</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">scene</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;scene.json&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <p>Pass <code>binary=False</code> to emit plain JSON lists instead.</p>
 <p>Both <code>BodyTrajectory.name</code> and <code>SimViewBodyState</code>'s <code>body_name</code> accept a list of body names
@@ -1473,67 +1578,67 @@ decompress it transparently regardless of extension.</p>
 <h2 id="parent-relative-bodies-rigid-and-articulated-attachments">Parent-relative bodies (rigid and articulated attachments)</h2>
 <p><code>create_body</code> accepts <code>parent</code>/<code>local_transform</code> to attach a body to another body
 already in the model, instead of it moving in world space:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;chassis&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">hx</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">hy</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">hz</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># Rigid attachment (e.g. a wheel bolted to the chassis): a constant offset, defined</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># once, never repeated per frame. Never call add_state/add_trajectory for &quot;left_wheel&quot;.</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;left_wheel&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">CYLINDER</span><span class="p">,</span> <span class="n">radius</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;chassis&quot;</span><span class="p">,</span> <span class="n">local_transform</span><span class="o">=</span><span class="p">[</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.52</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">)</span>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Articulated attachment (e.g. an arm joint): only `parent` is set, so this body&#39;s</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="c1"># pose is still supplied every frame via add_state/add_trajectory as usual -- it&#39;s</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="c1"># just interpreted as local to the chassis&#39;s current-frame pose instead of world.</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;arm_joint&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">hx</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">hy</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">hz</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;chassis&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;chassis&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">hx</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">hy</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">hz</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Rigid attachment (e.g. a wheel bolted to the chassis): a constant offset, defined</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># once, never repeated per frame. Never call add_state/add_trajectory for &quot;left_wheel&quot;.</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;left_wheel&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">CYLINDER</span><span class="p">,</span> <span class="n">radius</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;chassis&quot;</span><span class="p">,</span> <span class="n">local_transform</span><span class="o">=</span><span class="p">[</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.52</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">)</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># Articulated attachment (e.g. an arm joint): only `parent` is set, so this body&#39;s</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="c1"># pose is still supplied every frame via add_state/add_trajectory as usual -- it&#39;s</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="c1"># just interpreted as local to the chassis&#39;s current-frame pose instead of world.</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="n">body_name</span><span class="o">=</span><span class="s2">&quot;arm_joint&quot;</span><span class="p">,</span> <span class="n">shape_type</span><span class="o">=</span><span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">hx</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">hy</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">hz</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="s2">&quot;chassis&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <p>A body's <code>parent</code> must already exist in the model (added before its children), which
 also rules out cycles. Merging files containing rigid (constant-offset) bodies works
 the same way — <code>merge_simulation_files</code> carries the <code>parent</code>/<code>localTransform</code> through
 in <code>model.bodies</code> and doesn't require or emit per-frame data for them.</p>
 <h2 id="example-2-batches-one-box-flat-terrain">Example (2 batches, one box, flat terrain)</h2>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">&quot;simBatches&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">&quot;scalarNames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;energy&quot;</span><span class="p">],</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">&quot;dt&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">&quot;collapse&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">&quot;bodies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">      </span><span class="p">{</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Box&quot;</span><span class="p">,</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">        </span><span class="nt">&quot;shape&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;box&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hx&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hz&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">        </span><span class="nt">&quot;availableAttributes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">      </span><span class="p">}</span>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">    </span><span class="p">],</span>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">    </span><span class="nt">&quot;staticObjects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="nt">&quot;terrain&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">      </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;sizeX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">10.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sizeY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">10.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;resolutionX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;resolutionY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">      </span><span class="nt">&quot;bounds&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;minX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;maxX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;minY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;maxY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;minZ&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;maxZ&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">      </span><span class="nt">&quot;isSingleton&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">      </span><span class="nt">&quot;heightData&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">]],</span>
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">      </span><span class="nt">&quot;normals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[[[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]]]</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">    </span><span class="p">}</span>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">  </span><span class="nt">&quot;states&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">    </span><span class="p">{</span>
-</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">      </span><span class="nt">&quot;time&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
-</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="w">      </span><span class="nt">&quot;bodies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="w">        </span><span class="p">{</span>
-</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Box&quot;</span><span class="p">,</span>
-</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="w">          </span><span class="nt">&quot;bodyTransform&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a><span class="w">            </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">],</span>
-</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a><span class="w">            </span><span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">]</span>
-</span><span id="__span-3-32"><a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a><span class="w">          </span><span class="p">],</span>
-</span><span id="__span-3-33"><a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a><span class="w">          </span><span class="nt">&quot;velocity&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-</span><span id="__span-3-34"><a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a><span class="w">            </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mf">-0.1</span><span class="p">],</span>
-</span><span id="__span-3-35"><a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a><span class="w">            </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">]</span>
-</span><span id="__span-3-36"><a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a><span class="w">          </span><span class="p">]</span>
-</span><span id="__span-3-37"><a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a><span class="w">        </span><span class="p">}</span>
-</span><span id="__span-3-38"><a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a><span class="w">      </span><span class="p">],</span>
-</span><span id="__span-3-39"><a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="w">      </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">1.2</span><span class="p">,</span><span class="w"> </span><span class="mf">0.1</span><span class="p">]</span>
-</span><span id="__span-3-40"><a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a><span class="w">    </span><span class="p">}</span>
-</span><span id="__span-3-41"><a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a><span class="w">  </span><span class="p">]</span>
-</span><span id="__span-3-42"><a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">&quot;simBatches&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">&quot;scalarNames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;energy&quot;</span><span class="p">],</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">&quot;dt&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">&quot;collapse&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">&quot;bodies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="p">{</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Box&quot;</span><span class="p">,</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">        </span><span class="nt">&quot;shape&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;box&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hx&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;hz&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">        </span><span class="nt">&quot;availableAttributes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;velocity&quot;</span><span class="p">]</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">      </span><span class="p">}</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="p">],</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="nt">&quot;staticObjects&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="nt">&quot;terrain&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">      </span><span class="nt">&quot;dimensions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;sizeX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">10.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sizeY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">10.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;resolutionX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;resolutionY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">      </span><span class="nt">&quot;bounds&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;minX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;maxX&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;minY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">-5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;maxY&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">5.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;minZ&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;maxZ&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">      </span><span class="nt">&quot;isSingleton&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">      </span><span class="nt">&quot;heightData&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[[</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="mf">0.0</span><span class="p">]],</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">      </span><span class="nt">&quot;normals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[[[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">]]]</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">  </span><span class="nt">&quot;states&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">    </span><span class="p">{</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">      </span><span class="nt">&quot;time&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">      </span><span class="nt">&quot;bodies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">        </span><span class="p">{</span>
+</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">          </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Box&quot;</span><span class="p">,</span>
+</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">          </span><span class="nt">&quot;bodyTransform&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">            </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">],</span>
+</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">            </span><span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">]</span>
+</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">          </span><span class="p">],</span>
+</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">          </span><span class="nt">&quot;velocity&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">            </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mf">-0.1</span><span class="p">],</span>
+</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="w">            </span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">]</span>
+</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="w">          </span><span class="p">]</span>
+</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="w">      </span><span class="p">],</span>
+</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="w">      </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">1.2</span><span class="p">,</span><span class="w"> </span><span class="mf">0.1</span><span class="p">]</span>
+</span><span id="__span-4-40"><a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a><span class="p">}</span>
 </span></code></pre></div>
 <h2 id="notes">Notes</h2>
 <ul>
@@ -1549,8 +1654,9 @@ in <code>model.bodies</code> and doesn't require or emit per-frame data for them
 <li>
 <p><strong>Batch Synchronization</strong>
   Per-batch arrays (<code>bodyTransform</code>, <code>velocity</code>, scalar values, …) must have length <code>simBatches</code>.
-  When <code>terrain.isSingleton</code> is <code>true</code>, <code>heightData</code>/<code>normals</code> hold a single batch that is
-  reused for all instances.</p>
+  When <code>terrain.isSingleton</code> is <code>true</code>, <code>heightData</code>/<code>normals</code> hold a single shared
+  copy that is reused for all instances (legacy files with <code>simBatches</code> identical
+  broadcast copies are still accepted).</p>
 </li>
 <li>
 <p><strong>Contact Points</strong>

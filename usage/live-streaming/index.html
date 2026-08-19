@@ -16,7 +16,7 @@
         <link rel="prev" href="../cli/">
       
       
-        <link rel="next" href="../jupyter/">
+        <link rel="next" href="../episodes/">
       
       
         
@@ -522,6 +522,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live Streaming
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -539,6 +557,64 @@
 
       </a>
       
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backpressure
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1108,6 +1184,25 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#backpressure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backpressure
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1144,12 +1239,27 @@ produces it, over a WebSocket:</p>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">scene</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;recording.json.gz&quot;</span><span class="p">,</span> <span class="n">compress</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </span></code></pre></div>
 <p><code>push_state</code> has the same signature and validation as <code>SimulationScene.add_state</code> --
-it delegates to it directly, then broadcasts the new frame to every connected viewer. A
-viewer opened after the stream has already started still gets the full history so far,
-replayed as a single catch-up message before it starts receiving new frames live. If no
-viewer is connected yet, pushed frames are simply buffered for the next one to connect.
-Playback in the browser follows the live frames automatically as long as you haven't
-scrubbed backward or started a loop; a small "LIVE" badge shows while the socket is open.</p>
+it delegates to it directly, then hands the new frame to a background sender thread that
+broadcasts it to every connected viewer. A viewer opened after the stream has already
+started still gets the full history so far, replayed as a catch-up before it starts
+receiving new frames live. If no viewer is connected yet, pushed frames are simply
+buffered for the next one to connect. Playback in the browser follows the live frames
+automatically as long as you haven't scrubbed backward or started a loop; a small "LIVE"
+badge shows while the socket is open.</p>
+<h2 id="backpressure">Backpressure</h2>
+<p><code>push_state</code> never blocks your simulation loop on the network. Frames go into a bounded
+queue (<code>queue_size</code>, 256 by default) drained by the sender thread, so a slow or hung
+browser tab costs the caller nothing. When that queue fills up, the <em>oldest</em> pending
+frame is dropped to make room for the newest, keeping what the viewer shows close to
+live instead of falling further behind:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">with</span> <span class="n">LiveViewer</span><span class="p">(</span><span class="n">scene</span><span class="p">,</span> <span class="n">queue_size</span><span class="o">=</span><span class="mi">64</span><span class="p">)</span> <span class="k">as</span> <span class="n">live</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="o">...</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">live</span><span class="o">.</span><span class="n">dropped_frames</span><span class="p">)</span>  <span class="c1"># frames skipped on the wire, if any</span>
+</span></code></pre></div>
+<p>Dropping only affects the live stream. Every pushed frame still lands in <code>scene.states</code>
+and in the catch-up buffer, so the saved recording is complete either way. <code>stop()</code> (and
+therefore the <code>with</code> block's exit) flushes whatever is still queued before shutting the
+server down.</p>
 <p>See <code>example_live.py</code> for a runnable end-to-end example.</p>
 <p>See the <a href="../../api/live/"><code>LiveViewer</code> API reference</a> for the full signature.</p>
 

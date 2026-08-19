@@ -536,6 +536,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/episodes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Episodes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/jupyter/" class="md-nav__link">
         
   
@@ -838,6 +866,28 @@
   
     <nav class="md-nav" aria-label="LiveViewer">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simview.live.LiveViewer.dropped_frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dropped_frames
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simview.live.LiveViewer.mark_episode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mark_episode
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#simview.live.LiveViewer.push_state" class="md-nav__link">
@@ -1203,6 +1253,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#simview.live.LiveViewer.dropped_frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dropped_frames
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simview.live.LiveViewer.mark_episode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mark_episode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.live.LiveViewer.push_state" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1269,7 +1341,8 @@ connected browser tabs over WebSocket as a simulation runs. See
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">preferred_port</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5420</span><span class="p">,</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">open_browser</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">queue_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">_SEND_QUEUE_MAXSIZE</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents first">
@@ -1283,6 +1356,9 @@ states are pushed incrementally afterwards via <code>push_state</code>, using th
 same validation/encoding as <code>SimulationScene.add_state</code>. Because
 <code>push_state</code> appends to <code>scene.states</code> exactly like <code>add_state</code> would, the
 scene can still be <code>save()</code>d normally once streaming is done.</p>
+<p>Broadcasting happens on a dedicated sender thread fed by a bounded queue,
+so the simulation loop calling <code>push_state</code> is never blocked by a slow or
+hung browser tab -- see <code>_enqueue</code> for the backpressure policy.</p>
 
 
 
@@ -1302,8 +1378,61 @@ scene can still be <code>save()</code>d normally once streaming is done.</p>
 
 
 
+<div class="doc doc-object doc-attribute">
 
 
+
+<h3 id="simview.live.LiveViewer.dropped_frames" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">dropped_frames</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">dropped_frames</span><span class="p">:</span> <span class="nb">int</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>How many frames were skipped on the wire because the viewer could
+not keep up. Purely a live-streaming statistic: dropped frames are
+still recorded in <code>scene.states</code> and in the server's catch-up buffer.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="simview.live.LiveViewer.mark_episode" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">mark_episode</span>
+
+
+</h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">mark_episode</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">start_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Mark the start of an episode at the current point in the stream.</p>
+<p>The episodic counterpart to <code>push_state</code>: call it on each reset, before
+pushing that episode's first frame. Connected viewers update their
+playback bar immediately; a viewer that connects later picks the
+boundaries up from <code>/model</code>. Returns the created <code>SimViewEpisode</code>.</p>
+<p>Like <code>push_state</code>, this never blocks the caller on the network.</p>
+
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-function">
 
@@ -1318,14 +1447,14 @@ scene can still be <code>save()</code>d normally once streaming is done.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Append one frame and broadcast it to every connected viewer.</p>
-<p>Runs on the caller's thread. Delegates to <code>scene.add_state</code> for the
-same validation/encoding <code>SimulationScene</code> normally does (the frame
-also lands in <code>self.scene.states</code>, so <code>scene.save()</code> still works after
-streaming), then hands the just-appended frame to the server thread's
-event loop for broadcast. Safe to call before any client has
-connected -- the frame is simply buffered for the next connection's
-catch-up message.</p>
+        <p>Append one frame and hand it to the sender thread for broadcast.</p>
+<p>Runs on the caller's thread, but never blocks on the network: it
+delegates to <code>scene.add_state</code> for the same validation/encoding
+<code>SimulationScene</code> normally does (the frame also lands in
+<code>self.scene.states</code>, so <code>scene.save()</code> still works after streaming),
+records the frame for catch-up, and returns as soon as the frame is
+queued. Safe to call before any client has connected -- the frame is
+simply buffered for the next connection's catch-up message.</p>
 
 
     </div>
@@ -1345,7 +1474,7 @@ catch-up message.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Signal the server to exit and wait for its thread to finish.</p>
+        <p>Flush queued frames, then signal the server to exit and wait for it.</p>
 <p>Idempotent -- safe to call multiple times (e.g. once explicitly and
 once more via <strong>exit</strong>).</p>
 
