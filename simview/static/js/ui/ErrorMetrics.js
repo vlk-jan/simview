@@ -11,6 +11,17 @@ import {
 } from "../utils/errorMath.js";
 import { injectStyles } from "../utils/injectStyles.js";
 
+// One place for the per-series colors: the plot strokes, the hover tooltip and
+// the swatches in front of the readout labels all have to agree, otherwise the
+// readout stops working as a legend for the curve above it.
+const SERIES_COLORS = {
+    pos: "#4c9aff",
+    x: "#ff6b6b",
+    y: "#51cf66",
+    z: "#4c9aff",
+    rot: "#ff9f4c",
+};
+
 // Compares two batches of the same body over the full timeline: Euclidean
 // position error and quaternion angle (orientation) error. Useful for e.g.
 // comparing a real-world recording batch against a simulated rerun batch.
@@ -89,6 +100,14 @@ export class ErrorMetrics {
             justify-content: space-between;
             padding: 2px 0;
         }
+        .error-metrics-swatch {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            margin-right: 6px;
+            vertical-align: baseline;
+        }
         .error-metrics-stats {
             margin-top: 8px;
             padding-top: 8px;
@@ -156,19 +175,19 @@ export class ErrorMetrics {
 
         this.readout = document.createElement("div");
         this.readout.className = "error-metrics-readout";
-        const posRow = this._makeReadoutRow("Position error:");
+        const posRow = this._makeReadoutRow("Position error:", SERIES_COLORS.pos);
         this.posReadout = posRow.row;
         this.posReadoutValue = posRow.valueSpan;
-        const axisXRow = this._makeReadoutRow("X error:");
+        const axisXRow = this._makeReadoutRow("X error:", SERIES_COLORS.x);
         this.axisReadoutX = axisXRow.row;
         this.axisReadoutXValue = axisXRow.valueSpan;
-        const axisYRow = this._makeReadoutRow("Y error:");
+        const axisYRow = this._makeReadoutRow("Y error:", SERIES_COLORS.y);
         this.axisReadoutY = axisYRow.row;
         this.axisReadoutYValue = axisYRow.valueSpan;
-        const axisZRow = this._makeReadoutRow("Z error:");
+        const axisZRow = this._makeReadoutRow("Z error:", SERIES_COLORS.z);
         this.axisReadoutZ = axisZRow.row;
         this.axisReadoutZValue = axisZRow.valueSpan;
-        const rotRow = this._makeReadoutRow("Orientation error:");
+        const rotRow = this._makeReadoutRow("Orientation error:", SERIES_COLORS.rot);
         this.rotReadout = rotRow.row;
         this.rotReadoutValue = rotRow.valueSpan;
         this.readout.appendChild(this.posReadout);
@@ -211,10 +230,19 @@ export class ErrorMetrics {
         this.content.appendChild(this.plotDiv);
     }
 
-    _makeReadoutRow(labelText) {
+    // `color` (optional) prepends a small square in that color to the label,
+    // so a readout row doubles as the legend entry for its plot series. Rows
+    // with no matching curve (the stats block) pass none.
+    _makeReadoutRow(labelText, color = null) {
         const row = document.createElement("div");
         const label = document.createElement("span");
-        label.textContent = labelText;
+        if (color) {
+            const swatch = document.createElement("span");
+            swatch.className = "error-metrics-swatch";
+            swatch.style.backgroundColor = color;
+            label.appendChild(swatch);
+        }
+        label.appendChild(document.createTextNode(labelText));
         const valueSpan = document.createElement("span");
         valueSpan.textContent = "-";
         row.appendChild(label);
@@ -470,9 +498,9 @@ export class ErrorMetrics {
         const dataArrays = [xValues];
         if (this.showAxes) {
             seriesConfigs.push(
-                { label: "X error", stroke: "#ff6b6b", width: 1, points: { show: false }, scale: "pos" },
-                { label: "Y error", stroke: "#51cf66", width: 1, points: { show: false }, scale: "pos" },
-                { label: "Z error", stroke: "#4c9aff", width: 1, points: { show: false }, scale: "pos" }
+                { label: "X error", stroke: SERIES_COLORS.x, width: 1, points: { show: false }, scale: "pos" },
+                { label: "Y error", stroke: SERIES_COLORS.y, width: 1, points: { show: false }, scale: "pos" },
+                { label: "Z error", stroke: SERIES_COLORS.z, width: 1, points: { show: false }, scale: "pos" }
             );
             dataArrays.push(
                 this.axisSeries.x.map((p) => p.y),
@@ -482,7 +510,7 @@ export class ErrorMetrics {
         } else {
             seriesConfigs.push({
                 label: "Position error",
-                stroke: "#4c9aff",
+                stroke: SERIES_COLORS.pos,
                 width: 1,
                 points: { show: false },
                 scale: "pos",
@@ -491,7 +519,7 @@ export class ErrorMetrics {
         }
         seriesConfigs.push({
             label: "Orientation error",
-            stroke: "#ff9f4c",
+            stroke: SERIES_COLORS.rot,
             width: 1,
             points: { show: false },
             scale: "rot",
@@ -531,7 +559,7 @@ export class ErrorMetrics {
                         side: 3,
                         label: "Position (m)",
                         labelFont: "12px Arial",
-                        stroke: this.showAxes ? "rgba(255, 255, 255, 0.6)" : "#4c9aff",
+                        stroke: this.showAxes ? "rgba(255, 255, 255, 0.6)" : SERIES_COLORS.pos,
                         grid: { stroke: "rgb(53, 53, 53)", width: 1 },
                         ticks: { stroke: "rgb(73, 73, 73)" },
                         font: "12px Arial",
@@ -542,7 +570,7 @@ export class ErrorMetrics {
                         side: 1,
                         label: "Orientation (deg)",
                         labelFont: "12px Arial",
-                        stroke: "#ff9f4c",
+                        stroke: SERIES_COLORS.rot,
                         grid: { show: false },
                         ticks: { stroke: "rgb(73, 73, 73)" },
                         font: "12px Arial",
@@ -608,16 +636,16 @@ export class ErrorMetrics {
             const z = u.data[3][idx];
             const rot = u.data[4][idx];
             html +=
-                `<span style="color:#ff6b6b;">X: ${x.toFixed(3)} m</span><br>` +
-                `<span style="color:#51cf66;">Y: ${y.toFixed(3)} m</span><br>` +
-                `<span style="color:#4c9aff;">Z: ${z.toFixed(3)} m</span><br>` +
-                `<span style="color:#ff9f4c;">Orientation: ${rot.toFixed(2)}°</span>`;
+                `<span style="color:${SERIES_COLORS.x};">X: ${x.toFixed(3)} m</span><br>` +
+                `<span style="color:${SERIES_COLORS.y};">Y: ${y.toFixed(3)} m</span><br>` +
+                `<span style="color:${SERIES_COLORS.z};">Z: ${z.toFixed(3)} m</span><br>` +
+                `<span style="color:${SERIES_COLORS.rot};">Orientation: ${rot.toFixed(2)}°</span>`;
         } else {
             const pos = u.data[1][idx];
             const rot = u.data[2][idx];
             html +=
-                `<span style="color:#4c9aff;">Position: ${pos.toFixed(3)} m</span><br>` +
-                `<span style="color:#ff9f4c;">Orientation: ${rot.toFixed(2)}°</span>`;
+                `<span style="color:${SERIES_COLORS.pos};">Position: ${pos.toFixed(3)} m</span><br>` +
+                `<span style="color:${SERIES_COLORS.rot};">Orientation: ${rot.toFixed(2)}°</span>`;
         }
         this._tooltip.innerHTML = html;
         this._tooltip.style.left = `${u.cursor.left + 12}px`;
