@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always deriving it from that map's own min/max — so the same scale (and legend)
   stays comparable across scenes. Properties left out keep the data-range default,
   and cells outside an explicit range saturate at the end colors.
+- Each Error Metrics readout is prefixed with a swatch in its plot series color, so the
+  readout doubles as a legend for the curves below it.
+
+### Fixed
+
+- Nested fields in the Scene Info panel now start collapsed. A scene with rich metadata
+  used to expand every nested key at once, burying the top-level entries.
 
 ## [4.1.0] - 2026-08-19
 
