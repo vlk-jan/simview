@@ -1449,7 +1449,12 @@ the grid (e.g. <code>friction</code>, <code>stiffness</code>, or any custom name
 terrain color mode with no viewer code changes. Keyed by property name, each entry
 is <code>{"data": array[array[float]] | null, "min": float | null, "max": float | null}</code>
 — <code>data</code> follows the same per-batch flattened-grid shape as <code>heightData</code>; <code>min</code>/<code>max</code>
-are the property's own value range, used by the viewer to normalize its color map.
+are the range the viewer normalizes its color map against, defaulting to the
+property's own data range but overridable per property with
+<code>create_terrain(property_bounds={"friction": (0.0, 1.0)})</code> to keep one scale
+comparable across scenes. Cells outside <code>[min, max]</code> saturate at the end colors;
+if either bound is missing or the range is degenerate the viewer falls back to
+clamping the raw value into <code>[0, 1]</code>.
 Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.
   - <strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
 K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
