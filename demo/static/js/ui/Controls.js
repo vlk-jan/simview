@@ -469,8 +469,9 @@ export class UIControls {
             };
 
             // Helper: add one key/value row to a lil-gui folder.
-            // Plain objects are expanded into a nested sub-folder so every
-            // individual value is fully visible (no truncation needed).
+            // Plain objects are broken out into a nested sub-folder so every
+            // individual value is fully visible (no truncation needed) once
+            // it's opened.
             const addMetaEntry = (folder, key, value) => {
                 if (
                     value !== null &&
@@ -487,7 +488,11 @@ export class UIControls {
                         const ctrl = sub.add(subDisplay, sk);
                         makeReadonlyCopyable(ctrl, fullText);
                     }
-                    sub.open();
+                    // Start collapsed: a scene with rich metadata otherwise
+                    // dumps every nested key into the panel at once, which
+                    // buries the top-level entries. The user opens what they
+                    // actually want to read.
+                    sub.close();
                 } else {
                     const display = {};
                     const fullText =
