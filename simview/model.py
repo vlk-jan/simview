@@ -1,5 +1,6 @@
 import base64
 import logging
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, cast
@@ -20,6 +21,39 @@ def _encode_blob(array) -> str:
     it as an opaque binary blob instead of verbose JSON.
     """
     return BLOB_PREFIX + base64.b64encode(array.astype("<f4").tobytes()).decode("utf-8")
+
+
+def _validated_property_bounds(name: str, bounds: Any) -> tuple[float, float]:
+    """Validate one explicit `(min, max)` color-scale range for a terrain property.
+
+    The viewer only honors a range when both ends are finite numbers spanning a
+    non-zero interval; anything else silently falls back to clamping the raw
+    value into [0, 1] (see `#normalizeToRange` in `static/js/objects/Terrain.js`),
+    which looks like a working scale but isn't. Reject it here instead.
+    """
+    try:
+        low, high = bounds
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Bounds for terrain property '{name}' must be a (min, max) pair; "
+            f"got {bounds!r}."
+        ) from None
+    try:
+        low, high = float(low), float(high)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Bounds for terrain property '{name}' must be numbers; got {bounds!r}."
+        ) from None
+    if not (math.isfinite(low) and math.isfinite(high)):
+        raise ValueError(
+            f"Bounds for terrain property '{name}' must be finite; got ({low}, {high})."
+        )
+    if low >= high:
+        raise ValueError(
+            f"Bounds for terrain property '{name}' must satisfy min < max; "
+            f"got ({low}, {high})."
+        )
+    return low, high
 
 
 def _decode_blob(value):
@@ -178,6 +212,7 @@ class SimViewTerrain:
         y_lim: tuple[float, float],
         is_singleton: bool,
         properties: dict[str, torch.Tensor] | None = None,
+        property_bounds: dict[str, tuple[float, float]] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> "SimViewTerrain":
         if heightmap.ndim != 3:
@@ -206,6 +241,14 @@ class SimViewTerrain:
             rearrange(normals, "b c d1 d2 -> b (d1 d2) c").cpu().numpy()
         )
 
+        property_bounds = property_bounds or {}
+        unknown_bounds = set(property_bounds) - set(properties or {})
+        if unknown_bounds:
+            raise ValueError(
+                f"property_bounds names {sorted(unknown_bounds)} have no matching "
+                f"entry in `properties` (got {sorted(properties or {})})."
+            )
+
         properties_out: dict[str, TerrainProperty] = {}
         for name, prop_map in (properties or {}).items():
             if prop_map.ndim != 3:
@@ -213,12 +256,19 @@ class SimViewTerrain:
                     f"Property '{name}' map must include a batch dimension "
                     f"(ndim=3); got ndim={prop_map.ndim}."
                 )
+            # Explicit bounds pin the viewer's color scale (e.g. a fixed [0, 1]
+            # friction scale comparable across scenes, at the cost of saturating
+            # out-of-range cells); otherwise it's the map's own data range.
+            if name in property_bounds:
+                low, high = _validated_property_bounds(name, property_bounds[name])
+            else:
+                low, high = prop_map.min().item(), prop_map.max().item()
             properties_out[name] = TerrainProperty(
                 data=_encode_blob(
                     rearrange(prop_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
                 ),
-                min=prop_map.min().item(),
-                max=prop_map.max().item(),
+                min=low,
+                max=high,
             )
 
         embedding_data_list = None
@@ -639,6 +689,7 @@ class SimViewModel:
         y_lim: tuple[float, float] | None = None,
         grid_res: float | None = None,
         properties: dict[str, torch.Tensor] | None = None,
+        property_bounds: dict[str, tuple[float, float]] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the internal simulation model.
@@ -656,6 +707,13 @@ class SimViewModel:
                 `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
                 selectable as a terrain color mode in the viewer automatically, with no
                 further code changes needed.
+            property_bounds (dict[str, tuple[float, float]] | None): Optional explicit
+                `(min, max)` color-scale range per property name, e.g.
+                `{"friction": (0.0, 1.0)}`. Each name must also appear in
+                `properties`; names left out keep the default, which is that map's
+                own data range. Use this to keep one scale comparable across scenes
+                -- cells outside the range saturate at the end colors rather than
+                being hidden.
             embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
                 (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
                 enabling the viewer's click-to-similarity "features" color mode.
@@ -743,6 +801,7 @@ class SimViewModel:
             y_lim=y_lim,
             is_singleton=is_singleton,
             properties=properties,
+            property_bounds=property_bounds,
             embedding_map=embedding_map,
         )
 

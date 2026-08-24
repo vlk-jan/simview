@@ -97,7 +97,12 @@ produces.
     terrain color mode with no viewer code changes. Keyed by property name, each entry
     is `{"data": array[array[float]] | null, "min": float | null, "max": float | null}`
     — `data` follows the same per-batch flattened-grid shape as `heightData`; `min`/`max`
-    are the property's own value range, used by the viewer to normalize its color map.
+    are the range the viewer normalizes its color map against, defaulting to the
+    property's own data range but overridable per property with
+    `create_terrain(property_bounds={"friction": (0.0, 1.0)})` to keep one scale
+    comparable across scenes. Cells outside `[min, max]` saturate at the end colors;
+    if either bound is missing or the range is degenerate the viewer falls back to
+    clamping the raw value into `[0, 1]`.
     Example: `{"friction": {"data": [...], "min": 0.2, "max": 0.9}}`.
   - **`embeddingData`** *(array[array[float]] | null, optional)* — per-batch, per-cell
     K-wide feature vectors (flattened `resolutionX * resolutionY * K` per batch),

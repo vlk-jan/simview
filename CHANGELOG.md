@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `create_terrain(property_bounds=...)` pins the color-scale range of a named terrain
+  property explicitly, e.g. `property_bounds={"friction": (0.0, 1.0)}`, instead of
+  always deriving it from that map's own min/max — so the same scale (and legend)
+  stays comparable across scenes. Properties left out keep the data-range default,
+  and cells outside an explicit range saturate at the end colors.
+
 ## [4.1.0] - 2026-08-19
 
 ### Added

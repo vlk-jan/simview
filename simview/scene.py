@@ -623,6 +623,7 @@ class SimulationScene:
         y_lim: tuple[float, float] | None = None,
         grid_res: float | None = None,
         properties: dict[str, torch.Tensor] | None = None,
+        property_bounds: dict[str, tuple[float, float]] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> None:
         """Adds terrain to the simulation model.
@@ -640,6 +641,13 @@ class SimulationScene:
                 `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
                 selectable as a terrain color mode in the viewer automatically, with no
                 further code changes needed.
+            property_bounds (dict[str, tuple[float, float]] | None): Optional explicit
+                `(min, max)` color-scale range per property name, e.g.
+                `{"friction": (0.0, 1.0)}`. Each name must also appear in
+                `properties`; names left out keep the default, which is that map's
+                own data range. Use this to keep one scale comparable across scenes
+                -- cells outside the range saturate at the end colors rather than
+                being hidden.
             embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
                 (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
                 enabling the viewer's click-to-similarity "features" color mode.
@@ -651,6 +659,7 @@ class SimulationScene:
             y_lim=y_lim,
             grid_res=grid_res,
             properties=properties,
+            property_bounds=property_bounds,
             embedding_map=embedding_map,
         )
 

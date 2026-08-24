@@ -53,6 +53,31 @@ def test_terrain_ships_property_bounds(tmp_path):
     assert properties["stiffness"]["max"] == 250000.0
 
 
+def test_explicit_property_bounds_override_the_data_range(tmp_path):
+    """`property_bounds=` pins the viewer's color scale; properties left out of it
+    still get their own data range."""
+    resolution = 4
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    scene.create_terrain(
+        heightmap=torch.zeros(resolution, resolution),
+        x_lim=(-5, 5),
+        y_lim=(-5, 5),
+        properties={
+            "friction": torch.full((resolution, resolution), 0.5),
+            "stiffness": torch.full((resolution, resolution), 250000.0),
+        },
+        property_bounds={"friction": (0.0, 1.2)},
+    )
+    out = tmp_path / "sim.json"
+    scene.save(out)
+
+    properties = json.loads(out.read_text())["model"]["terrain"]["properties"]
+    assert properties["friction"]["min"] == 0.0
+    assert properties["friction"]["max"] == 1.2
+    assert properties["stiffness"]["min"] == 250000.0
+    assert properties["stiffness"]["max"] == 250000.0
+
+
 def test_states_shape(tmp_path):
     """The legacy per-frame layout, still written on request (and whenever a
     scene is too irregular to pack columnar)."""
@@ -431,3 +456,40 @@ def test_invalid_property_map_ndim_raises_value_error():
             is_singleton=False,
             properties={"friction": bad_friction},
         )
+
+
+def _terrain_with_bounds(property_bounds):
+    resolution = 4
+    return SimViewTerrain.create(
+        heightmap=torch.zeros(1, resolution, resolution),
+        normals=torch.zeros(1, 3, resolution, resolution),
+        x_lim=(-5, 5),
+        y_lim=(-5, 5),
+        is_singleton=False,
+        properties={"friction": torch.zeros(1, resolution, resolution)},
+        property_bounds=property_bounds,
+    )
+
+
+def test_property_bounds_for_unknown_property_raises_value_error():
+    with pytest.raises(ValueError, match=r"\['grip'\] have no matching entry"):
+        _terrain_with_bounds({"grip": (0.0, 1.0)})
+
+
+@pytest.mark.parametrize(
+    "bounds, message",
+    [
+        ((0.0,), "must be a \\(min, max\\) pair"),
+        ((0.0, 1.0, 2.0), "must be a \\(min, max\\) pair"),
+        (0.5, "must be a \\(min, max\\) pair"),
+        ((None, 1.0), "must be numbers"),
+        ((0.0, float("inf")), "must be finite"),
+        ((1.0, 1.0), "must satisfy min < max"),
+        ((1.0, 0.0), "must satisfy min < max"),
+    ],
+)
+def test_invalid_property_bounds_raise_value_error(bounds, message):
+    """A half-set or degenerate range silently falls back to a hard [0, 1] clamp
+    in the viewer, so it has to be rejected here rather than shipped."""
+    with pytest.raises(ValueError, match=message):
+        _terrain_with_bounds({"friction": bounds})
