@@ -647,6 +647,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Comparing multiple runs (e.g. real-world vs. simulated)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merging-only-some-of-a-files-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merging only some of a file's batches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1387,6 +1404,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Comparing multiple runs (e.g. real-world vs. simulated)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merging-only-some-of-a-files-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merging only some of a file's batches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1601,9 +1635,58 @@ next time you open the same file(s). You can also set initial batch names yourse
 including a <code>batchNames</code> array directly in the JSON's <code>model</code> object (see
 <a href="../../dev/json-format/">JSON Format Specification</a>); renames from the UI take
 precedence over this once saved.</p>
+<h3 id="merging-only-some-of-a-files-batches">Merging only some of a file's batches</h3>
+<p>If several files each carry their own copy of the same ground-truth batch, merging
+them whole duplicates that ground truth once per file. Append <code>#&lt;batches&gt;</code> to a file
+to contribute only some of its batches:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>simview<span class="w"> </span>gt.json<span class="w"> </span>method_a.json#1<span class="w"> </span>method_b.json#1
+</span></code></pre></div>
+<p>That merges every batch of <code>gt.json</code> plus batch 1 of each method file — three batches,
+one ground truth. The selector accepts, comma-separated:</p>
+<table>
+<thead>
+<tr>
+<th>Selector</th>
+<th>Takes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>#1</code></td>
+<td>batch 1</td>
+</tr>
+<tr>
+<td><code>#0,2</code></td>
+<td>batches 0 and 2, in that order</td>
+</tr>
+<tr>
+<td><code>#1-3</code></td>
+<td>batches 1, 2 and 3 (inclusive range)</td>
+</tr>
+<tr>
+<td><code>#-1</code></td>
+<td>the last batch</td>
+</tr>
+<tr>
+<td><code>#ours</code></td>
+<td>the batch named <code>ours</code> in that file's <code>batchNames</code></td>
+</tr>
+</tbody>
+</table>
+<p>Selected batches keep their <strong>source</strong> index in the merged batch names (batch 2 of
+<code>run.json</code> is <code>run[2]</code>), so a merged scene stays traceable back to what it was built
+from. Selecting a batch twice, or one that doesn't exist, is an error rather than a
+silent surprise. A file literally named <code>odd#name.json</code> still opens as itself — an
+existing local file always wins over the selector reading, exactly as it does for
+remote <code>host:path</code> specs.</p>
+<p>A selection also works with a single file, when you want to view just some of its
+batches:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>simview<span class="w"> </span>run.json#0,2
+</span></code></pre></div>
 <p>To merge files without launching the viewer, e.g. to inspect or re-share the merged
 scene, pass <code>--save-merged</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>simview<span class="w"> </span>gt.json<span class="w"> </span>method_a.json#1<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz<span class="w">   </span><span class="c1"># with a batch selection</span>
 </span></code></pre></div>
 <p>The output is gzipped if the path ends in <code>.gz</code>.</p>
 

@@ -1410,7 +1410,9 @@ beyond the <a href="../json-format/">JSON wire format</a> they agree on.</p>
 <li><strong><code>merge.py</code></strong> — <code>merge_simulation_files</code>: combines multiple scene JSON files
   (e.g. a real-world recording and a simulated rerun) that share the same bodies/terrain
   into one scene with extra batches, resampling every file but the first onto the
-  first file's timeline by nearest timestamp.</li>
+  first file's timeline by nearest timestamp. Each file may contribute only a subset
+  of its own batches (<code>selections=</code>, the CLI's <code>file.json#1,3</code>), so a ground truth
+  shared by several files isn't merged once per file.</li>
 <li><strong><code>diff.py</code></strong> — per-frame position/orientation divergence between two batches,
   backing <code>simview diff</code>.</li>
 <li><strong><code>terrain.py</code></strong> — bilinear-interpolated point/area terrain queries, backing
