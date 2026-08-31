@@ -57,7 +57,9 @@ Python (authoring or file-on-disk)           Browser
 - **`merge.py`** — `merge_simulation_files`: combines multiple scene JSON files
   (e.g. a real-world recording and a simulated rerun) that share the same bodies/terrain
   into one scene with extra batches, resampling every file but the first onto the
-  first file's timeline by nearest timestamp.
+  first file's timeline by nearest timestamp. Each file may contribute only a subset
+  of its own batches (`selections=`, the CLI's `file.json#1,3`), so a ground truth
+  shared by several files isn't merged once per file.
 - **`diff.py`** — per-frame position/orientation divergence between two batches,
   backing `simview diff`.
 - **`terrain.py`** — bilinear-interpolated point/area terrain queries, backing

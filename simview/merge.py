@@ -10,12 +10,18 @@ Files are not required to share a timeline: the first file's timestamps become
 the merged timeline, and every other file is resampled onto it by nearest
 timestamp (zero-order hold, no interpolation). Put the recording you care most
 about matching frame-for-frame first.
+
+Each file may contribute a *subset* of its own batches (see
+`parse_batch_selection`), so comparing several methods that each shipped their
+own copy of a shared ground truth doesn't mean merging that ground truth once
+per file.
 """
 
 import base64
 import bisect
 import json
 import logging
+import re
 import struct
 from pathlib import Path
 from typing import Sequence
@@ -41,6 +47,137 @@ _STATE_FIELD_WIDTHS = {
     "force": 3,
     "torque": 3,
 }
+
+
+# Separates a file from the batches to take out of it in a CLI input spec
+# ("scene.json#1,3"). Deliberately not ':', which already means "remote host"
+# (see simview.remote).
+_BATCH_SPEC_SEP = "#"
+_INDEX_RE = re.compile(r"^-?\d+$")
+_RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
+
+
+def split_batch_spec(spec: str) -> tuple[str, str | None]:
+    """Split a CLI input like ``scene.json#1,3`` into ``("scene.json", "1,3")``,
+    or return ``(spec, None)`` when it names no batch subset.
+
+    Purely syntactic apart from one filesystem check: an existing local file
+    wins over the selector reading (mirroring `remote.is_remote_spec`), so a
+    file literally named ``odd#name.json`` still opens as itself.
+    """
+    if _BATCH_SPEC_SEP not in spec:
+        return spec, None
+    try:
+        if Path(spec).exists():
+            return spec, None
+    except OSError:
+        pass
+    head, _, selector = spec.rpartition(_BATCH_SPEC_SEP)
+    if not head or not selector:
+        raise ValueError(
+            f"Malformed batch selection '{spec}'; expected "
+            f"'file{_BATCH_SPEC_SEP}<batches>', e.g. 'scene.json{_BATCH_SPEC_SEP}1' "
+            f"or 'scene.json{_BATCH_SPEC_SEP}0,2-3'."
+        )
+    return head, selector
+
+
+def parse_batch_selection(
+    selector: str | Sequence[int],
+    batch_size: int,
+    batch_names: Sequence[str] | None,
+    label: str,
+) -> list[int]:
+    """Resolve one file's batch selector to a list of that file's batch indices.
+
+    `selector` is either an explicit sequence of indices or a comma-separated
+    string whose entries are an index (``2``), a negative index counting from
+    the end (``-1``), an inclusive range (``0-3``), or one of the file's own
+    `batchNames`. Anything that parses as an index or a range is read as such,
+    so a batch *named* "2" can only be selected by its index. The selected
+    order is the merged order, and selecting the same batch twice is rejected
+    as a typo rather than silently duplicating it.
+    """
+    if isinstance(selector, str):
+        raw: list[int] = []
+        for token in selector.split(","):
+            token = token.strip()
+            if not token:
+                raise ValueError(
+                    f"'{label}': empty entry in batch selection '{selector}'."
+                )
+            if _INDEX_RE.match(token):
+                raw.append(int(token))
+                continue
+            span = _RANGE_RE.match(token)
+            if span:
+                start, end = int(span.group(1)), int(span.group(2))
+                if end < start:
+                    raise ValueError(
+                        f"'{label}': batch range '{token}' ends before it starts."
+                    )
+                raw.extend(range(start, end + 1))
+                continue
+            names = list(batch_names or [])
+            if token in names:
+                if names.count(token) > 1:
+                    raise ValueError(
+                        f"'{label}': '{token}' names {names.count(token)} of its "
+                        "batches; select one of them by index instead."
+                    )
+                raw.append(names.index(token))
+                continue
+            known = (
+                f"one of its batch names ({', '.join(names)})"
+                if names
+                else "a batch name (this file declares no 'batchNames')"
+            )
+            raise ValueError(
+                f"'{label}': '{token}' is not a batch index, an 'a-b' range, or "
+                f"{known}."
+            )
+    else:
+        raw = [int(i) for i in selector]
+
+    resolved: list[int] = []
+    for index in raw:
+        # Negative indices count from the end, as in Python slicing, so '-1'
+        # means "the last batch" without knowing the file's batch count.
+        actual = index + batch_size if index < 0 else index
+        if not 0 <= actual < batch_size:
+            raise ValueError(
+                f"'{label}': batch {index} is out of range; the file has "
+                f"{batch_size} batch(es) (valid indices 0-{batch_size - 1})."
+            )
+        resolved.append(actual)
+    if not resolved:
+        raise ValueError(f"'{label}': batch selection is empty.")
+    duplicates = sorted({i for i in resolved if resolved.count(i) > 1})
+    if duplicates:
+        raise ValueError(
+            f"'{label}': batch(es) {', '.join(str(d) for d in duplicates)} "
+            "selected more than once."
+        )
+    return resolved
+
+
+def _select(rows: Sequence, selection: list[int] | None) -> list:
+    """Pick `selection`'s rows out of an already fully expanded per-batch list
+    (one row per batch of the source file). A None selection keeps every row,
+    which is what every field does when no subset was asked for."""
+    if selection is None:
+        return list(rows)
+    return [rows[i] for i in selection]
+
+
+def _output_sizes(
+    batch_sizes: list[int], selections: list[list[int] | None]
+) -> list[int]:
+    """How many batches each file contributes to the merged scene."""
+    return [
+        size if selection is None else len(selection)
+        for size, selection in zip(batch_sizes, selections)
+    ]
 
 
 def _decode_b64_floats(value) -> tuple[float, ...] | None:
@@ -240,17 +377,23 @@ def _merge_bodies(models: list[dict], labels: list[str]) -> list[dict]:
     return bodies
 
 
-def _default_batch_names(paths: Sequence[Path], batch_sizes: list[int]) -> list[str]:
+def _default_batch_names(
+    paths: Sequence[Path], batch_sizes: list[int], selections: list[list[int] | None]
+) -> list[str]:
     """One name per output batch, derived from the source file it came from.
     Single-batch files just use the file stem; multi-batch files get an index
-    suffix so batches from the same file are still distinguishable."""
+    suffix so batches from the same file are still distinguishable. The suffix
+    is the batch's index *in its source file*, so a selected subset stays
+    traceable back to it (batch 2 of a 4-batch 'run.json' is 'run[2]', not
+    'run[0]')."""
     names = []
-    for path, batch_size in zip(paths, batch_sizes):
+    for path, batch_size, selection in zip(paths, batch_sizes, selections):
         stem = path.stem
         if batch_size == 1:
             names.append(stem)
         else:
-            names.extend(f"{stem}[{j}]" for j in range(batch_size))
+            indices = range(batch_size) if selection is None else selection
+            names.extend(f"{stem}[{j}]" for j in indices)
     return names
 
 
@@ -268,7 +411,10 @@ def _merge_scalar_names(models: list[dict], labels: list[str]) -> list[str]:
 
 
 def _merge_static_objects(
-    models: list[dict], batch_sizes: list[int], labels: list[str]
+    models: list[dict],
+    batch_sizes: list[int],
+    labels: list[str],
+    selections: list[list[int] | None],
 ) -> list[dict]:
     first = models[0].get("staticObjects") or []
     names = [s["name"] for s in first]
@@ -294,14 +440,19 @@ def _merge_static_objects(
             entry["shape"] = shape
         else:
             shapes = []
-            for model, batch_size, label in zip(models, batch_sizes, labels):
+            for model, batch_size, label, selection in zip(
+                models, batch_sizes, labels, selections
+            ):
                 shapes.extend(
-                    _expand_batched(
-                        model["staticObjects"][idx]["shapes"],
-                        False,
-                        batch_size,
-                        "shapes",
-                        label,
+                    _select(
+                        _expand_batched(
+                            model["staticObjects"][idx]["shapes"],
+                            False,
+                            batch_size,
+                            "shapes",
+                            label,
+                        ),
+                        selection,
                     )
                 )
             entry["shapes"] = shapes
@@ -310,7 +461,11 @@ def _merge_static_objects(
 
 
 def _merge_embedding(
-    models: list[dict], batch_sizes: list[int], labels: list[str], resolution: int
+    models: list[dict],
+    batch_sizes: list[int],
+    labels: list[str],
+    resolution: int,
+    selections: list[list[int] | None],
 ) -> str | None:
     """Concatenate the per-batch terrain `embeddingData` of every file into a
     single ``__b64__`` blob (the encoding the viewer's Terrain.js splits per
@@ -336,7 +491,9 @@ def _merge_embedding(
 
     per_file_rows: list[list[list[float]]] = []
     widths: list[int] = []
-    for model, value, batch_size, label in zip(models, values, batch_sizes, labels):
+    for model, value, batch_size, label, selection in zip(
+        models, values, batch_sizes, labels, selections
+    ):
         flat = _decode_b64_floats(value)
         if flat is None:
             # Real producers always blob-encode embeddings; a plain list is
@@ -374,6 +531,7 @@ def _merge_embedding(
             rows = [
                 list(flat[i : i + per_batch]) for i in range(0, len(flat), per_batch)
             ]
+        rows = _select(rows, selection)
         per_file_rows.append(rows)
         widths.append(len(rows[0]) // resolution)
 
@@ -393,7 +551,10 @@ def _merge_embedding(
 
 
 def _merge_terrain(
-    models: list[dict], batch_sizes: list[int], labels: list[str]
+    models: list[dict],
+    batch_sizes: list[int],
+    labels: list[str],
+    selections: list[list[int] | None],
 ) -> dict:
     first_terrain = models[0]["terrain"]
     dims = first_terrain["dimensions"]
@@ -453,9 +614,12 @@ def _merge_terrain(
         if not items:
             return None
         merged = []
-        for value, batch_size in items:
+        for value, batch_size, selection in items:
             merged.extend(
-                _decode_per_batch(value, batch_size, resolution, vector_width)
+                _select(
+                    _decode_per_batch(value, batch_size, resolution, vector_width),
+                    selection,
+                )
             )
         return merged
 
@@ -465,7 +629,9 @@ def _merge_terrain(
     property_min_max: dict[str, tuple[float | None, float | None]] = {
         name: (None, None) for name in kept_properties
     }
-    for model, batch_size, label in zip(models, batch_sizes, labels):
+    for model, batch_size, label, selection in zip(
+        models, batch_sizes, labels, selections
+    ):
         terrain = model["terrain"]
         singleton = terrain.get("isSingleton", False)
         height_data.append(
@@ -474,6 +640,7 @@ def _merge_terrain(
                     terrain["heightData"], singleton, batch_size, "heightData", label
                 ),
                 batch_size,
+                selection,
             )
         )
         normals.append(
@@ -482,6 +649,7 @@ def _merge_terrain(
                     terrain["normals"], singleton, batch_size, "normals", label
                 ),
                 batch_size,
+                selection,
             )
         )
 
@@ -494,6 +662,7 @@ def _merge_terrain(
                 (
                     _expand_batched(prop["data"], singleton, batch_size, name, label),
                     batch_size,
+                    selection,
                 )
             )
             cur_min, cur_max = property_min_max[name]
@@ -528,7 +697,7 @@ def _merge_terrain(
         "normals": _concat_lists_or_b64(normals, vector_width=3),
         "properties": merged_properties,
     }
-    embedding = _merge_embedding(models, batch_sizes, labels, resolution)
+    embedding = _merge_embedding(models, batch_sizes, labels, resolution, selections)
     if embedding is not None:
         merged["embeddingData"] = embedding
     return merged
@@ -568,10 +737,11 @@ def _merge_states(
     bodies: list[dict],
     scalar_names: list[str],
     labels: list[str],
+    selections: list[list[int] | None],
 ) -> list[dict]:
     ref_times = [s["time"] for s in states_list[0]]
     times_by_file = [[s["time"] for s in states] for states in states_list]
-    total_batches = sum(batch_sizes)
+    total_batches = sum(_output_sizes(batch_sizes, selections))
     lookup_cache: dict = {}
 
     merged_states = []
@@ -597,8 +767,8 @@ def _merge_states(
             }
             contacts = [] if "contacts" in available else None
 
-            for file_idx, (states, batch_size) in enumerate(
-                zip(states_list, batch_sizes)
+            for file_idx, (states, batch_size, selection) in enumerate(
+                zip(states_list, batch_sizes, selections)
             ):
                 state_idx = state_idx_by_file[file_idx]
                 lookup = _state_body_lookup(states, file_idx, state_idx, lookup_cache)
@@ -609,12 +779,15 @@ def _merge_states(
                         f"t={states[state_idx]['time']}."
                     )
                 transform.extend(
-                    _normalize_per_batch(
-                        _decode_state_field(
-                            body_state["bodyTransform"],
-                            _STATE_FIELD_WIDTHS["bodyTransform"],
+                    _select(
+                        _normalize_per_batch(
+                            _decode_state_field(
+                                body_state["bodyTransform"],
+                                _STATE_FIELD_WIDTHS["bodyTransform"],
+                            ),
+                            batch_size,
                         ),
-                        batch_size,
+                        selection,
                     )
                 )
                 for attr in attr_values:
@@ -624,11 +797,14 @@ def _merge_states(
                             f"available but is missing it at t={states[state_idx]['time']}."
                         )
                     attr_values[attr].extend(
-                        _normalize_per_batch(
-                            _decode_state_field(
-                                body_state[attr], _STATE_FIELD_WIDTHS[attr]
+                        _select(
+                            _normalize_per_batch(
+                                _decode_state_field(
+                                    body_state[attr], _STATE_FIELD_WIDTHS[attr]
+                                ),
+                                batch_size,
                             ),
-                            batch_size,
+                            selection,
                         )
                     )
                 if contacts is not None:
@@ -637,14 +813,15 @@ def _merge_states(
                             f"'{labels[file_idx]}' body '{name}' declares 'contacts' as "
                             f"available but is missing it at t={states[state_idx]['time']}."
                         )
-                    contacts.extend(body_state["contacts"])
+                    contacts.extend(_select(body_state["contacts"], selection))
 
             if len(transform) != total_batches:
                 raise ValueError(
                     f"Merged 'bodyTransform' for body '{name}' has {len(transform)} "
-                    f"rows; expected {total_batches} (sum of simBatches across "
-                    f"{', '.join(repr(label) for label in labels)}). Check that "
-                    "each file's per-body state rows match its declared simBatches."
+                    f"rows; expected {total_batches} (sum of the merged batch "
+                    f"counts across {', '.join(repr(label) for label in labels)}). "
+                    "Check that each file's per-body state rows match its "
+                    "declared simBatches."
                 )
             merged_body = {"name": name, "bodyTransform": transform, **attr_values}
             if contacts is not None:
@@ -654,8 +831,8 @@ def _merge_states(
         merged_state = {"time": t, "bodies": merged_bodies}
         for scalar_name in scalar_names:
             values = []
-            for file_idx, (states, batch_size) in enumerate(
-                zip(states_list, batch_sizes)
+            for file_idx, (states, batch_size, selection) in enumerate(
+                zip(states_list, batch_sizes, selections)
             ):
                 state_idx = state_idx_by_file[file_idx]
                 scalar_values = states[state_idx].get(scalar_name)
@@ -664,20 +841,44 @@ def _merge_states(
                         f"'{labels[file_idx]}' is missing scalar '{scalar_name}' at "
                         f"t={states[state_idx]['time']}."
                     )
-                values.extend(scalar_values)
+                values.extend(_select(scalar_values, selection))
             merged_state[scalar_name] = values
         merged_states.append(merged_state)
 
     return merged_states
 
 
-def merge_simulation_files(paths: Sequence[str | Path]) -> dict:
+def merge_simulation_files(
+    paths: Sequence[str | Path],
+    selections: Sequence[str | Sequence[int] | None] | None = None,
+) -> dict:
     """Load and merge `paths` into a single `{"model": ..., "states": ...}` dict
-    where each file's batches are concatenated into the output's batch dimension."""
-    if len(paths) < 2:
-        raise ValueError("merge_simulation_files requires at least 2 files")
+    where each file's batches are concatenated into the output's batch dimension.
 
+    `selections`, if given, must be parallel to `paths`: each entry is None
+    (contribute every batch of that file) or a batch selector -- a string like
+    ``"1"``, ``"0,2"``, ``"1-3"``, ``"-1"`` or a batch name, or an explicit
+    sequence of indices (see `parse_batch_selection`). Selecting a subset is
+    what lets several files that each carry the same ground-truth batch be
+    merged without duplicating it, and it is the one case where a single file
+    is a valid merge input.
+    """
     resolved_paths = [Path(p) for p in paths]
+    if selections is None:
+        requested: list[str | Sequence[int] | None] = [None] * len(resolved_paths)
+    else:
+        requested = list(selections)
+        if len(requested) != len(resolved_paths):
+            raise ValueError(
+                f"merge_simulation_files got {len(requested)} batch selection(s) "
+                f"for {len(resolved_paths)} file(s); they must be parallel."
+            )
+    if len(resolved_paths) < 2 and all(s is None for s in requested):
+        raise ValueError(
+            "merge_simulation_files requires at least 2 files (or one file with "
+            "a batch selection, to keep only some of its batches)"
+        )
+
     labels = [p.name for p in resolved_paths]
     docs = [_load_json(p) for p in resolved_paths]
     for doc, label in zip(docs, labels):
@@ -685,20 +886,41 @@ def merge_simulation_files(paths: Sequence[str | Path]) -> dict:
     models = [doc["model"] for doc in docs]
     states_list = [doc["states"] for doc in docs]
     batch_sizes = [int(m.get("simBatches", 1)) for m in models]
+    # Resolved here rather than at the call site because a selector may name a
+    # batch by name or by a negative index, both of which need the file loaded.
+    batch_selections: list[list[int] | None] = [
+        None
+        if selector is None
+        else parse_batch_selection(selector, batch_size, model.get("batchNames"), label)
+        for selector, batch_size, model, label in zip(
+            requested, batch_sizes, models, labels
+        )
+    ]
 
     bodies = _merge_bodies(models, labels)
     scalar_names = _merge_scalar_names(models, labels)
-    static_objects = _merge_static_objects(models, batch_sizes, labels)
-    terrain = _merge_terrain(models, batch_sizes, labels)
+    static_objects = _merge_static_objects(
+        models, batch_sizes, labels, batch_selections
+    )
+    terrain = _merge_terrain(models, batch_sizes, labels, batch_selections)
     merged_states = _merge_states(
-        states_list, batch_sizes, bodies, scalar_names, labels
+        states_list, batch_sizes, bodies, scalar_names, labels, batch_selections
     )
 
-    total_batches = sum(batch_sizes)
-    offsets = [sum(batch_sizes[:i]) for i in range(len(batch_sizes))]
+    out_sizes = _output_sizes(batch_sizes, batch_selections)
+    total_batches = sum(out_sizes)
+    offsets = [sum(out_sizes[:i]) for i in range(len(out_sizes))]
     ranges = ", ".join(
-        f"'{label}' -> batches {offset}-{offset + size - 1}"
-        for label, offset, size in zip(labels, offsets, batch_sizes)
+        f"'{label}'"
+        + (
+            ""
+            if selection is None
+            else f" (source batches {', '.join(str(i) for i in selection)})"
+        )
+        + f" -> batches {offset}-{offset + size - 1}"
+        for label, offset, size, selection in zip(
+            labels, offsets, out_sizes, batch_selections
+        )
     )
     logger.info(
         "Merged %d files into %d batches (%s)", len(paths), total_batches, ranges
@@ -706,7 +928,9 @@ def merge_simulation_files(paths: Sequence[str | Path]) -> dict:
 
     merged_model = {
         "simBatches": total_batches,
-        "batchNames": _default_batch_names(resolved_paths, batch_sizes),
+        "batchNames": _default_batch_names(
+            resolved_paths, batch_sizes, batch_selections
+        ),
         "scalarNames": scalar_names,
         "dt": models[0].get("dt"),
         "collapse": models[0].get("collapse", False),

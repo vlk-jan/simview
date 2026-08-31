@@ -631,6 +631,7 @@ class SimViewServer:
         host: str = "127.0.0.1",
         preferred_port: int = 5420,
         open_browser: bool = False,
+        batch_selections: Sequence[str | Sequence[int] | None] | None = None,
     ):
         paths = (
             [Path(sim_path)]
@@ -641,10 +642,18 @@ class SimViewServer:
             if not p.is_file():
                 raise FileNotFoundError(f"Simulation file '{p}' does not exist.")
 
-        if len(paths) > 1:
+        # A batch selection routes even a single file through the merge path:
+        # subsetting a file's batches is the same operation as merging, minus
+        # the concatenation (see merge_simulation_files).
+        selected = batch_selections is not None and any(
+            s is not None for s in batch_selections
+        )
+        if len(paths) > 1 or selected:
             from simview.merge import merge_simulation_files
 
-            server = SimViewServer(data=merge_simulation_files(paths), sim_path=paths)
+            server = SimViewServer(
+                data=merge_simulation_files(paths, batch_selections), sim_path=paths
+            )
         else:
             server = SimViewServer(sim_path=paths[0])
         port = find_free_port(host, preferred_port)

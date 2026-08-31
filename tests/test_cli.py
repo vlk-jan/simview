@@ -1239,3 +1239,106 @@ def test_clear_removes_the_remote_cache(monkeypatch, tmp_path, capsys):
     assert not entry.exists()
     assert not remote.cache_dir().exists()
     assert "Cache cleared" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# 'file#batches' batch selection
+# --------------------------------------------------------------------------
+
+
+def test_batch_spec_merges_only_the_selected_batches(monkeypatch, tmp_path):
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=3)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    out_path = tmp_path / "merged.json"
+
+    monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(_fail_if_called))
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", str(path_a), f"{path_b}#1", "--save-merged", str(out_path)],
+    )
+    cli.main()
+
+    merged = json.loads(out_path.read_text())
+    assert merged["model"]["simBatches"] == 2
+    assert merged["model"]["batchNames"] == ["a", "b[1]"]
+
+
+def test_batch_spec_alone_subsets_a_single_file(monkeypatch, tmp_path):
+    scene = build_scene(batch_size=3)
+    path = tmp_path / "a.json"
+    scene.save(path)
+    out_path = tmp_path / "merged.json"
+
+    monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(_fail_if_called))
+    monkeypatch.setattr(
+        cli.sys, "argv", ["simview", f"{path}#0,2", "--save-merged", str(out_path)]
+    )
+    cli.main()
+
+    merged = json.loads(out_path.read_text())
+    assert merged["model"]["simBatches"] == 2
+    assert merged["model"]["batchNames"] == ["a[0]", "a[2]"]
+
+
+def test_batch_spec_is_passed_to_the_server(monkeypatch, tmp_path):
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=2)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    calls = []
+    monkeypatch.setattr(
+        cli.SimViewServer, "start", staticmethod(lambda **kw: calls.append(kw))
+    )
+    monkeypatch.setattr(cli.sys, "argv", ["simview", str(path_a), f"{path_b}#1"])
+    cli.main()
+
+    assert calls[0]["sim_path"] == [path_a, path_b]
+    assert calls[0]["batch_selections"] == [None, "1"]
+
+
+def test_batch_spec_out_of_range_exits_with_an_error(capsys, monkeypatch, tmp_path):
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=2)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    out_path = tmp_path / "merged.json"
+
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", str(path_a), f"{path_b}#7", "--save-merged", str(out_path)],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+    assert exc_info.value.code == 1
+    assert "out of range" in capsys.readouterr().err
+    assert not out_path.exists()
+
+
+def test_batch_spec_loses_to_an_existing_file_with_a_hash_in_its_name(
+    monkeypatch, tmp_path
+):
+    """A file literally named 'a#1.json' still opens as itself, mirroring how a
+    local file beats the remote 'host:path' reading."""
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=2)
+    path_a, path_b = tmp_path / "a#1.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    calls = []
+    monkeypatch.setattr(
+        cli.SimViewServer, "start", staticmethod(lambda **kw: calls.append(kw))
+    )
+    monkeypatch.setattr(cli.sys, "argv", ["simview", str(path_a), str(path_b)])
+    cli.main()
+
+    assert calls[0]["sim_path"] == [path_a, path_b]
+    assert calls[0]["batch_selections"] == [None, None]

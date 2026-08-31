@@ -252,11 +252,47 @@ including a `batchNames` array directly in the JSON's `model` object (see
 [JSON Format Specification](../dev/json-format.md)); renames from the UI take
 precedence over this once saved.
 
+### Merging only some of a file's batches
+
+If several files each carry their own copy of the same ground-truth batch, merging
+them whole duplicates that ground truth once per file. Append `#<batches>` to a file
+to contribute only some of its batches:
+
+```bash
+simview gt.json method_a.json#1 method_b.json#1
+```
+
+That merges every batch of `gt.json` plus batch 1 of each method file — three batches,
+one ground truth. The selector accepts, comma-separated:
+
+| Selector | Takes |
+| --- | --- |
+| `#1` | batch 1 |
+| `#0,2` | batches 0 and 2, in that order |
+| `#1-3` | batches 1, 2 and 3 (inclusive range) |
+| `#-1` | the last batch |
+| `#ours` | the batch named `ours` in that file's `batchNames` |
+
+Selected batches keep their **source** index in the merged batch names (batch 2 of
+`run.json` is `run[2]`), so a merged scene stays traceable back to what it was built
+from. Selecting a batch twice, or one that doesn't exist, is an error rather than a
+silent surprise. A file literally named `odd#name.json` still opens as itself — an
+existing local file always wins over the selector reading, exactly as it does for
+remote `host:path` specs.
+
+A selection also works with a single file, when you want to view just some of its
+batches:
+
+```bash
+simview run.json#0,2
+```
+
 To merge files without launching the viewer, e.g. to inspect or re-share the merged
 scene, pass `--save-merged`:
 
 ```bash
 simview real_world.json simulated.json --save-merged combined.json.gz
+simview gt.json method_a.json#1 --save-merged combined.json.gz   # with a batch selection
 ```
 
 The output is gzipped if the path ends in `.gz`.

@@ -310,3 +310,20 @@ def test_cached_scene_bytes_correct_after_batch_names_mutation(tmp_path):
     # simBatches and other fields must still be intact after the cached bytes
     # were re-serialized in place.
     assert after["simBatches"] == 2
+
+
+def test_start_applies_batch_selection_to_a_single_file(monkeypatch, tmp_path):
+    """A batch selection routes even one file through the merge path, so the
+    served scene holds only the selected batches."""
+    scene = build_scene(batch_size=3)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    served = []
+    monkeypatch.setattr(
+        SimViewServer, "run", lambda self, **kw: served.append(self.model_data)
+    )
+    SimViewServer.start(sim_path=sim_file, batch_selections=["0,2"])
+
+    assert served[0]["simBatches"] == 2
+    assert served[0]["batchNames"] == ["sim[0]", "sim[2]"]

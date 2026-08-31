@@ -300,16 +300,22 @@ def run_render(path: Path, args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def save_merged(paths: list[Path], out_path: Path) -> None:
-    """Merge `paths` (must be >= 2) and write the result to `out_path`, gzipped
-    if it ends in .gz, without starting the server."""
-    if len(paths) < 2:
+def save_merged(
+    paths: list[Path],
+    out_path: Path,
+    selections: list[str | None] | None = None,
+) -> None:
+    """Merge `paths` (must be >= 2, or 1 with a batch selection) and write the
+    result to `out_path`, gzipped if it ends in .gz, without starting the
+    server."""
+    selected = selections is not None and any(s is not None for s in selections)
+    if len(paths) < 2 and not selected:
         logger.error("Error: --save-merged requires at least 2 input files to merge.")
         sys.exit(1)
 
     from simview.merge import merge_simulation_files
 
-    merged = merge_simulation_files(paths)
+    merged = merge_simulation_files(paths, selections)
     payload = json.dumps(merged).encode("utf-8")
     if out_path.suffix == ".gz":
         payload = gzip.compress(payload, compresslevel=1)
@@ -346,7 +352,11 @@ def build_parser() -> argparse.ArgumentParser:
             "a PNG screenshot (needs the 'render' extra). Multiple "
             "visualize-mode files are merged into one scene, each file's "
             "batches appended as extra batches (e.g. a real-world recording "
-            "plus a simulated rerun). Any input may instead be an scp-style "
+            "plus a simulated rerun). Append '#<batches>' to a file to merge "
+            "only some of its batches (e.g. 'run.json#1', 'run.json#0,2-3', "
+            "'run.json#-1' or 'run.json#<batch name>'), so a ground truth "
+            "shared by several files isn't merged once per file. Any input "
+            "may instead be an scp-style "
             "'host:path' spec (e.g. 'rci:~/results/scene.json'), which is "
             "fetched over ssh -- compressed on the wire -- into a local cache "
             "and re-fetched only when the remote file changes."
@@ -674,18 +684,35 @@ def main():
         clear_cache()
         return
 
-    paths = [_resolve_input(spec, args) for spec in args.inputs]
+    # Split "scene.json#1,3" into the file and the batches to take from it
+    # before resolving the file, so a remote spec can carry a selection too.
+    from simview.merge import split_batch_spec
 
-    if args.save_merged:
-        save_merged(paths, Path(args.save_merged))
-        return
+    try:
+        split_inputs = [split_batch_spec(spec) for spec in args.inputs]
+    except ValueError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    paths = [_resolve_input(spec, args) for spec, _ in split_inputs]
+    selections: list[str | None] = [selector for _, selector in split_inputs]
 
-    SimViewServer.start(
-        sim_path=paths if len(paths) > 1 else paths[0],
-        host=args.host,
-        preferred_port=args.port,
-        open_browser=not args.no_browser,
-    )
+    try:
+        if args.save_merged:
+            save_merged(paths, Path(args.save_merged), selections)
+            return
+
+        SimViewServer.start(
+            sim_path=paths if len(paths) > 1 else paths[0],
+            host=args.host,
+            preferred_port=args.port,
+            open_browser=not args.no_browser,
+            batch_selections=selections,
+        )
+    except ValueError as e:
+        # A bad batch selection ("scene.json#9" on a 2-batch file) is user
+        # error, not a crash: report it like any other bad argument.
+        logger.error("Error: %s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

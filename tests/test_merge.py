@@ -760,3 +760,233 @@ def test_merge_mismatched_terrain_xy_bounds_raises(tmp_path):
 
     with pytest.raises(ValueError, match="x/y bounds"):
         merge_simulation_files([path_a, path_b])
+
+
+def build_distinguishable_scene(
+    batch_size: int, offset: float, batch_names: list[str] | None = None
+) -> SimulationScene:
+    """A multi-batch scene where every per-batch field encodes its batch index:
+    batch b sits at z=offset+b, has energy offset+b, terrain height offset+b and
+    friction offset+b. That makes it visible in the merged output *which* source
+    batch each merged batch came from, not just how many survived."""
+    scene = SimulationScene(
+        batch_size=batch_size,
+        scalar_names=["energy"],
+        dt=0.1,
+        batch_names=batch_names,
+    )
+
+    resolution = 4
+    per_batch = torch.tensor([offset + b for b in range(batch_size)])
+    heights = per_batch.view(batch_size, 1, 1).expand(
+        batch_size, resolution, resolution
+    )
+    normals = torch.zeros(batch_size, 3, resolution, resolution)
+    normals[:, 2] = 1.0
+    scene.create_terrain(
+        heightmap=heights.clone(),
+        normals=normals,
+        x_lim=(-5, 5),
+        y_lim=(-5, 5),
+        properties={"friction": heights.clone()},
+    )
+    scene.create_body(
+        body_name="Box",
+        shape_type=BodyShapeType.BOX,
+        available_attributes=["velocity"],
+        hx=0.5,
+        hy=0.5,
+        hz=0.5,
+    )
+
+    for t in range(3):
+        pos = torch.stack(
+            [torch.zeros(batch_size), torch.zeros(batch_size), per_batch], dim=1
+        )
+        quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]] * batch_size)
+        vel = per_batch.view(batch_size, 1).expand(batch_size, 3).clone()
+        state = SimViewBodyState("Box", pos, quat, {"velocity": vel})
+        scene.add_state(
+            time=t * 0.1,
+            body_states=[state],
+            scalar_values={"energy": per_batch.tolist()},
+        )
+
+    return scene
+
+
+def _merged_zs(merged: dict) -> list[float]:
+    return [row[2] for row in merged["states"][0]["bodies"][0]["bodyTransform"]]
+
+
+def test_merge_selects_subset_of_each_files_batches(tmp_path):
+    """The headline case: a ground truth shared by several files is merged once,
+    and only the method batch is taken out of each of the others."""
+    gt = build_distinguishable_scene(batch_size=1, offset=0.0)
+    run_a = build_distinguishable_scene(batch_size=2, offset=10.0)
+    run_b = build_distinguishable_scene(batch_size=3, offset=20.0)
+    path_gt, path_a, path_b = (tmp_path / f"{n}.json" for n in ("gt", "a", "b"))
+    gt.save(path_gt)
+    run_a.save(path_a)
+    run_b.save(path_b)
+
+    merged = merge_simulation_files([path_gt, path_a, path_b], [None, "1", "2"])
+
+    assert merged["model"]["simBatches"] == 3
+    # Suffixes are the source file's own batch indices, so a selected batch
+    # stays traceable back to the file it was taken from.
+    assert merged["model"]["batchNames"] == ["gt", "a[1]", "b[2]"]
+    assert _merged_zs(merged) == [0.0, 11.0, 22.0]
+    for state in merged["states"]:
+        box = state["bodies"][0]
+        assert [row[0] for row in box["velocity"]] == [0.0, 11.0, 22.0]
+        assert state["energy"] == [0.0, 11.0, 22.0]
+    # Terrain rows follow the same selection as the body/scalar rows.
+    height = merged["model"]["terrain"]["heightData"]
+    assert [row[0] for row in height] == [0.0, 11.0, 22.0]
+    friction = merged["model"]["terrain"]["properties"]["friction"]
+    assert [row[0] for row in friction["data"]] == [0.0, 11.0, 22.0]
+    assert len(merged["model"]["terrain"]["normals"]) == 3
+    assert len(merged["model"]["terrain"]["normals"][0]) == 16  # (vectors, not floats)
+
+
+def test_merge_selection_accepts_ranges_negative_indices_and_names(tmp_path):
+    gt = build_distinguishable_scene(batch_size=1, offset=0.0)
+    run = build_distinguishable_scene(
+        batch_size=4, offset=10.0, batch_names=["p", "q", "r", "s"]
+    )
+    path_gt, path_run = tmp_path / "gt.json", tmp_path / "run.json"
+    gt.save(path_gt)
+    run.save(path_run)
+
+    assert _merged_zs(merge_simulation_files([path_gt, path_run], [None, "1-2"])) == [
+        0.0,
+        11.0,
+        12.0,
+    ]
+    assert _merged_zs(merge_simulation_files([path_gt, path_run], [None, "-1"])) == [
+        0.0,
+        13.0,
+    ]
+    assert _merged_zs(merge_simulation_files([path_gt, path_run], [None, "r"])) == [
+        0.0,
+        12.0,
+    ]
+    # Explicit index sequences work too, and the selected order is the merged order.
+    assert _merged_zs(merge_simulation_files([path_gt, path_run], [None, [3, 0]])) == [
+        0.0,
+        13.0,
+        10.0,
+    ]
+
+
+def test_merge_selection_subsets_a_single_file(tmp_path):
+    """One file plus a selection is a valid merge input: it's the same
+    operation, minus the concatenation."""
+    run = build_distinguishable_scene(batch_size=3, offset=10.0)
+    path = tmp_path / "run.json"
+    run.save(path)
+
+    merged = merge_simulation_files([path], ["0,2"])
+
+    assert merged["model"]["simBatches"] == 2
+    assert merged["model"]["batchNames"] == ["run[0]", "run[2]"]
+    assert _merged_zs(merged) == [10.0, 12.0]
+    assert len(merged["model"]["terrain"]["heightData"]) == 2
+
+
+def test_merge_selection_keeps_shared_terrain_and_static_objects_aligned(tmp_path):
+    """A singleton (shared) terrain is broadcast per batch before selection, so
+    subsetting must not change the row count it contributes."""
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=3)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b], [None, "1"])
+
+    assert merged["model"]["simBatches"] == 2
+    assert len(merged["model"]["terrain"]["heightData"]) == 2
+    assert len(merged["model"]["terrain"]["normals"]) == 2
+    for state in merged["states"]:
+        assert len(state["bodies"][0]["bodyTransform"]) == 2
+        assert len(state["energy"]) == 2
+
+
+def test_merge_selection_errors(tmp_path):
+    gt = build_distinguishable_scene(batch_size=1, offset=0.0)
+    run = build_distinguishable_scene(batch_size=2, offset=10.0)
+    path_gt, path_run = tmp_path / "gt.json", tmp_path / "run.json"
+    gt.save(path_gt)
+    run.save(path_run)
+
+    with pytest.raises(ValueError, match="out of range"):
+        merge_simulation_files([path_gt, path_run], [None, "5"])
+    with pytest.raises(ValueError, match="out of range"):
+        merge_simulation_files([path_gt, path_run], [None, "-3"])
+    with pytest.raises(ValueError, match="selected more than once"):
+        merge_simulation_files([path_gt, path_run], [None, "1,1"])
+    with pytest.raises(ValueError, match="ends before it starts"):
+        merge_simulation_files([path_gt, path_run], [None, "1-0"])
+    with pytest.raises(ValueError, match="declares no 'batchNames'"):
+        merge_simulation_files([path_gt, path_run], [None, "nope"])
+    with pytest.raises(ValueError, match="empty entry"):
+        merge_simulation_files([path_gt, path_run], [None, "0,"])
+    with pytest.raises(ValueError, match="must be parallel"):
+        merge_simulation_files([path_gt, path_run], ["0"])
+
+
+def test_merge_selection_error_lists_available_batch_names(tmp_path):
+    gt = build_distinguishable_scene(batch_size=1, offset=0.0)
+    run = build_distinguishable_scene(
+        batch_size=2, offset=10.0, batch_names=["gt", "ours"]
+    )
+    path_gt, path_run = tmp_path / "gt.json", tmp_path / "run.json"
+    gt.save(path_gt)
+    run.save(path_run)
+
+    with pytest.raises(ValueError, match=r"batch names \(gt, ours\)"):
+        merge_simulation_files([path_gt, path_run], [None, "theirs"])
+
+
+def test_merge_selection_carries_terrain_embedding(tmp_path):
+    """embeddingData is merged from its own decode path, so it needs the same
+    selection applied as heightData."""
+    scenes = []
+    for offset in (0.0, 10.0):
+        scene = SimulationScene(batch_size=2, scalar_names=["energy"], dt=0.1)
+        resolution = 4
+        per_batch = torch.tensor([offset, offset + 1.0])
+        heights = per_batch.view(2, 1, 1).expand(2, resolution, resolution)
+        normals = torch.zeros(2, 3, resolution, resolution)
+        normals[:, 2] = 1.0
+        embedding = per_batch.view(2, 1, 1, 1).expand(2, 3, resolution, resolution)
+        scene.create_terrain(
+            heightmap=heights.clone(),
+            normals=normals,
+            x_lim=(-5, 5),
+            y_lim=(-5, 5),
+            embedding_map=embedding.clone(),
+        )
+        scene.create_body(
+            body_name="Box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+        )
+        pos = torch.zeros(2, 3)
+        quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]] * 2)
+        scene.add_state(
+            time=0.0,
+            body_states=[SimViewBodyState("Box", pos, quat)],
+            scalar_values={"energy": [0.0, 0.0]},
+        )
+        scenes.append(scene)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scenes[0].save(path_a)
+    scenes[1].save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b], ["1", "0"])
+
+    flat = _decode_blob(merged["model"]["terrain"]["embeddingData"])
+    per_batch_rows = [flat[: len(flat) // 2], flat[len(flat) // 2 :]]
+    assert {v for v in per_batch_rows[0]} == {1.0}
+    assert {v for v in per_batch_rows[1]} == {10.0}

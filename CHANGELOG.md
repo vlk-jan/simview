@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Merging a subset of a file's batches.** Append `#<batches>` to any input file to
+  contribute only some of its batches to the merged scene, e.g.
+  `simview gt.json method_a.json#1 method_b.json#1` — so several files that each
+  carry their own copy of a shared ground truth can be compared without merging that
+  ground truth once per file. The selector takes indices (`#1`), comma-separated lists
+  (`#0,2`), inclusive ranges (`#1-3`), negative indices (`#-1`) and the file's own
+  `batchNames` (`#ours`); merged batch names keep the source file's index (`run[2]`).
+  Works with `--save-merged`, with remote inputs, and on a single file (to view only
+  some of its batches). `merge_simulation_files(paths, selections=...)` is the Python
+  equivalent. See [CLI](https://vlk-jan.github.io/simview/usage/cli/).
 - `create_terrain(property_bounds=...)` pins the color-scale range of a named terrain
   property explicitly, e.g. `property_bounds={"friction": (0.0, 1.0)}`, instead of
   always deriving it from that map's own min/max — so the same scale (and legend)
