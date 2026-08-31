@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-08-31
+
 ### Added
 
 - **Merging a subset of a file's batches.** Append `#<batches>` to any input file to
@@ -345,7 +347,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.1.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.2.0...HEAD
+[4.2.0]: https://github.com/vlk-jan/simview/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/vlk-jan/simview/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/vlk-jan/simview/compare/v3.6...v4.0.0
 [3.6]: https://github.com/vlk-jan/simview/compare/v3.5...v3.6
