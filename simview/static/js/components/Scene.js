@@ -4,8 +4,10 @@ import {
     SCENE_CONFIG,
     RENDERER_CONFIG,
     CAMERA_CONFIG,
+    CONTROLS_CONFIG,
     LIGHTING_CONFIG,
 } from "../config.js";
+import { cameraRangeForBounds } from "../utils/cameraRange.js";
 
 export class Scene {
     constructor(app) {
@@ -29,6 +31,22 @@ export class Scene {
         this.camera = camera;
         this.controls = controls;
         this.setupWindowHandlers();
+    }
+
+    // Sizes the camera's far plane and the orbit distance limit to the scene
+    // actually being viewed. Called once the terrain is known (see
+    // SimView.initFromModel) -- the config defaults are floors chosen for
+    // small scenes, and a several-hundred-metre recording clips against them.
+    applySceneExtent(bounds) {
+        const { far, maxDistance } = cameraRangeForBounds(bounds, {
+            far: CAMERA_CONFIG.far,
+            maxDistance: CONTROLS_CONFIG.maxDistance,
+        });
+        if (this.camera && this.camera.far !== far) {
+            this.camera.far = far;
+            this.camera.updateProjectionMatrix();
+        }
+        if (this.controls) this.controls.maxDistance = maxDistance;
     }
 
     setupWindowHandlers() {

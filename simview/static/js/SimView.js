@@ -508,6 +508,9 @@ export class SimView {
                 console.debug("Using terrain data");
                 this.terrain = new Terrain(model.terrain, this);
                 this.scene.addObject3D(this.terrain.getObject3D());
+                // Terrain extent is what tells us how far this scene reaches,
+                // so the camera's clipping/orbit range can stop being a guess.
+                this.scene.applySceneExtent(this.terrain.bounds);
             } else {
                 throw new Error("Terrain data is missing in model");
             }
