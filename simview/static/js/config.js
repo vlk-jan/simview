@@ -1,5 +1,9 @@
 export const UI_DEFAULT_CONFIG = {
     bodyVisualizationMode: "points",
+    // Point-cloud bodies sit outside Body Visualization Mode (a cloud isn't a
+    // way of drawing a body, it's the whole object), so they get their own
+    // visibility toggle -- see Body#pointsVisible.
+    pointCloudsVisible: true,
     axesVisible: false,
     trailsVisible: false,
     smoothInterpolation: true,
