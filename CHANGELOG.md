@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-09-02
+
+### Added
+
+- **"Show Point Clouds" toggle** in Body Options, for scenes that contain point-cloud
+  bodies. Point clouds are no longer governed by Body Visualization Mode (see below),
+  so this is how they are hidden and shown.
+
+### Fixed
+
+- **Mesh bodies no longer disappear once a run travels away from where it started.**
+  Bodies are drawn as instanced meshes positioned per instance, and THREE caches an
+  instanced mesh's bounding sphere the first time it is frustum-tested and never
+  invalidates it when the instances move — so every mesh body was culled wholesale as
+  soon as its *starting* position left the view. Long recordings (a robot driving a few
+  hundred metres) lost their bodies mid-playback while the terrain kept rendering.
+- **Selecting the "points" visualization mode no longer blanks out every mesh body.**
+  A point-cloud body is the object itself rather than a way of drawing a body, so it no
+  longer contributes "points" to the mode list, and Body Visualization Mode — `none`
+  included — leaves point clouds alone. In a mixed scene (a robot plus a lidar cloud)
+  the mode offered only `points`, which no mesh body could render.
+- **Static point clouds are no longer listed in the Body states panel**, where they
+  showed a permanently-zero Position/Rotation. A point cloud that does carry per-frame
+  data stays listed like any other body.
+- **The Analysis panel's scalar chart now actually draws.** It had been painting
+  nothing at all: its x scale was never pinned (uPlot treats a scale's `min`/`max` as
+  outputs — `range` is the pin — so the initial autoscale over empty data nulled it and
+  no later update revisited it), the render loop redrew without rebuilding paths, so the
+  chart kept redrawing whatever data it first saw, and the y axis offered a single tick
+  increment that could not fit the panel's height, so uPlot drew no ticks or labels. An
+  end-to-end test now asserts the chart paints its data and its axis rather than merely
+  that the panel opens.
+- **The camera's far plane and orbit limit now follow the terrain extent** instead of
+  being fixed at 500 m, so terrain and bodies on scenes hundreds of metres across no
+  longer clip away, and the whole scene can be framed.
+
 ## [4.2.0] - 2026-08-31
 
 ### Added
@@ -347,7 +383,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.2.1...HEAD
+[4.2.1]: https://github.com/vlk-jan/simview/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/vlk-jan/simview/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/vlk-jan/simview/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/vlk-jan/simview/compare/v3.6...v4.0.0
