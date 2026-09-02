@@ -486,6 +486,15 @@ export class Body {
 
             const instancedMesh = new THREE.InstancedMesh(source, material, this.simBatches);
             instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            // Instances are placed by setMatrixAt (see updateInstanceMatrix),
+            // which leaves this object's own matrixWorld at identity. THREE
+            // computes an InstancedMesh's bounding sphere lazily on the first
+            // frustum test and then caches it forever -- instanceMatrix.needsUpdate
+            // does not invalidate it -- so bodies that travel away from wherever
+            // they started get culled wholesale once that stale sphere leaves the
+            // frustum. Skip the test rather than recomputing the sphere every
+            // frame across every batch; trails do the same for the same reason.
+            instancedMesh.frustumCulled = false;
             instancedMesh.visible = this.app.uiState.bodyVisualizationMode === type;
             instancedMesh.castShadow = (type === "mesh");
             instancedMesh.receiveShadow = (type === "mesh");
