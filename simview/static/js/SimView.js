@@ -383,6 +383,10 @@ export class SimView {
             }
         }
         this.appendBodyHistories(0);
+        // Whether a point-cloud body is listed depends on whether it turned
+        // out to carry per-frame data, which is only knowable now that
+        // appendBodyHistories has run (see BodyStateWindow.updateBodyList).
+        if (this.bodyStateWindow) this.bodyStateWindow.updateBodyList();
         if (this.errorMetrics) {
             this.errorMetrics.onHistoryReady();
         }
