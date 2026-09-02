@@ -391,6 +391,16 @@ export class ScalarPlotter {
         );
     }
 
+    // uPlot walks `incrs` and takes the first increment whose ticks fit the
+    // axis's available length. Offering exactly one (range/stepsPerYAxis) meant
+    // that in a short panel -- which is what the Analysis panel gives us -- no
+    // increment fit, and uPlot drew no ticks or labels at all. Coarser
+    // multiples let it degrade instead of giving up.
+    _yIncrements(min, max) {
+        const base = this.getChartInterval(min, max);
+        return [1, 2, 5, 10, 20, 50, 100].map((m) => base * m);
+    }
+
     getChartInterval(min, max) {
         const diff = max - min;
         if (diff === 0)
@@ -419,6 +429,17 @@ export class ScalarPlotter {
         return bestBatch;
     }
 
+    // The x extent every chart's scale is pinned to: the whole timeline. Falls
+    // back to a unit span when there are no times, so uPlot is never handed
+    // NaN/undefined bounds.
+    _timeExtent() {
+        const n = this.times?.length ?? 0;
+        if (n === 0) return [0, 1];
+        const first = this.times[0];
+        const last = this.times[n - 1];
+        return last > first ? [first, last] : [first, first + 1];
+    }
+
     _initializePlots() {
         const limOffset = 1e-2;
         this.scalarNames.forEach((name) => {
@@ -445,7 +466,15 @@ export class ScalarPlotter {
                     padding: [8, 8, 0, 8],
                     series,
                     scales: {
-                        x: { time: false, min: this.times[0], max: this.times[this.times.length - 1] },
+                        // uPlot treats a scale's `min`/`max` as outputs, not as
+                        // a pin: the initial autoscale over the empty data
+                        // passed below nulls them, and every later update goes
+                        // through setData(data, false), which never revisits x.
+                        // That left x null forever -- valToPos NaN, nothing
+                        // drawn. `range` is the actual pin (the same thing
+                        // ErrorMetrics does), and this axis is meant to span the
+                        // whole timeline regardless, with the line growing into it.
+                        x: { time: false, range: () => this._timeExtent() },
                         y: { min, max },
                     },
                     axes: [
@@ -463,7 +492,7 @@ export class ScalarPlotter {
                             ticks: { stroke: "rgb(73, 73, 73)" },
                             font: "12px Arial",
                             space: 30,
-                            incrs: [this.getChartInterval(min, max)],
+                            incrs: this._yIncrements(min, max),
                         },
                     ],
                     legend: { show: false },
@@ -667,7 +696,10 @@ export class ScalarPlotter {
         }
 
         if (!needRender) return;
-        activeChart.redraw(false, true);
+        // rebuildPaths must be true: the series data changes on every frame of
+        // playback, and redrawing without rebuilding just repaints the paths
+        // built for whatever data the chart first saw.
+        activeChart.redraw(true, true);
     }
 
     animate(now) {

@@ -383,6 +383,10 @@ export class SimView {
             }
         }
         this.appendBodyHistories(0);
+        // Whether a point-cloud body is listed depends on whether it turned
+        // out to carry per-frame data, which is only knowable now that
+        // appendBodyHistories has run (see BodyStateWindow.updateBodyList).
+        if (this.bodyStateWindow) this.bodyStateWindow.updateBodyList();
         if (this.errorMetrics) {
             this.errorMetrics.onHistoryReady();
         }
@@ -464,12 +468,18 @@ export class SimView {
             this.batchManager = new BatchManager(this, model);
             this.bodies = new Map();
 
-            // Auto-detect visualization mode based on first body: anything with a
-            // real surface (box/sphere/cylinder/mesh) defaults to mesh; pointclouds
-            // keep the default points mode.
+            // Auto-detect visualization mode from the first body the mode
+            // actually governs: anything with a real surface
+            // (box/sphere/cylinder/mesh) defaults to mesh. Point clouds are
+            // skipped rather than inspected -- they're outside the mode
+            // entirely (see Body#pointsVisible), and model.bodies[0] being a
+            // cloud must not leave a scene full of meshes defaulting to a
+            // mode that renders none of them.
             if (Array.isArray(model.bodies) && model.bodies.length > 0) {
-                const firstShape = model.bodies[0].shape;
-                if (firstShape && firstShape.type !== "pointcloud") {
+                const firstSolid = model.bodies.find(
+                    (b) => b.shape && b.shape.type !== "pointcloud"
+                );
+                if (firstSolid) {
                     console.log("Auto-switching visualization mode to 'mesh' based on body type");
                     this.uiState.bodyVisualizationMode = "mesh";
                 }
@@ -498,6 +508,9 @@ export class SimView {
                 console.debug("Using terrain data");
                 this.terrain = new Terrain(model.terrain, this);
                 this.scene.addObject3D(this.terrain.getObject3D());
+                // Terrain extent is what tells us how far this scene reaches,
+                // so the camera's clipping/orbit range can stop being a guess.
+                this.scene.applySceneExtent(this.terrain.bounds);
             } else {
                 throw new Error("Terrain data is missing in model");
             }

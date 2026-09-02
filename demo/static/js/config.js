@@ -1,5 +1,9 @@
 export const UI_DEFAULT_CONFIG = {
     bodyVisualizationMode: "points",
+    // Point-cloud bodies sit outside Body Visualization Mode (a cloud isn't a
+    // way of drawing a body, it's the whole object), so they get their own
+    // visibility toggle -- see Body#pointsVisible.
+    pointCloudsVisible: true,
     axesVisible: false,
     trailsVisible: false,
     smoothInterpolation: true,
@@ -31,6 +35,8 @@ export const FREQ_CONFIG = {
 
 export const CONTROLS_CONFIG = {
     minDistance: 1,
+    // Also a floor, widened alongside the far plane so the whole scene can
+    // actually be framed on a large map (see Scene.applySceneExtent).
     maxDistance: 500,
     enableDamping: false,
     dampingFactor: 0.05,
@@ -58,6 +64,9 @@ export const RENDERER_CONFIG = {
 export const CAMERA_CONFIG = {
     fov: 40,
     near: 0.1,
+    // A floor, not the final value: widened at load to span the terrain
+    // extent, so scenes hundreds of metres across don't clip their own
+    // terrain and bodies away (see Scene.applySceneExtent).
     far: 500,
     position: [-15, -15, 10],
     up: [0, 0, 1],

@@ -86,6 +86,10 @@ export class Body {
         this.bodyVectors = [];
         this.contactPoints = [];
         this.contactPointSizes = [];
+        // A point cloud is its own kind of object rather than a body drawn
+        // "as points", so it stays out of Body Visualization Mode entirely --
+        // "none" included -- and follows setPointCloudsVisible instead.
+        this.isPointCloud = bodyData.shape?.type === "pointcloud";
         this.representations = { mesh: [], wireframe: [], points: [] };
         this.createBatchGroups(bodyData);
 
@@ -356,8 +360,7 @@ export class Body {
             if (this.batchGroups[i]) this.batchGroups[i].visible = visible;
             const pointsRep = this.representations["points"];
             if (Array.isArray(pointsRep) && pointsRep[i]) {
-                pointsRep[i].visible =
-                    visible && this.app.uiState.bodyVisualizationMode === "points";
+                pointsRep[i].visible = visible && this.#pointsVisible();
             }
             if (this.contactPoints[i]) {
                 this.contactPoints[i].visible =
@@ -368,6 +371,26 @@ export class Body {
         // batch, so hidden batches are collapsed to a zero-scale matrix rather
         // than removed (see updateInstanceMatrix).
         this.updateAllInstances();
+    }
+
+    // Should this body's points be on screen right now? A point-cloud body
+    // answers to its own "Show Point Clouds" toggle; every other body's
+    // points are one of its visualization modes, like mesh and wireframe.
+    #pointsVisible() {
+        return this.isPointCloud
+            ? this.app.uiState.pointCloudsVisible !== false
+            : this.app.uiState.bodyVisualizationMode === "points";
+    }
+
+    // Applies the "Show Point Clouds" toggle. A no-op on bodies that aren't
+    // point clouds -- their points belong to the visualization mode instead.
+    setPointCloudsVisible(visible) {
+        if (!this.isPointCloud) return;
+        const pointsRep = this.representations["points"];
+        if (!Array.isArray(pointsRep)) return;
+        pointsRep.forEach((points, i) => {
+            if (points) points.visible = visible && this.#isBatchVisible(i);
+        });
     }
 
     #isBatchVisible(batchIndex) {
@@ -415,7 +438,7 @@ export class Body {
             this.pointColors
         );
         if (!points) return;
-        points.visible = this.app.uiState.bodyVisualizationMode === "points";
+        points.visible = this.#pointsVisible();
         // Lets InteractionController resolve a raycast hit back to this
         // body/batch without a reverse lookup.
         points.userData.bodyName = this.name;
@@ -463,6 +486,15 @@ export class Body {
 
             const instancedMesh = new THREE.InstancedMesh(source, material, this.simBatches);
             instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            // Instances are placed by setMatrixAt (see updateInstanceMatrix),
+            // which leaves this object's own matrixWorld at identity. THREE
+            // computes an InstancedMesh's bounding sphere lazily on the first
+            // frustum test and then caches it forever -- instanceMatrix.needsUpdate
+            // does not invalidate it -- so bodies that travel away from wherever
+            // they started get culled wholesale once that stale sphere leaves the
+            // frustum. Skip the test rather than recomputing the sphere every
+            // frame across every batch; trails do the same for the same reason.
+            instancedMesh.frustumCulled = false;
             instancedMesh.visible = this.app.uiState.bodyVisualizationMode === type;
             instancedMesh.castShadow = (type === "mesh");
             instancedMesh.receiveShadow = (type === "mesh");
@@ -696,6 +728,9 @@ export class Body {
 
     updateVisualizationMode(mode) {
         for (const [type, obj] of Object.entries(this.representations)) {
+            // A point cloud isn't one of the modes, so nothing the mode
+            // switch does -- including "none" -- should touch it.
+            if (type === "points" && this.isPointCloud) continue;
             if (obj instanceof THREE.InstancedMesh) {
                 obj.visible = type === mode;
             } else if (Array.isArray(obj)) {
@@ -804,7 +839,12 @@ export class Body {
 
     // Which of the mesh/wireframe/points representations this body actually has,
     // so the UI can only offer visualization modes that will show something.
+    // A point-cloud body reports none: its cloud is the object itself, not a
+    // way of drawing it, and it has its own toggle (see #pointsVisible). That
+    // keeps "points" out of the dropdown unless some body really does carry
+    // body-points, which is what made selecting it blank out every mesh body.
     getAvailableVisualizationModes() {
+        if (this.isPointCloud) return [];
         const modes = [];
         for (const type of ["mesh", "wireframe", "points"]) {
             const rep = this.representations[type];

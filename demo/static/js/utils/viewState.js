@@ -30,6 +30,12 @@ const BOOLEAN_FLAG_KEYS = [
     "terrainVisualizationModes.normals",
 ];
 
+// Deliberately NOT in the list above: `pointCloudsVisible`. Appending only
+// works for flags that default off -- a link made before the flag existed has
+// no bit for it, which decodes as false, so a default-on flag would arrive
+// switched off and hide point clouds on every old link. Adding it needs a
+// format version that can tell "absent" from "false".
+
 function getPath(obj, path) {
     return path.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
 }

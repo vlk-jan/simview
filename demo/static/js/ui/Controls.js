@@ -8,6 +8,7 @@ export class UIControls {
         this.app = app;
         this.attributeAvailability = this.determineAttributeAvailability();
         this.visualizationModes = this.determineAvailableVisualizationModes();
+        this.hasPointClouds = this.determineHasPointClouds();
         this.gui = this.createDatGUI();
         this.keyboardControlsListener = null;
         this.setupKeyboardControls(app);
@@ -44,13 +45,25 @@ export class UIControls {
 
     // Union of visualization modes actually available across all bodies, plus a
     // "none" option to hide bodies entirely (e.g. for terrain-only viewing).
+    // Point-cloud bodies contribute nothing and are unaffected by the mode --
+    // they have their own toggle -- so a scene of nothing but point clouds
+    // gets no mode control at all rather than a dropdown that only hides things.
     determineAvailableVisualizationModes() {
         const modes = new Set();
         this.app.bodies.forEach((body) => {
             body.getAvailableVisualizationModes().forEach((m) => modes.add(m));
         });
+        if (modes.size === 0) return [];
         modes.add("none");
         return [...modes];
+    }
+
+    determineHasPointClouds() {
+        let found = false;
+        this.app.bodies.forEach((body) => {
+            if (body.isPointCloud) found = true;
+        });
+        return found;
     }
 
     changeTargetBatch(key) {
@@ -98,7 +111,10 @@ export class UIControls {
         // Only show body-related controls when there's actually a body to control
         if (this.app.bodies && this.app.bodies.size > 0) {
             let defaultVisualizationMode = this.app.uiState.bodyVisualizationMode;
-            if (!this.visualizationModes.includes(defaultVisualizationMode)) {
+            if (
+                this.visualizationModes.length > 0 &&
+                !this.visualizationModes.includes(defaultVisualizationMode)
+            ) {
                 defaultVisualizationMode =
                     this.visualizationModes.find((m) => m !== "none") || "none";
                 this.app.uiState.bodyVisualizationMode = defaultVisualizationMode;
@@ -106,6 +122,7 @@ export class UIControls {
 
             const controls = {
                 bodyVisualizationMode: defaultVisualizationMode,
+                showPointClouds: this.app.uiState.pointCloudsVisible !== false,
                 showAxes: this.app.uiState.axesVisible,
                 showTrails: this.app.uiState.trailsVisible,
                 smoothInterpolation: this.app.uiState.smoothInterpolation,
@@ -118,12 +135,24 @@ export class UIControls {
 
             this.bodyFolder = this.gui.addFolder("Body Options");
 
-            this.bodyFolder
-                .add(controls, "bodyVisualizationMode", this.visualizationModes)
-                .name("Body Visualization Mode (B)")
-                .onChange((value) => {
-                    this.updateVisualizationMode(value);
-                });
+            // Nothing to switch between when every body is a point cloud.
+            if (this.visualizationModes.length > 0) {
+                this.bodyFolder
+                    .add(controls, "bodyVisualizationMode", this.visualizationModes)
+                    .name("Body Visualization Mode (B)")
+                    .onChange((value) => {
+                        this.updateVisualizationMode(value);
+                    });
+            }
+
+            if (this.hasPointClouds) {
+                this.bodyFolder
+                    .add(controls, "showPointClouds")
+                    .name("Show Point Clouds")
+                    .onChange((value) => {
+                        this.updatePointCloudsVisibility(value);
+                    });
+            }
 
             this.bodyFolder
                 .add(controls, "showAxes")
@@ -629,6 +658,7 @@ export class UIControls {
                 switch (event.key.toLowerCase()) {
                     case "b":
                         const modes = this.visualizationModes;
+                        if (modes.length === 0) break;
                         const currentIndex = modes.indexOf(
                             this.app.uiState.bodyVisualizationMode
                         );
@@ -708,6 +738,15 @@ export class UIControls {
             body.updateVisualizationMode(mode);
         });
         this.app.uiState.bodyVisualizationMode = mode;
+    }
+
+    // Point-cloud bodies are outside Body Visualization Mode (see
+    // Body#pointsVisible), so their visibility rides on this instead.
+    updatePointCloudsVisibility(visible) {
+        this.app.uiState.pointCloudsVisible = visible;
+        this.app.bodies.forEach((body) => {
+            if (body.setPointCloudsVisible) body.setPointCloudsVisible(visible);
+        });
     }
 
     updateAxesVisibility(show) {
