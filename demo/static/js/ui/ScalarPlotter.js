@@ -1,4 +1,3 @@
-import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
@@ -7,7 +6,7 @@ import {
     episodeLabel,
     normalizeEpisodes,
 } from "../utils/episodes.js";
-import { injectStyles } from "../utils/injectStyles.js";
+import { makeChart } from "../utils/uplot.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -44,112 +43,8 @@ export class ScalarPlotter {
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
         this.renderTimeout = null; // To manage delayed rendering
 
-        this._injectStyles();
         this._setupHTML();
         this._setupEventListeners();
-    }
-
-    _injectStyles() {
-        const styleId = "scalar-styles";
-        const chartHeightPercentage = 15;
-        const css = `
-        /* Tab bar */
-        .scalar-tab-bar {
-            display: flex;
-            width: 100%;
-            flex-wrap: wrap;
-            padding: 0;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
-
-        /* Tabs */
-        .scalar-tab {
-            flex: 1;
-            text-align: center;
-            padding: 5px 10px; /* Adjusted padding */
-            margin-right: 2px; /* Space between tabs */
-            cursor: pointer;
-            background-color: rgba(0, 0, 0, 1);
-            border-radius: 2px 2px 0 0;
-            font-size: 1.0em;
-            color: white;
-            transition: background-color 0.2s ease, color 0.2s ease;
-            position: relative;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-bottom: 1px solid white;
-            margin-bottom: -1px;
-            font-weight: bold;
-            white-space: nowrap; /* Prevent wrapping */
-            overflow: hidden; /* Hide overflow */
-            text-overflow: ellipsis; /* Add ellipsis if text too long */
-        }
-        .scalar-tab:first-child {
-            margin-left: 0;
-            border-left: none;
-        }
-        .scalar-tab:last-child {
-            margin-right: 0;
-            border-right: none;
-        }
-        .scalar-tab.active {
-            border: 1px solid white;
-            border-bottom: 1px solid rgba(0, 0, 0, 1);
-        }
-        .scalar-tab.active:hover {
-            background-color: rgba(0, 0, 0, 1);
-        }
-        .scalar-tab.active:first-child {
-            border-left: none;
-        }
-        .scalar-tab.active:last-child {
-            border-right: none;
-        }
-
-        /* Export toolbar */
-        .scalar-export-bar {
-            display: flex;
-            justify-content: flex-end;
-            padding: 6px 0 0;
-        }
-        .scalar-export-bar button {
-            background-color: rgba(50, 50, 50, 0.8);
-            color: white;
-            border: 1px solid white;
-            padding: 0.2em 0.6em;
-            border-radius: 3px;
-            font-size: 0.85em;
-            cursor: pointer;
-        }
-
-        /* Plot area */
-        .scalar-plot-area {
-            width: 100%;
-            height: ${chartHeightPercentage}vh;
-          }
-
-        .uplot-plot-div {
-            border-top: 1px solid white;
-            width: 100%;
-            height: 99%;
-            display: none;
-            background-color: rgba(0, 0, 0, 1);
-            cursor: pointer;
-        }
-        .uplot-plot-div.visible {
-            display: block;
-        }
-        .uplot-plot-div .uplot,
-        .uplot-plot-div .u-wrap {
-            width: 100%;
-            height: 100%;
-        }
-        .uplot-plot-div .u-legend {
-            display: none;
-        }
-    `;
-        injectStyles(styleId, css);
     }
 
     _setupHTML() {
@@ -458,12 +353,9 @@ export class ScalarPlotter {
                 });
             }
 
-            const rect = plotDiv.getBoundingClientRect();
-            const chart = new uPlot(
+            const chart = makeChart(
+                plotDiv,
                 {
-                    width: Math.max(rect.width, 1),
-                    height: Math.max(rect.height, 1),
-                    padding: [8, 8, 0, 8],
                     series,
                     scales: {
                         // uPlot treats a scale's `min`/`max` as outputs, not as
@@ -495,11 +387,6 @@ export class ScalarPlotter {
                             incrs: this._yIncrements(min, max),
                         },
                     ],
-                    legend: { show: false },
-                    cursor: {
-                        drag: { x: false, y: false },
-                        points: { show: false },
-                    },
                     hooks: {
                         setCursor: [
                             (u) => {
@@ -512,24 +399,19 @@ export class ScalarPlotter {
                             },
                         ],
                     },
+                    // Beyond the shared seek-on-click, a click also focuses
+                    // whichever batch's series passed closest to it.
+                    onClick: (chart, idx, e) => {
+                        const yVal = chart.posToVal(e.offsetY, "y");
+                        const batchIndex = this._closestSeriesAtIndex(chart, idx, yVal);
+                        if (batchIndex >= 0) {
+                            this.app.batchManager.setActiveBatch(batchIndex);
+                        }
+                    },
                 },
                 [[], ...new Array(this.app.batchManager.simBatches).fill([])],
-                plotDiv
+                this.app
             );
-
-            chart.over.addEventListener("click", (e) => {
-                const idx = chart.cursor.idx;
-                if (idx === null || idx === undefined) return;
-                const xVal = chart.data[0][idx];
-                const yVal = chart.posToVal(e.offsetY, "y");
-                const batchIndex = this._closestSeriesAtIndex(chart, idx, yVal);
-                if (batchIndex >= 0) {
-                    this.app.batchManager.setActiveBatch(batchIndex);
-                }
-                if (xVal !== undefined && xVal !== null && this.app.animationController) {
-                    this.app.animationController.goToTime(xVal);
-                }
-            });
 
             this._createTooltip(plotDiv);
 

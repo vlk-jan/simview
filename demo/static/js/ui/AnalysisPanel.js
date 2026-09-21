@@ -1,5 +1,3 @@
-import { injectStyles } from "../utils/injectStyles.js";
-
 // Shared top-center panel hosting the Scalars plots and the Error Metrics
 // comparison. Owns the collapsible container and, when both are present, the
 // mode switcher between them; ScalarPlotter and ErrorMetrics just mount their
@@ -14,100 +12,7 @@ export class AnalysisPanel {
         this.terrainProfile = null;
         this.modeTabElements = {};
 
-        this._injectStyles();
         this._setupHTML();
-    }
-
-    _injectStyles() {
-        const styleId = "analysis-panel-styles";
-        const containerWidthPercentage = 40;
-        const css = `
-        .analysis-container {
-            width: ${containerWidthPercentage}%;
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            border-radius: 5px;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            z-index: 1000;
-        }
-
-        .analysis-header {
-            display: flex;
-            justify-content: flex-start;
-            background-color: transparent;
-            align-items: center;
-            width: 100%;
-            padding: 7px 10px;
-            color: white;
-            cursor: pointer;
-            border-radius: 5px 5px 0 0;
-            transition: background-color 0.2s ease;
-            box-sizing: border-box;
-        }
-        .analysis-header:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        .analysis-header-title {
-            font-weight: bold;
-            font-size: 1.1em;
-        }
-        .analysis-header-icon {
-            display: inline-block;
-            user-select: none;
-            padding-right: 0.4rem;
-            color: #ccc;
-        }
-
-        .analysis-content {
-            border-radius: 0 0 5px 5px;
-            display: none;
-            box-sizing: border-box;
-        }
-        .analysis-content.visible {
-            display: block;
-        }
-
-        .analysis-mode-tab-bar {
-            display: none;
-            width: 100%;
-        }
-        .analysis-mode-tab-bar.visible {
-            display: flex;
-        }
-        .analysis-mode-tab {
-            flex: 1;
-            text-align: center;
-            padding: 6px 10px;
-            cursor: pointer;
-            background-color: rgba(255, 255, 255, 0.05);
-            font-size: 1.0em;
-            color: #ccc;
-            border: none;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-            font-weight: bold;
-        }
-        .analysis-mode-tab:hover {
-            background-color: rgba(255, 255, 255, 0.12);
-        }
-        .analysis-mode-tab.active {
-            color: white;
-            background-color: rgba(255, 255, 255, 0.18);
-            border-bottom: 1px solid white;
-        }
-
-        .analysis-section {
-            display: none;
-        }
-        .analysis-section.visible {
-            display: block;
-        }
-        `;
-        injectStyles(styleId, css);
     }
 
     _setupHTML() {

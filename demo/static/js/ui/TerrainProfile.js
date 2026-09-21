@@ -1,8 +1,7 @@
-import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
-import { injectStyles } from "../utils/injectStyles.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
+import { makeChart } from "../utils/uplot.js";
 
 const LAYER_LABELS = { height: "Height" };
 
@@ -17,8 +16,6 @@ const LAYER_LABELS = { height: "Height" };
 // ErrorMetrics's chart pattern; controls are selects like ErrorMetrics since
 // the picked layer/body/path -- not a fixed tab -- decides what's plotted.
 export class TerrainProfile {
-    static styleId = "terrain-profile-styles";
-
     constructor(app) {
         this.app = app;
         this.isExpanded = false;
@@ -43,74 +40,8 @@ export class TerrainProfile {
         this.minRenderDelay = 1000 / (FREQ_CONFIG.terrainProfile || FREQ_CONFIG.scalarPlotter);
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
 
-        this._injectStyles();
         this._setupHTML();
         this._setupEventListeners();
-    }
-
-    _injectStyles() {
-        const css = `
-        .terrain-profile-content {
-            padding: 10px;
-        }
-        .terrain-profile-controls {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            row-gap: 6px;
-            gap: 10px;
-        }
-        .terrain-profile-control-group {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .terrain-profile-control-group label {
-            color: #ccc;
-            font-size: 0.9em;
-            white-space: nowrap;
-        }
-        .terrain-profile-control-group select {
-            background-color: rgba(50, 50, 50, 0.8);
-            color: white;
-            border: 1px solid white;
-            padding: 0.1em 0.2em;
-            border-radius: 3px;
-            font-size: 0.9em;
-            max-width: 160px;
-        }
-        .terrain-profile-export-bar {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 8px;
-        }
-        .terrain-profile-export-bar button {
-            background-color: rgba(50, 50, 50, 0.8);
-            color: white;
-            border: 1px solid white;
-            padding: 0.2em 0.6em;
-            border-radius: 3px;
-            font-size: 0.85em;
-            cursor: pointer;
-        }
-        .terrain-profile-plot {
-            width: 100%;
-            height: 15vh;
-            margin-top: 10px;
-            position: relative;
-            background-color: rgba(0, 0, 0, 1);
-            cursor: pointer;
-        }
-        .terrain-profile-plot .uplot,
-        .terrain-profile-plot .u-wrap {
-            width: 100%;
-            height: 100%;
-        }
-        .terrain-profile-plot .u-legend {
-            display: none;
-        }
-        `;
-        injectStyles(TerrainProfile.styleId, css);
     }
 
     _setupHTML() {
@@ -340,12 +271,9 @@ export class TerrainProfile {
             dataArrays.push(batchSeries.map((p) => p.y));
         }
 
-        const rect = this.plotDiv.getBoundingClientRect();
-        this.chart = new uPlot(
+        this.chart = makeChart(
+            this.plotDiv,
             {
-                width: Math.max(rect.width, 1),
-                height: Math.max(rect.height, 1),
-                padding: [8, 8, 0, 8],
                 series: seriesConfigs,
                 scales: {
                     x: { time: false },
@@ -369,28 +297,14 @@ export class TerrainProfile {
                         incrs: [this._chartInterval(min, max)],
                     },
                 ],
-                legend: { show: false },
-                cursor: {
-                    drag: { x: false, y: false },
-                    points: { show: false },
-                },
                 hooks: {
                     draw: [(u) => this._drawMarker(u)],
                     setCursor: [(u) => this._updateTooltip(u)],
                 },
             },
             dataArrays,
-            this.plotDiv
+            this.app
         );
-
-        this.chart.over.addEventListener("click", (e) => {
-            const idx = this.chart.cursor.idx;
-            if (idx === null || idx === undefined) return;
-            const xVal = this.chart.data[0][idx];
-            if (xVal !== undefined && xVal !== null && this.app.animationController) {
-                this.app.animationController.goToTime(xVal);
-            }
-        });
 
         this._createTooltip();
 

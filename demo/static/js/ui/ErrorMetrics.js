@@ -1,4 +1,3 @@
-import uPlot from "../../lib/uPlot.esm.js";
 import { FREQ_CONFIG } from "../config.js";
 import { pickDefaultBatchPair } from "../utils/batchPresets.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
@@ -9,7 +8,7 @@ import {
     quaternionAngleError,
     rmse,
 } from "../utils/errorMath.js";
-import { injectStyles } from "../utils/injectStyles.js";
+import { makeChart } from "../utils/uplot.js";
 
 // One place for the per-series colors: the plot strokes, the hover tooltip and
 // the swatches in front of the readout labels all have to agree, otherwise the
@@ -26,8 +25,6 @@ const SERIES_COLORS = {
 // position error and quaternion angle (orientation) error. Useful for e.g.
 // comparing a real-world recording batch against a simulated rerun batch.
 export class ErrorMetrics {
-    static styleId = "error-metrics-styles";
-
     constructor(app) {
         this.app = app;
         this.isExpanded = false;
@@ -50,112 +47,8 @@ export class ErrorMetrics {
         this.resizeObserver = null;
         this.markerTime = null;
 
-        this._injectStyles();
         this._setupHTML();
         this._setupEventListeners();
-    }
-
-    _injectStyles() {
-        const css = `
-        .error-metrics-content {
-            padding: 10px;
-        }
-        .error-metrics-controls {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            row-gap: 6px;
-            gap: 10px;
-            margin-top: 8px;
-        }
-        .error-metrics-control-group {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .error-metrics-control-group label {
-            color: #ccc;
-            font-size: 0.9em;
-            white-space: nowrap;
-        }
-        .error-metrics-control-group select {
-            background-color: rgba(50, 50, 50, 0.8);
-            color: white;
-            border: 1px solid white;
-            padding: 0.1em 0.2em;
-            border-radius: 3px;
-            font-size: 0.9em;
-            max-width: 100px;
-        }
-        .error-metrics-control-group input[type="checkbox"] {
-            cursor: pointer;
-        }
-        .error-metrics-readout {
-            margin-top: 10px;
-            font-family: monospace;
-        }
-        .error-metrics-readout div {
-            display: flex;
-            justify-content: space-between;
-            padding: 2px 0;
-        }
-        .error-metrics-swatch {
-            display: inline-block;
-            width: 9px;
-            height: 9px;
-            border-radius: 2px;
-            margin-right: 6px;
-            vertical-align: baseline;
-        }
-        .error-metrics-stats {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-            font-family: monospace;
-            font-size: 0.85em;
-        }
-        .error-metrics-stats div {
-            display: flex;
-            justify-content: space-between;
-            padding: 1px 0;
-            color: #ccc;
-        }
-        .error-metrics-stats div span:last-child {
-            color: white;
-        }
-        .error-metrics-export {
-            margin-top: 8px;
-            display: flex;
-            justify-content: flex-end;
-        }
-        .error-metrics-export button {
-            background-color: rgba(50, 50, 50, 0.8);
-            color: white;
-            border: 1px solid white;
-            padding: 0.2em 0.6em;
-            border-radius: 3px;
-            font-size: 0.85em;
-            cursor: pointer;
-        }
-        .error-metrics-plot {
-            width: 100%;
-            height: 15vh;
-            margin-top: 10px;
-            position: relative;
-            background-color: rgba(0, 0, 0, 1);
-            cursor: pointer;
-        }
-        .error-metrics-plot .uplot,
-        .error-metrics-plot .u-wrap {
-            width: 100%;
-            height: 100%;
-        }
-        .error-metrics-plot .u-legend {
-            display: none;
-        }
-        `;
-        injectStyles(ErrorMetrics.styleId, css);
     }
 
     _setupHTML() {
@@ -526,11 +419,9 @@ export class ErrorMetrics {
         });
         dataArrays.push(rotValues);
 
-        const rect = this.plotDiv.getBoundingClientRect();
-        this.chart = new uPlot(
+        this.chart = makeChart(
+            this.plotDiv,
             {
-                width: Math.max(rect.width, 1),
-                height: Math.max(rect.height, 1),
                 padding: [8, 8, 0, 0],
                 series: seriesConfigs,
                 scales: {
@@ -576,28 +467,14 @@ export class ErrorMetrics {
                         font: "12px Arial",
                     },
                 ],
-                legend: { show: false },
-                cursor: {
-                    drag: { x: false, y: false },
-                    points: { show: false },
-                },
                 hooks: {
                     draw: [(u) => this._drawMarker(u)],
                     setCursor: [(u) => this._updateTooltip(u)],
                 },
             },
             dataArrays,
-            this.plotDiv
+            this.app
         );
-
-        this.chart.over.addEventListener("click", (e) => {
-            const idx = this.chart.cursor.idx;
-            if (idx === null || idx === undefined) return;
-            const xVal = this.chart.data[0][idx];
-            if (xVal !== undefined && xVal !== null && this.app.animationController) {
-                this.app.animationController.goToTime(xVal);
-            }
-        });
 
         this._createTooltip();
 
