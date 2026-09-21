@@ -323,18 +323,21 @@ def test_blob_endpoint_serves_a_byte_range(tmp_path):
         assert response.headers["content-range"] == f"bytes 56-111/{len(whole)}"
 
 
-def test_open_ended_and_suffix_ranges(tmp_path):
+def test_open_ended_and_suffix_ranges_fall_back_to_the_whole_blob(tmp_path):
+    # _parse_byte_range only handles the one form the viewer actually sends
+    # (`bytes=start-end`, see WindowedField.js) -- open-ended and suffix
+    # ranges are treated as unusable, same as any other malformed Range.
     with _columnar_client(tmp_path) as client:
         url = _blob_url(client)
         whole = client.get(url).content
 
         open_ended = client.get(url, headers={"Range": "bytes=56-"})
-        assert open_ended.status_code == 206
-        assert open_ended.content == whole[56:]
+        assert open_ended.status_code == 200
+        assert open_ended.content == whole
 
         suffix = client.get(url, headers={"Range": "bytes=-56"})
-        assert suffix.status_code == 206
-        assert suffix.content == whole[-56:]
+        assert suffix.status_code == 200
+        assert suffix.content == whole
 
 
 def test_range_past_the_end_is_unsatisfiable(tmp_path):

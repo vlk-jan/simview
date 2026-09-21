@@ -71,35 +71,27 @@ class _RangeNotSatisfiable(Exception):
 
 
 def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
-    """Parse a `Range: bytes=...` header into an inclusive `(start, end)`.
+    """Parse a `Range: bytes=start-end` header into an inclusive `(start, end)`.
 
-    Returns None when there's no range to honor (absent, malformed, or a unit
-    other than bytes -- RFC 9110 says to ignore those and serve the whole
-    representation), and raises `_RangeNotSatisfiable` when the range is
+    The only caller (WindowedField.js) only ever sends this one form, so
+    that's the only one handled -- everything else (absent, a suffix or
+    open-ended range, a non-bytes unit, multi-range, garbage) returns None,
+    which RFC 9110 permits treating the same as "no range": serve the whole
+    representation. Raises `_RangeNotSatisfiable` when the range is
     well-formed but lies outside the blob.
-
-    Only the single-range forms the viewer actually sends are supported
-    (`bytes=start-end`, `bytes=start-`, `bytes=-suffix`); a multi-range request
-    is ignored rather than answered with a multipart body.
     """
     if not header or size == 0:
         return None
     unit, _, spec = header.partition("=")
-    if unit.strip().lower() != "bytes" or "," in spec:
+    if unit.strip().lower() != "bytes":
         return None
     start_text, sep, end_text = spec.strip().partition("-")
-    if not sep:
+    if not sep or not start_text or not end_text:
         return None
 
     try:
-        if not start_text:
-            # Suffix range: the last N bytes.
-            suffix = int(end_text)
-            if suffix <= 0:
-                raise _RangeNotSatisfiable
-            return max(0, size - suffix), size - 1
         start = int(start_text)
-        end = int(end_text) if end_text else size - 1
+        end = int(end_text)
     except ValueError:
         return None
 
