@@ -1,19 +1,14 @@
 """Numeric terrain queries (single point / area / along a body's
 trajectory) for `simview terrain`.
 
-Deliberately dependency-free (stdlib only: json, base64, struct, math) so
-it works on a base install without the `authoring` extra (torch/einops/
-numpy) -- see CLAUDE.md and `simview/info.py`'s module docstring for the
-same rationale. Kept as a separate module from `simview/info.py` on
-purpose, even though both read the same wire format, to keep the two
-debugging tools independently reviewable.
+Deliberately dependency-free (stdlib only: json, base64, struct, math via
+its imports) so it works on a base install without the `authoring` extra
+(torch/einops/numpy) -- see CLAUDE.md. Shares its blob-decoding and
+body-resolution helpers with `simview/diff.py` and `simview/info.py` via
+`simview.columnar`/`simview.utils`, which are stdlib-only on this read path.
 
-The `--along-body` queries need states (not just the model) plus a few
-helpers `simview/diff.py` already has -- loading `states` alongside
-`model`, decoding a `bodyTransform` row for one batch, and resolving a body
-name against the states. This module duplicates those rather than
-importing them from `diff.py`, for the same "independently reviewable"
-reason as the info.py/terrain.py split above.
+The `--along-body` queries need states (not just the model) plus a decoded
+`bodyTransform` row and body-name resolution, same as `simview/diff.py`.
 
 Output is numbers, not a rendered visualization: `query_point`/`query_area`
 return plain dicts of floats (JSON-serializable as-is) for scripts/coding
@@ -21,19 +16,17 @@ agents to consume directly, with `format_point_text`/`format_area_text`
 providing a skimmable terminal rendering of the same data.
 """
 
-import base64
 import csv
 import io
-import json
 import math
-import struct
-from pathlib import Path
 from typing import Any
 
-from simview.columnar import expand_columnar_states, is_columnar
-from simview.utils import read_maybe_gzipped_bytes
+from simview.columnar import blob_floats, body_key, decode_transform_row
+from simview.utils import body_label, cap, resolve_body
+from simview.utils import load_scene as load_scene  # re-exported for __main__.py
+from simview.utils import load_scene_model as load_scene_model  # re-exported
 
-BLOB_PREFIX = "__b64__"
+_MAX_SERIES_ROWS = 10
 
 
 def _layer_data(terrain: dict, layer: str) -> Any:
@@ -44,44 +37,6 @@ def _layer_data(terrain: dict, layer: str) -> Any:
     if layer == "height":
         return terrain["heightData"]
     return (terrain.get("properties") or {})[layer]["data"]
-
-
-def load_scene_model(path: str | Path) -> dict:
-    """Read the scene JSON at `path` (transparently gunzipped) and return its
-    `model` section. Raises `ValueError`/`json.JSONDecodeError` on malformed
-    input -- callers decide how to report that (see
-    `simview.__main__.run_terrain`)."""
-    data = json.loads(read_maybe_gzipped_bytes(path))
-    if not isinstance(data, dict):
-        raise ValueError("scene file must contain a JSON object with a 'model' key")
-    model = data.get("model")
-    if model is None:
-        raise ValueError("scene file has no 'model' section")
-    return model
-
-
-def load_scene(path: str | Path) -> tuple[dict, list]:
-    """Read the scene JSON at `path` (transparently gunzipped) and return its
-    `(model, states)` sections, for `--along-body` queries that need a
-    body's trajectory as well as the terrain. Independent copy of
-    `simview.diff.load_scene` -- see module docstring. Raises
-    `ValueError`/`json.JSONDecodeError` on malformed input -- callers decide
-    how to report that (see `simview.__main__.run_terrain`)."""
-    data = json.loads(read_maybe_gzipped_bytes(path))
-    if not isinstance(data, dict):
-        raise ValueError(
-            "scene file must contain a JSON object with 'model'/'states' keys"
-        )
-    model = data.get("model")
-    states = data.get("states")
-    if model is None:
-        raise ValueError("scene file has no 'model' section")
-    if states is None:
-        raise ValueError("scene file has no 'states' section")
-    if is_columnar(states):
-        # See simview.diff.load_scene: columnar files are expanded up front.
-        states = expand_columnar_states(states, int(model.get("simBatches") or 1))
-    return model, states
 
 
 def _require_terrain(model_data: dict) -> dict:
@@ -109,27 +64,6 @@ def _resolve_layers(terrain: dict, layers: str | list[str]) -> list[str]:
     return requested
 
 
-def _flat_floats(value: Any) -> list[float]:
-    """Flatten a terrain field value (a `__b64__` blob or a plain, possibly
-    nested, JSON list) into a flat list of floats, without numpy."""
-    if isinstance(value, str) and value.startswith(BLOB_PREFIX):
-        raw = base64.b64decode(value[len(BLOB_PREFIX) :])
-        n = len(raw) // 4
-        return list(struct.unpack(f"<{n}f", raw))
-
-    flat: list[float] = []
-
-    def _flatten(x: Any) -> None:
-        if isinstance(x, list):
-            for item in x:
-                _flatten(item)
-        else:
-            flat.append(float(x))
-
-    _flatten(value)
-    return flat
-
-
 def _decode_grid(
     value: Any, shape_x: int, shape_y: int, batch_size: int, batch_idx: int
 ) -> list[list[float]]:
@@ -144,7 +78,7 @@ def _decode_grid(
     if not (0 <= batch_idx < batch_size):
         raise ValueError(f"batch index {batch_idx} out of range [0, {batch_size - 1}]")
 
-    flat = _flat_floats(value)
+    flat = blob_floats(value)
     per_batch = shape_x * shape_y
     if len(flat) == per_batch * batch_size:
         start = batch_idx * per_batch
@@ -224,68 +158,9 @@ def _grid_coord(index: int, min_b: float, max_b: float, shape: int) -> float:
     return min_b + index / (shape - 1) * (max_b - min_b) if shape > 1 else min_b
 
 
-# [x, y, z, w, qx, qy, qz] -- same width as server.py's
-# STATE_FIELD_WIDTHS["bodyTransform"] (kept in sync manually, not imported
-# -- see module docstring). Independent copy of diff.py's same-named
-# constant.
-_TRANSFORM_WIDTH = 7
-
-
-def _decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[float]:
-    """Decode one state's `bodyTransform` field value for a single batch into
-    a flat 7-element `[x, y, z, w, qx, qy, qz]` row. Independent copy of
-    `simview.diff._decode_transform_row` -- see module docstring."""
-    flat = _flat_floats(value)
-    if len(flat) == batch_size * _TRANSFORM_WIDTH:
-        start = batch_idx * _TRANSFORM_WIDTH
-        return flat[start : start + _TRANSFORM_WIDTH]
-    if len(flat) == _TRANSFORM_WIDTH and batch_size == 1:
-        return flat
-    raise ValueError(
-        f"bodyTransform has {len(flat)} floats; expected {_TRANSFORM_WIDTH} "
-        f"(batch_size=1, flat) or {batch_size * _TRANSFORM_WIDTH} "
-        f"({batch_size} batches x {_TRANSFORM_WIDTH})"
-    )
-
-
-def _body_key(name: Any) -> Any:
-    return tuple(name) if isinstance(name, list) else name
-
-
-def _body_label(name: Any) -> str:
-    return name if isinstance(name, str) else "+".join(str(n) for n in name)
-
-
-def _iter_names(name: Any):
-    yield from name if isinstance(name, list) else (name,)
-
-
-def _resolve_body(all_names: list, body: str | None) -> list:
-    """Independent copy of `simview.diff._resolve_body` -- see module
-    docstring."""
-    if body is None:
-        return all_names
-    matches = [
-        name
-        for name in all_names
-        if _body_label(name) == body or body in _iter_names(name)
-    ]
-    if not matches:
-        available = ", ".join(_body_label(n) for n in all_names)
-        raise ValueError(
-            f"body '{body}' not found in any state; available bodies: {available}"
-        )
-    if len(matches) > 1:
-        labels = ", ".join(_body_label(n) for n in matches)
-        raise ValueError(
-            f"body '{body}' is ambiguous; matches {labels}; pass the full label instead"
-        )
-    return matches
-
-
 def _collect_body_names(states_data: list) -> list:
     """All distinct body names/name-groups seen across `states_data`, in
-    first-seen order -- the candidate pool `_resolve_body` matches `body`
+    first-seen order -- the candidate pool `resolve_body` matches `body`
     against."""
     all_names: list = []
     seen_keys = set()
@@ -294,7 +169,7 @@ def _collect_body_names(states_data: list) -> list:
             name = entry.get("name")
             if name is None:
                 continue
-            key = _body_key(name)
+            key = body_key(name)
             if key not in seen_keys:
                 seen_keys.add(key)
                 all_names.append(name)
@@ -421,40 +296,26 @@ def query_point_diff(
     if batch_a == batch_b:
         raise ValueError("batch_a and batch_b must differ")
 
-    terrain = _require_terrain(model_data)
-    dims = terrain["dimensions"]
-    bounds = terrain["bounds"]
-    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
-    min_x, max_x = bounds["minX"], bounds["maxX"]
-    min_y, max_y = bounds["minY"], bounds["maxY"]
-    batch_size = int(model_data.get("simBatches") or 1)
-    resolved_layers = _resolve_layers(terrain, layers)
+    result_a = query_point(model_data, x, y, layers, batch_a)
+    result_b = query_point(model_data, x, y, layers, batch_b)
 
     layers_out = {}
-    for layer in resolved_layers:
-        value = _layer_data(terrain, layer)
-        grid_a = _decode_grid(value, shape_x, shape_y, batch_size, batch_a)
-        grid_b = _decode_grid(value, shape_x, shape_y, batch_size, batch_b)
-        value_a, clamped_a = _bilinear_sample(
-            grid_a, shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-        )
-        value_b, clamped_b = _bilinear_sample(
-            grid_b, shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-        )
-        delta = value_b - value_a
+    for layer, info_a in result_a["layers"].items():
+        info_b = result_b["layers"][layer]
+        delta = info_b["value"] - info_a["value"]
         layers_out[layer] = {
-            "value_a": value_a,
-            "value_b": value_b,
+            "value_a": info_a["value"],
+            "value_b": info_b["value"],
             "delta": delta,
             "abs_delta": abs(delta),
-            "clamped": clamped_a or clamped_b,
+            "clamped": info_a["clamped"] or info_b["clamped"],
         }
 
     return {
         "point": {"x": x, "y": y},
         "batch_a": batch_a,
         "batch_b": batch_b,
-        "is_singleton": bool(terrain.get("isSingleton", False)),
+        "is_singleton": result_a["is_singleton"],
         "layers": layers_out,
     }
 
@@ -480,43 +341,15 @@ def query_area_diff(
     if batch_a == batch_b:
         raise ValueError("batch_a and batch_b must differ")
 
-    terrain = _require_terrain(model_data)
-    dims = terrain["dimensions"]
-    b = terrain["bounds"]
-    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
-    min_x, max_x = b["minX"], b["maxX"]
-    min_y, max_y = b["minY"], b["maxY"]
-    batch_size = int(model_data.get("simBatches") or 1)
-    resolved_layers = _resolve_layers(terrain, layers)
-
-    if stride < 1:
-        raise ValueError(f"stride must be >= 1; got {stride}")
-
-    if bounds is None:
-        col_start, col_end = 0, shape_x - 1
-        row_start, row_end = 0, shape_y - 1
-    else:
-        xmin, xmax, ymin, ymax = bounds
-        col_start, col_end = _grid_index_range(xmin, xmax, min_x, max_x, shape_x)
-        row_start, row_end = _grid_index_range(ymin, ymax, min_y, max_y, shape_y)
-        if col_start > col_end or row_start > row_end:
-            raise ValueError("requested area does not overlap the terrain extent")
-
-    cols = list(range(col_start, col_end + 1, stride))
-    rows = list(range(row_start, row_end + 1, stride))
-    x_coords = [_grid_coord(c, min_x, max_x, shape_x) for c in cols]
-    y_coords = [_grid_coord(r, min_y, max_y, shape_y) for r in rows]
+    result_a = query_area(model_data, bounds, layers, batch_a, stride)
+    result_b = query_area(model_data, bounds, layers, batch_b, stride)
 
     layers_out = {}
-    for layer in resolved_layers:
-        value = _layer_data(terrain, layer)
-        grid_a = _decode_grid(value, shape_x, shape_y, batch_size, batch_a)
-        grid_b = _decode_grid(value, shape_x, shape_y, batch_size, batch_b)
-        value_a = [[grid_a[r][c] for c in cols] for r in rows]
-        value_b = [[grid_b[r][c] for c in cols] for r in rows]
+    for layer, value_a in result_a["layers"].items():
+        value_b = result_b["layers"][layer]
         delta = [
-            [value_b[ri][ci] - value_a[ri][ci] for ci in range(len(cols))]
-            for ri in range(len(rows))
+            [value_b[ri][ci] - value_a[ri][ci] for ci in range(len(value_a[ri]))]
+            for ri in range(len(value_a))
         ]
         abs_delta = [[abs(v) for v in row] for row in delta]
         flat_abs_delta = [v for row in abs_delta for v in row]
@@ -535,9 +368,9 @@ def query_area_diff(
     return {
         "batch_a": batch_a,
         "batch_b": batch_b,
-        "is_singleton": bool(terrain.get("isSingleton", False)),
-        "x_coords": x_coords,
-        "y_coords": y_coords,
+        "is_singleton": result_a["is_singleton"],
+        "x_coords": result_a["x_coords"],
+        "y_coords": result_a["y_coords"],
         "layers": layers_out,
     }
 
@@ -588,8 +421,8 @@ def query_along_body(
         raise ValueError(f"every must be >= 1; got {every}")
 
     all_names = _collect_body_names(states_data)
-    target_name = _resolve_body(all_names, body)[0]
-    key = _body_key(target_name)
+    target_name = resolve_body(all_names, body)[0]
+    key = body_key(target_name)
 
     grids = {
         layer: _decode_grid(
@@ -609,13 +442,13 @@ def query_along_body(
         if idx % every != 0:
             continue
         entry = next(
-            (e for e in state.get("bodies") or [] if _body_key(e.get("name")) == key),
+            (e for e in state.get("bodies") or [] if body_key(e.get("name")) == key),
             None,
         )
         if entry is None or "bodyTransform" not in entry:
             continue
 
-        row = _decode_transform_row(entry["bodyTransform"], batch_size, batch)
+        row = decode_transform_row(entry["bodyTransform"], batch_size, batch)
         x, y = row[0], row[1]
         frame_indices.append(idx)
         times.append(state.get("time"))
@@ -636,7 +469,7 @@ def query_along_body(
         layers_out[layer] = {"values": values, "clamped": clamped, "summary": summary}
 
     return {
-        "body": _body_label(target_name),
+        "body": body_label(target_name),
         "batch": batch,
         "every": every,
         "frame_indices": frame_indices,
@@ -677,29 +510,23 @@ def query_along_body_diff(
         raise ValueError("batch_a and batch_b must differ")
 
     terrain = _require_terrain(model_data)
+    batch_size = int(model_data.get("simBatches") or 1)
+    for label, b in (("batch_a", batch_a), ("batch_b", batch_b)):
+        if not (0 <= b < batch_size):
+            raise ValueError(f"{label}={b} out of range [0, {batch_size - 1}]")
+
+    # Positions and batch_a's own values come straight from the single-batch
+    # query -- batch_a is the reference path both terrains get sampled along.
+    result_a = query_along_body(model_data, states_data, body, layers, batch_a, every)
+
     dims = terrain["dimensions"]
     bounds = terrain["bounds"]
     shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
     min_x, max_x = bounds["minX"], bounds["maxX"]
     min_y, max_y = bounds["minY"], bounds["maxY"]
-    batch_size = int(model_data.get("simBatches") or 1)
-    for label, b in (("batch_a", batch_a), ("batch_b", batch_b)):
-        if not (0 <= b < batch_size):
-            raise ValueError(f"{label}={b} out of range [0, {batch_size - 1}]")
-    resolved_layers = _resolve_layers(terrain, layers)
-    if every < 1:
-        raise ValueError(f"every must be >= 1; got {every}")
+    resolved_layers = list(result_a["layers"])
+    xs, ys = result_a["x"], result_a["y"]
 
-    all_names = _collect_body_names(states_data)
-    target_name = _resolve_body(all_names, body)[0]
-    key = _body_key(target_name)
-
-    grids_a = {
-        layer: _decode_grid(
-            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch_a
-        )
-        for layer in resolved_layers
-    }
     grids_b = {
         layer: _decode_grid(
             _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch_b
@@ -707,75 +534,70 @@ def query_along_body_diff(
         for layer in resolved_layers
     }
 
-    frame_indices: list[int] = []
-    times: list = []
-    xs: list[float] = []
-    ys: list[float] = []
-    layer_data: dict[str, dict[str, list]] = {
-        layer: {"value_a": [], "value_b": [], "delta": [], "clamped": []}
-        for layer in resolved_layers
-    }
-
-    for idx, state in enumerate(states_data):
-        if idx % every != 0:
-            continue
-        entry = next(
-            (e for e in state.get("bodies") or [] if _body_key(e.get("name")) == key),
-            None,
-        )
-        if entry is None or "bodyTransform" not in entry:
-            continue
-
-        # Position always comes from batch_a: batch_a is the reference path
-        # both terrains are sampled along (see docstring).
-        row = _decode_transform_row(entry["bodyTransform"], batch_size, batch_a)
-        x, y = row[0], row[1]
-        frame_indices.append(idx)
-        times.append(state.get("time"))
-        xs.append(x)
-        ys.append(y)
-        for layer in resolved_layers:
-            value_a, clamped_a = _bilinear_sample(
-                grids_a[layer], shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-            )
-            value_b, clamped_b = _bilinear_sample(
-                grids_b[layer], shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-            )
-            d = layer_data[layer]
-            d["value_a"].append(value_a)
-            d["value_b"].append(value_b)
-            d["delta"].append(value_b - value_a)
-            d["clamped"].append(clamped_a or clamped_b)
-
     layers_out = {}
     for layer in resolved_layers:
-        d = layer_data[layer]
-        abs_deltas = [abs(v) for v in d["delta"]]
+        info_a = result_a["layers"][layer]
+        value_a, clamped_a = info_a["values"], info_a["clamped"]
+        value_b: list[float] = []
+        clamped_b: list[bool] = []
+        for x, y in zip(xs, ys):
+            v, c = _bilinear_sample(
+                grids_b[layer], shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
+            )
+            value_b.append(v)
+            clamped_b.append(c)
+        delta = [vb - va for va, vb in zip(value_a, value_b)]
+        clamped = [ca or cb for ca, cb in zip(clamped_a, clamped_b)]
+        abs_deltas = [abs(v) for v in delta]
         stats = {
             "mean_abs_delta": sum(abs_deltas) / len(abs_deltas) if abs_deltas else None,
             "max_abs_delta": max(abs_deltas) if abs_deltas else None,
             "min_abs_delta": min(abs_deltas) if abs_deltas else None,
-            "clamped_count": sum(d["clamped"]),
+            "clamped_count": sum(clamped),
         }
         layers_out[layer] = {
-            "value_a": d["value_a"],
-            "value_b": d["value_b"],
-            "delta": d["delta"],
-            "clamped": d["clamped"],
+            "value_a": value_a,
+            "value_b": value_b,
+            "delta": delta,
+            "clamped": clamped,
             "stats": stats,
         }
 
     return {
-        "body": _body_label(target_name),
+        "body": result_a["body"],
         "batch_a": batch_a,
         "batch_b": batch_b,
         "every": every,
-        "frame_indices": frame_indices,
-        "times": times,
+        "frame_indices": result_a["frame_indices"],
+        "times": result_a["times"],
         "x": xs,
         "y": ys,
         "layers": layers_out,
     }
+
+
+def _write_csv(header: list[str], rows) -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow(row)
+    return buf.getvalue()
+
+
+def _singleton_note(result: dict) -> list[str]:
+    if not result["is_singleton"]:
+        return []
+    return ["  (terrain is singleton: same data for every batch)"]
+
+
+def _singleton_diff_note(result: dict) -> list[str]:
+    if not result["is_singleton"]:
+        return []
+    return [
+        "  (terrain is singleton: same data for every batch -- a nonzero "
+        "delta below likely indicates a bug)"
+    ]
 
 
 def format_point_text(result: dict) -> str:
@@ -783,8 +605,7 @@ def format_point_text(result: dict) -> str:
         f"Point ({result['point']['x']}, {result['point']['y']})  "
         f"batch={result['batch']}"
     ]
-    if result["is_singleton"]:
-        lines.append("  (terrain is singleton: same data for every batch)")
+    lines.extend(_singleton_note(result))
     for layer, info in result["layers"].items():
         note = (
             " (clamped: point is outside the terrain extent)" if info["clamped"] else ""
@@ -800,8 +621,7 @@ def format_area_text(result: dict) -> str:
         f"y=[{y_coords[0]:.4g}, {y_coords[-1]:.4g}]  "
         f"({len(x_coords)} x {len(y_coords)} points)  batch={result['batch']}"
     ]
-    if result["is_singleton"]:
-        lines.append("  (terrain is singleton: same data for every batch)")
+    lines.extend(_singleton_note(result))
     for layer, grid in result["layers"].items():
         lines.append(f"\n{layer}:")
         for row in grid:
@@ -810,25 +630,25 @@ def format_area_text(result: dict) -> str:
 
 
 def format_point_csv(result: dict) -> str:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["layer", "value", "clamped"])
-    for layer, info in result["layers"].items():
-        writer.writerow([layer, info["value"], info["clamped"]])
-    return buf.getvalue()
+    return _write_csv(
+        ["layer", "value", "clamped"],
+        (
+            [layer, info["value"], info["clamped"]]
+            for layer, info in result["layers"].items()
+        ),
+    )
 
 
 def format_area_csv(result: dict) -> str:
     layers = list(result["layers"])
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["x", "y", *layers])
-    for row_idx, y in enumerate(result["y_coords"]):
-        for col_idx, x in enumerate(result["x_coords"]):
-            writer.writerow(
-                [x, y, *(result["layers"][layer][row_idx][col_idx] for layer in layers)]
-            )
-    return buf.getvalue()
+    return _write_csv(
+        ["x", "y", *layers],
+        (
+            [x, y, *(result["layers"][layer][row_idx][col_idx] for layer in layers)]
+            for row_idx, y in enumerate(result["y_coords"])
+            for col_idx, x in enumerate(result["x_coords"])
+        ),
+    )
 
 
 def format_point_diff_text(result: dict) -> str:
@@ -836,11 +656,7 @@ def format_point_diff_text(result: dict) -> str:
         f"Point ({result['point']['x']}, {result['point']['y']})  "
         f"batch_a={result['batch_a']}  batch_b={result['batch_b']}"
     ]
-    if result["is_singleton"]:
-        lines.append(
-            "  (terrain is singleton: same data for every batch -- a nonzero "
-            "delta below likely indicates a bug)"
-        )
+    lines.extend(_singleton_diff_note(result))
     for layer, info in result["layers"].items():
         note = (
             " (clamped: point is outside the terrain extent)" if info["clamped"] else ""
@@ -860,11 +676,7 @@ def format_area_diff_text(result: dict) -> str:
         f"({len(x_coords)} x {len(y_coords)} points)  "
         f"batch_a={result['batch_a']}  batch_b={result['batch_b']}"
     ]
-    if result["is_singleton"]:
-        lines.append(
-            "  (terrain is singleton: same data for every batch -- a nonzero "
-            "delta below likely indicates a bug)"
-        )
+    lines.extend(_singleton_diff_note(result))
     for layer, grids in result["layers"].items():
         stats = grids["stats"]
         lines.append(
@@ -879,14 +691,13 @@ def format_area_diff_text(result: dict) -> str:
 
 
 def format_point_diff_csv(result: dict) -> str:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["layer", "value_a", "value_b", "delta", "clamped"])
-    for layer, info in result["layers"].items():
-        writer.writerow(
+    return _write_csv(
+        ["layer", "value_a", "value_b", "delta", "clamped"],
+        (
             [layer, info["value_a"], info["value_b"], info["delta"], info["clamped"]]
-        )
-    return buf.getvalue()
+            for layer, info in result["layers"].items()
+        ),
+    )
 
 
 def format_area_diff_csv(result: dict) -> str:
@@ -895,30 +706,20 @@ def format_area_diff_csv(result: dict) -> str:
     for layer in layers:
         header += [f"{layer}_a", f"{layer}_b", f"{layer}_delta"]
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(header)
-    for row_idx, y in enumerate(result["y_coords"]):
-        for col_idx, x in enumerate(result["x_coords"]):
-            row = [x, y]
-            for layer in layers:
-                grids = result["layers"][layer]
-                row += [
-                    grids["value_a"][row_idx][col_idx],
-                    grids["value_b"][row_idx][col_idx],
-                    grids["delta"][row_idx][col_idx],
-                ]
-            writer.writerow(row)
-    return buf.getvalue()
+    def _rows():
+        for row_idx, y in enumerate(result["y_coords"]):
+            for col_idx, x in enumerate(result["x_coords"]):
+                row = [x, y]
+                for layer in layers:
+                    grids = result["layers"][layer]
+                    row += [
+                        grids["value_a"][row_idx][col_idx],
+                        grids["value_b"][row_idx][col_idx],
+                        grids["delta"][row_idx][col_idx],
+                    ]
+                yield row
 
-
-# Independent copy of diff.py's same-named constant/helper -- see module
-# docstring.
-_MAX_SERIES_ROWS = 10
-
-
-def _cap(items: list, n: int = _MAX_SERIES_ROWS) -> tuple[list, bool]:
-    return items[:n], len(items) > n
+    return _write_csv(header, _rows())
 
 
 def format_along_text(result: dict) -> str:
@@ -951,7 +752,7 @@ def format_along_text(result: dict) -> str:
             *(result["layers"][layer]["values"] for layer in layer_names),
         )
     )
-    shown, truncated = _cap(rows)
+    shown, truncated = cap(rows, _MAX_SERIES_ROWS)
     lines.append(
         "\n  frame  time       x            y            " + "  ".join(layer_names)
     )
@@ -996,7 +797,7 @@ def format_along_diff_text(result: dict) -> str:
         info = result["layers"][layer]
         columns += [info["value_a"], info["value_b"], info["delta"]]
     rows = list(zip(*columns))
-    shown, truncated = _cap(rows)
+    shown, truncated = cap(rows, _MAX_SERIES_ROWS)
 
     header = "  ".join(f"{layer}_a/{layer}_b/{layer}_delta" for layer in layer_names)
     lines.append(f"\n  frame  time       x            y            {header}")
@@ -1021,19 +822,19 @@ def format_along_csv(result: dict) -> str:
     the numbers, in full" philosophy `--json` already uses everywhere in
     this CLI."""
     layers = list(result["layers"])
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["frame", "time", "x", "y", *layers])
-    for i in range(len(result["frame_indices"])):
-        row = [
-            result["frame_indices"][i],
-            result["times"][i],
-            result["x"][i],
-            result["y"][i],
-        ]
-        row += [result["layers"][layer]["values"][i] for layer in layers]
-        writer.writerow(row)
-    return buf.getvalue()
+
+    def _rows():
+        for i in range(len(result["frame_indices"])):
+            row = [
+                result["frame_indices"][i],
+                result["times"][i],
+                result["x"][i],
+                result["y"][i],
+            ]
+            row += [result["layers"][layer]["values"][i] for layer in layers]
+            yield row
+
+    return _write_csv(["frame", "time", "x", "y", *layers], _rows())
 
 
 def format_along_diff_csv(result: dict) -> str:
@@ -1044,18 +845,17 @@ def format_along_diff_csv(result: dict) -> str:
     for layer in layers:
         header += [f"{layer}_a", f"{layer}_b", f"{layer}_delta"]
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(header)
-    for i in range(len(result["frame_indices"])):
-        row = [
-            result["frame_indices"][i],
-            result["times"][i],
-            result["x"][i],
-            result["y"][i],
-        ]
-        for layer in layers:
-            info = result["layers"][layer]
-            row += [info["value_a"][i], info["value_b"][i], info["delta"][i]]
-        writer.writerow(row)
-    return buf.getvalue()
+    def _rows():
+        for i in range(len(result["frame_indices"])):
+            row = [
+                result["frame_indices"][i],
+                result["times"][i],
+                result["x"][i],
+                result["y"][i],
+            ]
+            for layer in layers:
+                info = result["layers"][layer]
+                row += [info["value_a"][i], info["value_b"][i], info["delta"][i]]
+            yield row
+
+    return _write_csv(header, _rows())

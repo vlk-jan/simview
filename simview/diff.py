@@ -3,13 +3,11 @@
 ground truth vs. prediction, baseline vs. post-adaptation) actually track
 each other.
 
-Deliberately dependency-free (stdlib only: json, base64, struct, math) so it
-works on a base install without the `authoring` extra (torch/einops/numpy)
--- see CLAUDE.md. Kept as its own module, independent of
-`simview/info.py`/`simview/terrain.py`, even though all three read the same
-wire format and duplicate small helpers (blob decoding) rather than sharing
-them -- see `simview/terrain.py`'s module docstring for the "independently
-reviewable" rationale this follows.
+Deliberately dependency-free (stdlib only: json, base64, struct, math via
+its imports) so it works on a base install without the `authoring` extra
+(torch/einops/numpy) -- see CLAUDE.md. Shares its blob-decoding and
+body-resolution helpers with `simview/terrain.py`/`simview/info.py` via
+`simview.columnar`/`simview.utils`, which are stdlib-only on this read path.
 
 Output is numbers, not a rendered visualization: `compute_trajectory_diff`
 returns a plain, JSON-serializable dict (full per-frame series included, no
@@ -18,90 +16,15 @@ truncation) for scripts/coding agents to consume directly, with
 same data.
 """
 
-import base64
 import csv
 import io
-import json
 import math
-import struct
-from pathlib import Path
-from typing import Any
 
-from simview.columnar import expand_columnar_states, is_columnar
-from simview.utils import read_maybe_gzipped_bytes
+from simview.columnar import body_key, decode_transform_row
+from simview.utils import body_label, cap, iter_names, resolve_body
+from simview.utils import load_scene as load_scene  # re-exported for __main__.py
 
-BLOB_PREFIX = "__b64__"
-
-# [x, y, z, w, qx, qy, qz] -- same width as server.py's
-# STATE_FIELD_WIDTHS["bodyTransform"] (kept in sync manually, not imported
-# -- see module docstring).
-_TRANSFORM_WIDTH = 7
 _MAX_SERIES_ROWS = 10
-
-
-def load_scene(path: str | Path) -> tuple[dict, list]:
-    """Read the scene JSON at `path` (transparently gunzipped) and return its
-    `(model, states)` sections. Raises `ValueError`/`json.JSONDecodeError` on
-    malformed input -- callers decide how to report that (see
-    `simview.__main__.run_diff`)."""
-    data = json.loads(read_maybe_gzipped_bytes(path))
-    if not isinstance(data, dict):
-        raise ValueError(
-            "scene file must contain a JSON object with 'model'/'states' keys"
-        )
-    model = data.get("model")
-    states = data.get("states")
-    if model is None:
-        raise ValueError("scene file has no 'model' section")
-    if states is None:
-        raise ValueError("scene file has no 'states' section")
-    if is_columnar(states):
-        # Columnar files (SimulationScene.save's default) are expanded to the
-        # per-frame layout the rest of this module walks. expand_columnar_states
-        # is stdlib-only, so this keeps the base-install guarantee.
-        states = expand_columnar_states(states, int(model.get("simBatches") or 1))
-    return model, states
-
-
-def _flat_floats(value: Any) -> list[float]:
-    """Independent copy of terrain.py's same-named helper (see module
-    docstring): flattens a `__b64__` blob or a plain, possibly nested, JSON
-    list into a flat list of floats, without numpy."""
-    if isinstance(value, str) and value.startswith(BLOB_PREFIX):
-        raw = base64.b64decode(value[len(BLOB_PREFIX) :])
-        n = len(raw) // 4
-        return list(struct.unpack(f"<{n}f", raw))
-
-    flat: list[float] = []
-
-    def _flatten(x: Any) -> None:
-        if isinstance(x, list):
-            for item in x:
-                _flatten(item)
-        else:
-            flat.append(float(x))
-
-    _flatten(value)
-    return flat
-
-
-def _decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[float]:
-    """Decode one state's `bodyTransform` field value for a single batch into
-    a flat 7-element `[x, y, z, w, qx, qy, qz]` row. Mirrors the shapes
-    `columnar.py`'s `_decode_state_field_rows` handles (blob = always
-    batch_size rows; plain list = nested one-row-per-batch, or flat 7 floats
-    when batch_size == 1), reimplemented without numpy."""
-    flat = _flat_floats(value)
-    if len(flat) == batch_size * _TRANSFORM_WIDTH:
-        start = batch_idx * _TRANSFORM_WIDTH
-        return flat[start : start + _TRANSFORM_WIDTH]
-    if len(flat) == _TRANSFORM_WIDTH and batch_size == 1:
-        return flat
-    raise ValueError(
-        f"bodyTransform has {len(flat)} floats; expected {_TRANSFORM_WIDTH} "
-        f"(batch_size=1, flat) or {batch_size * _TRANSFORM_WIDTH} "
-        f"({batch_size} batches x {_TRANSFORM_WIDTH})"
-    )
 
 
 def _build_body_meta(model_data: dict, state_names: list) -> dict[str, dict]:
@@ -118,7 +41,7 @@ def _build_body_meta(model_data: dict, state_names: list) -> dict[str, dict]:
                 "localTransform": entry.get("localTransform"),
             }
     for name in state_names:
-        for single in _iter_names(name):
+        for single in iter_names(name):
             meta.setdefault(single, {"parent": None, "localTransform": None})
     return meta
 
@@ -200,7 +123,7 @@ def _expand_raw_bodies(raw_bodies: list | None) -> dict:
         name = entry.get("name")
         if name is None:
             continue
-        for single in _iter_names(name):
+        for single in iter_names(name):
             expanded[single] = entry
     return expanded
 
@@ -221,7 +144,7 @@ def _resolve_frame(
         raw = raw_by_name.get(name)
         raw_row = None
         if raw is not None and "bodyTransform" in raw:
-            raw_row = _decode_transform_row(raw["bodyTransform"], batch_size, batch_idx)
+            raw_row = decode_transform_row(raw["bodyTransform"], batch_size, batch_idx)
 
         parent = body_meta["parent"]
         if parent is None:
@@ -254,18 +177,6 @@ def _quat_angle_deg(qa: list[float], qb: list[float]) -> float:
     return math.degrees(2 * math.acos(dot))
 
 
-def _body_key(name: Any) -> Any:
-    return tuple(name) if isinstance(name, list) else name
-
-
-def _body_label(name: Any) -> str:
-    return name if isinstance(name, str) else "+".join(str(n) for n in name)
-
-
-def _iter_names(name: Any):
-    yield from name if isinstance(name, list) else (name,)
-
-
 def _resolve_batches(model_data: dict, batch_a: int, batch_b: int) -> int:
     batch_size = int(model_data.get("simBatches") or 1)
     if batch_size < 2:
@@ -279,27 +190,6 @@ def _resolve_batches(model_data: dict, batch_a: int, batch_b: int) -> int:
     if batch_a == batch_b:
         raise ValueError("batch_a and batch_b must differ")
     return batch_size
-
-
-def _resolve_body(all_names: list, body: str | None) -> list:
-    if body is None:
-        return all_names
-    matches = [
-        name
-        for name in all_names
-        if _body_label(name) == body or body in _iter_names(name)
-    ]
-    if not matches:
-        available = ", ".join(_body_label(n) for n in all_names)
-        raise ValueError(
-            f"body '{body}' not found in any state; available bodies: {available}"
-        )
-    if len(matches) > 1:
-        labels = ", ".join(_body_label(n) for n in matches)
-        raise ValueError(
-            f"body '{body}' is ambiguous; matches {labels}; pass the full label instead"
-        )
-    return matches
 
 
 def _stats(values: list[float]) -> dict:
@@ -367,7 +257,7 @@ def compute_trajectory_diff(
             name = entry.get("name")
             if name is None:
                 continue
-            key = _body_key(name)
+            key = body_key(name)
             if key not in seen_keys:
                 seen_keys.add(key)
                 all_names.append(name)
@@ -381,20 +271,17 @@ def compute_trajectory_diff(
     # appear in the states at all -- they're only diffable now that poses are
     # resolved through the parent chain.
     for name in topo_order:
-        if (
-            meta[name]["localTransform"] is not None
-            and _body_key(name) not in seen_keys
-        ):
-            seen_keys.add(_body_key(name))
+        if meta[name]["localTransform"] is not None and body_key(name) not in seen_keys:
+            seen_keys.add(body_key(name))
             all_names.append(name)
 
-    target_names = _resolve_body(all_names, body)
+    target_names = resolve_body(all_names, body)
 
     # A grouped ("A+B") state entry shares one transform across its members, so
     # resolving the first member gives the group's pose.
-    lookup_names = {_body_key(name): next(_iter_names(name)) for name in target_names}
+    lookup_names = {body_key(name): next(iter_names(name)) for name in target_names}
     series: dict = {
-        _body_key(name): {
+        body_key(name): {
             "frame_indices": [],
             "times": [],
             "position_error": [],
@@ -416,7 +303,7 @@ def compute_trajectory_diff(
         rows_b = _resolve_frame(meta, topo_order, raw_by_name, batch_size, batch_b)
 
         for name in target_names:
-            key = _body_key(name)
+            key = body_key(name)
             row_a = rows_a.get(lookup_names[key])
             row_b = rows_b.get(lookup_names[key])
             if row_a is None or row_b is None:
@@ -433,8 +320,8 @@ def compute_trajectory_diff(
 
     bodies_out = {}
     for name in target_names:
-        out = series[_body_key(name)]
-        label = _body_label(name)
+        out = series[body_key(name)]
+        label = body_label(name)
         frame_indices = out["frame_indices"]
         times = out["times"]
         position_error = out["position_error"]
@@ -476,10 +363,6 @@ def compute_trajectory_diff(
         "per_axis": per_axis,
         "bodies": bodies_out,
     }
-
-
-def _cap(items: list, n: int = _MAX_SERIES_ROWS) -> tuple[list, bool]:
-    return items[:n], len(items) > n
 
 
 def format_diff_text(result: dict) -> str:
@@ -536,7 +419,7 @@ def format_diff_text(result: dict) -> str:
                 body["orientation_error_deg"],
             )
         )
-        shown, truncated = _cap(rows)
+        shown, truncated = cap(rows, _MAX_SERIES_ROWS)
         lines.append("  frame  time       pos_err      rot_err_deg")
         for frame_idx, t, p, r in shown:
             t_str = f"{t:.4g}" if isinstance(t, (int, float)) else str(t)

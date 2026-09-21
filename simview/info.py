@@ -7,8 +7,9 @@ install without the `authoring` extra (torch/einops/numpy) -- see
 CLAUDE.md. Does not import `simview.model`/`simview.server`: the former
 pulls in torch/einops at module scope, the latter fastapi/uvicorn just to
 reach a numpy-gated helper -- both wrong layering for a lightweight
-inspection tool, so the relevant constants/checks are duplicated in plain
-Python below.
+inspection tool. Shares its blob-decoding/body-label helpers with
+`simview/terrain.py`/`simview/diff.py` via `simview.columnar`/`simview.utils`,
+which are stdlib-only on this read path.
 """
 
 import base64
@@ -16,20 +17,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from simview.columnar import expand_columnar_states, is_columnar
-from simview.utils import read_maybe_gzipped_bytes
-
-BLOB_PREFIX = "__b64__"
-
-# Same fields/widths as columnar.py's STATE_FIELD_WIDTHS (kept in sync
-# manually, not imported -- see module docstring).
-_STATE_FIELD_WIDTHS = {
-    "bodyTransform": 7,
-    "velocity": 3,
-    "angularVelocity": 3,
-    "force": 3,
-    "torque": 3,
-}
+from simview.columnar import (
+    BLOB_PREFIX,
+    STATE_FIELD_WIDTHS,
+    expand_columnar_states,
+    is_blob,
+    is_columnar,
+)
+from simview.utils import body_label, cap, human_bytes, read_maybe_gzipped_bytes
 
 _MAX_DETAIL_ITEMS = 20
 _LARGE_FILE_BYTES = 100_000_000
@@ -37,32 +32,13 @@ _LARGE_FILE_BYTES = 100_000_000
 
 def _blob_byte_length(value: Any) -> int | None:
     """Decoded byte length if `value` is a `__b64__` blob string, else None."""
-    if isinstance(value, str) and value.startswith(BLOB_PREFIX):
+    if is_blob(value):
         return len(base64.b64decode(value[len(BLOB_PREFIX) :]))
     return None
 
 
 def _encoding_of(value: Any) -> str:
-    if isinstance(value, str) and value.startswith(BLOB_PREFIX):
-        return "blob"
-    return "plain"
-
-
-def _cap(items: list, n: int = _MAX_DETAIL_ITEMS) -> tuple[list, bool]:
-    return items[:n], len(items) > n
-
-
-def _human_bytes(n: int) -> str:
-    size = float(n)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{size:.1f}{unit}" if unit != "B" else f"{int(size)}B"
-        size /= 1024
-    return f"{size:.1f}GB"
-
-
-def _body_label(name: Any) -> str:
-    return name if isinstance(name, str) else "+".join(str(n) for n in name)
+    return "blob" if is_blob(value) else "plain"
 
 
 def _summarize_terrain(terrain: dict) -> dict:
@@ -116,7 +92,7 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
         }
         for b in bodies
     ]
-    shown_bodies, bodies_truncated = _cap(body_entries)
+    shown_bodies, bodies_truncated = cap(body_entries, _MAX_DETAIL_ITEMS)
 
     static_objects = model.get("staticObjects") or []
     singleton_count = sum(1 for s in static_objects if s.get("isSingleton", True))
@@ -124,7 +100,7 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
         {"name": s.get("name"), "is_singleton": s.get("isSingleton", True)}
         for s in static_objects
     ]
-    shown_so, so_truncated = _cap(so_entries)
+    shown_so, so_truncated = cap(so_entries, _MAX_DETAIL_ITEMS)
 
     return {
         "batch_size": model.get("simBatches"),
@@ -225,7 +201,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
                     f"scalar '{name}' in frame {i} has length {length}; "
                     f"expected {batch_size}"
                 )
-        shown_missing, missing_truncated = _cap(missing)
+        shown_missing, missing_truncated = cap(missing, _MAX_DETAIL_ITEMS)
         scalars_summary[name] = {
             "present_in_all_frames": not missing,
             "missing_in_frames": shown_missing,
@@ -271,7 +247,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
                         f"body '{name}' first appears at state {idx}, not state 0"
                     )
 
-            fields = sorted(k for k in body if k in _STATE_FIELD_WIDTHS)
+            fields = sorted(k for k in body if k in STATE_FIELD_WIDTHS)
             body_fields_by_frame[key][idx] = fields
             body_frames_present[key].append(idx)
             for field in fields:
@@ -284,7 +260,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
     bodies_summary = {}
     for key in body_order:
         name = body_name_value[key]
-        label = _body_label(name)
+        label = body_label(name)
         first_frame = body_first_frame[key]
         frames_present = body_frames_present[key]
         expected_frames = set(range(first_frame, frame_count))
@@ -326,7 +302,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
                 "exempt from columnar packing)"
             )
 
-        shown_missing, missing_truncated = _cap(missing_frames)
+        shown_missing, missing_truncated = cap(missing_frames, _MAX_DETAIL_ITEMS)
         bodies_summary[label] = {
             "first_frame": first_frame,
             "present_in_all_frames_after_first": not missing_frames,
@@ -338,7 +314,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
         }
 
     body_items = list(bodies_summary.items())
-    shown_body_items, bodies_truncated = _cap(body_items)
+    shown_body_items, bodies_truncated = cap(body_items, _MAX_DETAIL_ITEMS)
 
     if reasons and layout == "legacy":
         # Only worth warning about for a legacy file, where it means the viewer
@@ -399,7 +375,7 @@ def summarize_scene(path: str | Path) -> dict:
     size_bytes = path.stat().st_size
     if size_bytes > _LARGE_FILE_BYTES:
         warnings.append(
-            f"file is large ({_human_bytes(size_bytes)}); consider gzip compression"
+            f"file is large ({human_bytes(size_bytes)}); consider gzip compression"
         )
 
     return {
@@ -439,7 +415,7 @@ def format_text(summary: dict) -> str:
     f = summary["file"]
     lines.append(f"File: {f['path']}")
     lines.append(
-        f"  Size: {_human_bytes(f['size_bytes'])}   Gzipped: {'yes' if f['gzipped'] else 'no'}"
+        f"  Size: {human_bytes(f['size_bytes'])}   Gzipped: {'yes' if f['gzipped'] else 'no'}"
     )
     lines.append(f"  Top-level keys: {', '.join(f['top_level_keys']) or '(none)'}")
 
