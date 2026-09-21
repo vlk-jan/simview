@@ -17,12 +17,10 @@ own copy of a shared ground truth doesn't mean merging that ground truth once
 per file.
 """
 
-import base64
 import bisect
 import json
 import logging
 import re
-import struct
 from pathlib import Path
 from typing import Sequence
 
@@ -31,7 +29,13 @@ try:
 except ImportError:
     orjson = None
 
-from .columnar import expand_columnar_states, is_columnar
+from .columnar import (
+    blob_floats,
+    encode_floats,
+    expand_columnar_states,
+    is_blob,
+    is_columnar,
+)
 from .utils import read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.merge")
@@ -180,32 +184,13 @@ def _output_sizes(
     ]
 
 
-def _decode_b64_floats(value) -> tuple[float, ...] | None:
-    """Decode a binary ``__b64__`` blob to a flat tuple of floats, or return
-    None if `value` isn't such a blob (e.g. it's an already-batched plain
-    list). Kept dependency-free (no numpy/torch) so it works in
-    viewing-only installs."""
-    if not (isinstance(value, str) and value.startswith("__b64__")):
-        return None
-    raw = base64.b64decode(value[7:])
-    return struct.unpack(f"<{len(raw) // 4}f", raw)
-
-
-def _encode_b64_floats(flat: list[float]) -> str:
-    """Inverse of `_decode_b64_floats`: pack a flat float list as a
-    little-endian float32 ``__b64__`` blob string."""
-    return "__b64__" + base64.b64encode(struct.pack(f"<{len(flat)}f", *flat)).decode(
-        "ascii"
-    )
-
-
 def _decode_state_field(value, width: int):
     """Expand a binary ``__b64__`` per-body state field to a list of per-batch
     rows. Plain lists pass through unchanged, so merged output is always JSON
     lists regardless of whether inputs used binary encoding."""
-    flat = _decode_b64_floats(value)
-    if flat is None:
+    if not is_blob(value):
         return value
+    flat = blob_floats(value)
     return [list(flat[i : i + width]) for i in range(0, len(flat), width)]
 
 
@@ -233,15 +218,14 @@ def _decode_per_batch(
     `list[batch][vertex][xyz]` shape -- otherwise each batch would stay a
     flat float list, which is indistinguishable on the JS side from a single
     unbatched list of vectors (see Terrain.js's #normalizeVectorField)."""
-    flat = _decode_b64_floats(value)
-    if flat is None:
-        # `_decode_b64_floats` only returns None for non-`__b64__` input, and
-        # the only `str` values these terrain fields ever take on are
+    if not is_blob(value):
+        # The only `str` values these terrain fields ever take on are
         # `__b64__` blobs (see `_expand_batched`, which requires a `str` here
         # to start with that prefix) -- so a plain (non-b64) `value` is
         # always a `list` at this point.
         assert isinstance(value, list)
         return value
+    flat = blob_floats(value)
     per_row = resolution * (vector_width or 1)
     if len(flat) == per_row:
         # One shared row (deduplicated singleton terrain).
@@ -343,7 +327,7 @@ def _expand_batched(
     # or batch_size rows for per-batch / legacy broadcast-singleton data) and
     # replicates the shared case itself. Only plain lists (where the row count
     # is directly observable) may need broadcasting below.
-    if isinstance(values, str) and values.startswith("__b64__"):
+    if is_blob(values):
         return values
 
     if len(values) == batch_size:
@@ -494,11 +478,12 @@ def _merge_embedding(
     for model, value, batch_size, label, selection in zip(
         models, values, batch_sizes, labels, selections
     ):
-        flat = _decode_b64_floats(value)
-        if flat is None:
+        if is_blob(value):
+            flat = blob_floats(value)
+        else:
             # Real producers always blob-encode embeddings; a plain list is
             # a flat single-batch array (see Terrain.js #initEmbeddingData).
-            flat = tuple(float(x) for x in value)
+            flat = [float(x) for x in value]
         if len(flat) % resolution != 0:
             raise ValueError(
                 f"'{label}': embeddingData has {len(flat)} floats, not a "
@@ -547,7 +532,7 @@ def _merge_embedding(
     for rows in per_file_rows:
         for row in rows:
             merged_flat.extend(row)
-    return _encode_b64_floats(merged_flat)
+    return encode_floats(merged_flat)
 
 
 def _merge_terrain(
