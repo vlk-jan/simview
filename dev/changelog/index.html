@@ -1157,7 +1157,59 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v4.2.1...HEAD">Unreleased</a></h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v5.0.0...HEAD">Unreleased</a></h2>
+<h2 id="500-2026-09-21"><a href="https://github.com/vlk-jan/simview/compare/v4.2.1...v5.0.0">5.0.0</a> - 2026-09-21</h2>
+<p>A cleanup release: no new features, roughly a thousand lines less code, two Python
+dependencies and two vendored JavaScript libraries gone. The scene JSON wire format
+and the Python authoring API (<code>SimulationScene</code>, <code>SimViewBody</code>, <code>BodyTrajectory</code>,
+<code>SimViewModel</code>) are <strong>unchanged</strong> — a scene written by 4.x loads in 5.0.0 and vice
+versa, and authoring code needs no edits.</p>
+<h3 id="removed">Removed</h3>
+<ul>
+<li><strong>The PNG-sequence recording format.</strong> The viewer's recording dropdown offered
+  WEBM / MP4 / PNG; PNG captured each frame as a PNG blob and packed the run into a
+  <code>.tar</code>, which was the only reason <code>tar.js</code> and <code>download.js</code> were vendored. Both
+  libraries are gone with it. <strong>WEBM and MP4 are unaffected</strong>, as is the single-frame
+  PNG screenshot button, which is a separate feature.</li>
+<li><strong>The <code>jinja2</code> dependency.</strong> It rendered six <code>url_for('static', ...)</code> calls that all
+  resolved to the constant <code>/static/</code> prefix; <code>index.html</code> now hardcodes them.</li>
+<li><strong><code>einops</code> from the <code>authoring</code> extra.</strong> Its four <code>rearrange()</code> calls are expressible
+  in plain <code>torch</code>, which <code>model.py</code> already requires. If your own code imports
+  <code>einops</code> while relying on <code>simview[authoring]</code> to install it, declare it yourself.</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong>The CLI now uses real argparse subcommands.</strong> Every documented invocation is
+  unchanged — <code>simview info &lt;file&gt;</code>, <code>simview diff &lt;file&gt; --batches 0 1</code>,
+  <code>simview terrain &lt;file&gt; --area --layer all --json</code> — and output, CSV/JSON rendering
+  and the <code>0</code> / <code>1</code> / <code>2</code> exit codes are byte-for-byte identical. Per-subcommand
+  <code>--help</code> is now scoped, so flags no longer have to explain which subcommand they
+  belong to.
+  <strong>Breaking:</strong> a flag written <em>before</em> its subcommand (<code>simview --json info x.json</code>)
+  is no longer accepted. Write it after the file, as the documentation has always
+  shown: <code>simview info x.json --json</code>.</li>
+<li><strong>The <code>grayscale</code>, <code>heatmap</code> and <code>terrain</code> color maps now come from the bundled
+  matplotlib maps</strong> (<code>Greys_r</code>, <code>jet</code>, <code>terrain</code>) instead of hand-rolled ramps. Scenes
+  using those three names by name will look slightly different; every other map,
+  including the default <code>magma</code>, is unchanged.</li>
+<li><strong><code>/blob</code> Range handling</strong> now honours only <code>bytes=start-end</code>, the one form the
+  viewer sends. Suffix (<code>bytes=-N</code>), open-ended (<code>bytes=N-</code>) and multi-range requests
+  serve the whole blob with <code>200</code> instead of a partial response, which RFC 9110 permits
+  for a range a server declines. A well-formed but out-of-range request still returns
+  <code>416</code>.</li>
+</ul>
+<h3 id="internal">Internal</h3>
+<ul>
+<li>The stdlib-only inspection tools (<code>info</code>, <code>diff</code>, <code>terrain</code>) no longer hand-copy the
+  same blob decoding, body-name resolution and scene loading; the shared helpers live
+  in <code>columnar.py</code> and <code>utils.py</code>. <code>terrain.py</code>'s cross-batch queries now call their
+  single-batch counterparts instead of duplicating them.</li>
+<li>441 lines of CSS-in-JS moved from six UI panels into <code>controls.css</code>, and the three
+  uPlot panels share one chart-setup helper.</li>
+<li>Dead frontend config removed (<code>GROUND_CONFIG</code>, <code>POINT_VECTOR_CONFIG</code>,
+  <code>CONTACT_CONFIG</code>, <code>createArrows</code>, and six <code>CONTROLS_CONFIG</code> keys that either restated
+  three.js defaults or overwrote an OrbitControls method with a boolean).</li>
+</ul>
 <h2 id="421-2026-09-02"><a href="https://github.com/vlk-jan/simview/compare/v4.2.0...v4.2.1">4.2.1</a> - 2026-09-02</h2>
 <h3 id="added">Added</h3>
 <ul>
@@ -1254,7 +1306,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   resident, since trails, error metrics, the terrain profile and the scalar plots all
   walk the entire trajectory.</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed_1">Changed</h3>
 <ul>
 <li><code>SimulationScene.save()</code> writes columnar <code>states</code> by default. Files stay readable
   by <code>load</code>, <code>merge_simulation_files</code>, <code>simview info</code>/<code>diff</code>/<code>terrain</code> and the viewer
@@ -1308,7 +1360,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   origin regex it let any other local dev server read scene data with the user's
   credentials. The API uses no cookies or auth headers, so nothing needed it.</li>
 </ul>
-<h3 id="removed">Removed</h3>
+<h3 id="removed_1">Removed</h3>
 <ul>
 <li>The ctrl+drag box-selection code path, which never worked — it crashed on mouseup,
   raycast against an always-empty list, and checked event keys that don't exist. Click
@@ -1418,7 +1470,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   developer guide, published to GitHub Pages. <code>README.md</code> is trimmed to a
   landing page that links to it.</li>
 </ul>
-<h3 id="changed_1">Changed</h3>
+<h3 id="changed_2">Changed</h3>
 <ul>
 <li>The Error Metrics panel auto-selects a sensible Batch A/B default from
   batch names (e.g. ground-truth vs. post-adaptation) instead of always
@@ -1440,7 +1492,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>--csv</code> output for <code>simview diff</code> and <code>simview terrain</code>, alongside the
   existing <code>--json</code>.</li>
 </ul>
-<h3 id="changed_2">Changed</h3>
+<h3 id="changed_3">Changed</h3>
 <ul>
 <li>Only emit uvicorn's access log when running in debug mode.</li>
 </ul>
@@ -1451,14 +1503,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Test against Python 3.14 in CI and advertise it in the package classifiers.</li>
 <li>Dependabot configuration for GitHub Actions, npm, and Python dependencies.</li>
 </ul>
-<h3 id="changed_3">Changed</h3>
+<h3 id="changed_4">Changed</h3>
 <ul>
 <li>Bump the PyPI development-status classifier to <code>5 - Production/Stable</code>.</li>
 <li>Use uvicorn's modern sansio websocket implementation for the live server when
   available, silencing the <code>websockets.legacy</code> deprecation warning.</li>
 <li>Raise the CI coverage floor from 80% to 83%.</li>
 </ul>
-<h3 id="removed_1">Removed</h3>
+<h3 id="removed_2">Removed</h3>
 <ul>
 <li>Unused <code>collapsedMode</code>/<code>focusedMode</code> placeholder flags from <code>BatchManager</code>.</li>
 </ul>
@@ -1469,7 +1521,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   hash so a view can be restored or handed off.</li>
 <li>Single-frame PNG screenshot export.</li>
 </ul>
-<h3 id="changed_4">Changed</h3>
+<h3 id="changed_5">Changed</h3>
 <ul>
 <li>Prepare packaging for PyPI publishing (metadata, build, publish workflow).</li>
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
@@ -1490,7 +1542,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Smooth interpolated playback (position lerp + quaternion slerp) with a toggle.</li>
 <li>Error-metric summary stats and CSV export in the analysis panel.</li>
 </ul>
-<h3 id="changed_5">Changed</h3>
+<h3 id="changed_6">Changed</h3>
 <ul>
 <li>Vendor three.js and chroma-js locally so the viewer works fully offline.</li>
 <li>Serve states as per-body whole-trajectory binary columns ("v4" columnar
