@@ -573,35 +573,10 @@ export class UIControls {
             setTimeout(() => controller.name(originalName), 1500);
         };
 
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(url).then(
-                () => showFeedback("Copied!"),
-                () => this.#fallbackCopyToClipboard(url, showFeedback)
-            );
-        } else {
-            this.#fallbackCopyToClipboard(url, showFeedback);
-        }
-    }
-
-    // execCommand("copy") fallback for browsers/contexts without the async
-    // Clipboard API (e.g. insecure contexts) -- a throwaway offscreen
-    // textarea is the standard workaround.
-    #fallbackCopyToClipboard(text, showFeedback) {
-        try {
-            const textarea = document.createElement("textarea");
-            textarea.value = text;
-            textarea.style.position = "fixed";
-            textarea.style.opacity = "0";
-            document.body.appendChild(textarea);
-            textarea.focus();
-            textarea.select();
-            const ok = document.execCommand("copy");
-            document.body.removeChild(textarea);
-            showFeedback(ok ? "Copied!" : "Copy failed");
-        } catch (e) {
-            console.warn("Failed to copy view link to clipboard:", e);
-            showFeedback("Copy failed");
-        }
+        navigator.clipboard.writeText(url).then(
+            () => showFeedback("Copied!"),
+            () => showFeedback("Copy failed")
+        );
     }
 
     // Applies a decoded view-state's toggles/bodyVisualizationMode/

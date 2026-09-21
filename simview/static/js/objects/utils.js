@@ -12,22 +12,6 @@ export function toFlatFloat32Array(data) {
 }
 
 // Default configurations
-const DEFAULT_GEOMETRY_CONFIG = {
-    box: {
-        widthSegments: 1,
-        heightSegments: 1,
-        depthSegments: 1,
-    },
-    sphere: {
-        widthSegments: 32,
-        heightSegments: 16,
-    },
-    cylinder: {
-        radialSegments: 32,
-        heightSegments: 1,
-    },
-};
-
 const DEFAULT_POINTS_CONFIG = {
     size: 1,
     opacity: 1,
@@ -65,7 +49,10 @@ const DEFAULT_ARROW_CONFIG = {
  */
 export function createGeometry(shape, geometryConfig) {
     if (!shape || !shape.type) return null;
-    const config = { ...DEFAULT_GEOMETRY_CONFIG, ...geometryConfig };
+    // No box/sphere/cylinder defaults here: every real caller (Body.js,
+    // StaticObject.js) always passes a fully-populated geometry config
+    // (BODY_CONFIG.geometry / STATIC_OBJECT_CONFIG.geometry).
+    const config = geometryConfig || {};
     let geometry;
 
     switch (shape.type) {
@@ -353,30 +340,6 @@ export function createArrow(start, end, arrowConfig = {}) {
 
     arrow.line.material.linewidth = config.lineWidth;
     return arrow;
-}
-
-/**
- * Creates multiple arrows from arrays of start and end points
- * @param {THREE.Vector3[]} starts - Array of starting points
- * @param {THREE.Vector3[]} ends - Array of end points
- * @param {ArrowConfig|ArrowConfig[]} configs - Single config or array of configs for each arrow
- * @returns {THREE.Group} Group containing all created arrows
- */
-export function createArrows(starts, ends, configs = {}) {
-    if (starts.length !== ends.length) {
-        console.error("Number of start and end points must match");
-        return null;
-    }
-
-    const arrowGroup = new THREE.Group();
-
-    starts.forEach((start, index) => {
-        const config = Array.isArray(configs) ? configs[index] : configs;
-        const arrow = createArrow(start, ends[index], config);
-        arrowGroup.add(arrow);
-    });
-
-    return arrowGroup;
 }
 
 export function generateDivergingPalette(colors, numColors, correctLightness) {

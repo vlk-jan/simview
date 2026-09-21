@@ -165,8 +165,8 @@ export class Terrain {
         const surfaceMaterial = new THREE.MeshPhongMaterial({
             vertexColors: true,
             side: THREE.DoubleSide,
-            flatShading: TERRAIN_CONFIG.flatShading || false,
-            shininess: TERRAIN_CONFIG.shininess || 10,
+            flatShading: false,
+            shininess: 10,
         });
 
         const wireframeMaterial = new THREE.MeshBasicMaterial({
@@ -353,7 +353,7 @@ export class Terrain {
             this.app.uiState.terrainVisualizationModes.normals || false;
 
         // Create a helper arrow for each normal
-        const normalLength = TERRAIN_CONFIG.normalLength || 0.5;
+        const normalLength = TERRAIN_CONFIG.normalLength;
         const skipFactor = Math.max(
             1,
             Math.floor(resolutionX / TERRAIN_CONFIG.skipNormalCells)

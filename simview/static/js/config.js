@@ -38,15 +38,9 @@ export const CONTROLS_CONFIG = {
     // Also a floor, widened alongside the far plane so the whole scene can
     // actually be framed on a large map (see Scene.applySceneExtent).
     maxDistance: 500,
-    enableDamping: false,
-    dampingFactor: 0.05,
-    screenSpacePanning: true,
-    maxPolarAngle: Math.PI,
-    enablePan: true,
     panSpeed: 2.0,
     rotateSpeed: 1.5,
     zoomSpeed: 1.2,
-    listenToKeyEvents: true,
 };
 
 export const SCENE_CONFIG = {
@@ -84,21 +78,14 @@ export const LIGHTING_CONFIG = {
     },
 };
 
-export const GROUND_CONFIG = {
-    size: 1000, // Size of the ground plane
-    divisions: 100, // Number of grid divisions
-    mainColor: 0x444444, // Main ground color
-    gridColor: 0x888888, // Grid line color
-    position: [0, 0, 0], // Position of the ground plane
-    rotation: [0, 0, 0], // Rotation of the ground plane
-};
-
 export const TERRAIN_CONFIG = {
     skipNormalCells: 10,
     normalLength: 0.2,
 };
 
-export const BODY_CONFIG = {
+// Bodies and static objects render with identical shapes/materials except
+// for point size (bodies are smaller markers than static-object points).
+const SHAPE_CONFIG = {
     geometry: {
         box: {
             widthSegments: 4,
@@ -118,7 +105,6 @@ export const BODY_CONFIG = {
         color: 0x4080ff,
     },
     points: {
-        size: 0.1,
         opacity: 0.7,
         alphaTest: 0.5,
         transparent: false,
@@ -131,6 +117,11 @@ export const BODY_CONFIG = {
         transparent: false,
         texture: "static/textures/contacts/red-cross0.png",
     },
+};
+
+export const BODY_CONFIG = {
+    ...SHAPE_CONFIG,
+    points: { ...SHAPE_CONFIG.points, size: 0.1 },
 };
 
 export const SCALAR_PLOTTER_CONFIG = {
@@ -165,27 +156,6 @@ export const BODY_VECTOR_CONFIG = {
     },
 };
 
-export const POINT_VECTOR_CONFIG = {
-    // Contact Normal (n)
-    contactNormal: {
-        color: 0xff0000,
-        scale: 0.5,
-        visible: false,
-    },
-};
-
-export const CONTACT_CONFIG = {
-    points: {
-        size: 0.5,
-        opacity: 1.0,
-        texture: "static/textures/contacts/red-cross0.png",
-        transparent: false,
-    },
-    normals: {
-        color: 0xff0000,
-    },
-};
-
 export const RAYCAST_CONFIG = {
     // THREE.Raycaster's default Points.threshold is 1 world unit -- far too
     // generous at BODY_CONFIG.points.size (0.1), where it would make every
@@ -200,36 +170,6 @@ export const BATCH_PALETTE_GENERATION_CONFIG = {
 };
 
 export const STATIC_OBJECT_CONFIG = {
-    geometry: {
-        box: {
-            widthSegments: 4,
-            heightSegments: 4,
-            depthSegments: 4,
-        },
-        sphere: {
-            widthSegments: 16,
-            heightSegments: 16,
-        },
-        cylinder: {
-            radialSegments: 32,
-            heightSegments: 4,
-        },
-    },
-    wireframe: {
-        color: 0x4080ff,
-    },
-    points: {
-        size: 0.2,
-        opacity: 0.7,
-        alphaTest: 0.5,
-        transparent: false,
-        texture: "static/textures/points/ball1.png",
-    },
-    contactPoints: {
-        size: 0.7,
-        opacity: 1.0,
-        alphaTest: 0.5,
-        transparent: false,
-        texture: "static/textures/contacts/red-cross0.png",
-    },
+    ...SHAPE_CONFIG,
+    points: { ...SHAPE_CONFIG.points, size: 0.2 },
 };
