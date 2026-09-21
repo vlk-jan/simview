@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-09-21
+
+A cleanup release: no new features, roughly a thousand lines less code, two Python
+dependencies and two vendored JavaScript libraries gone. The scene JSON wire format
+and the Python authoring API (`SimulationScene`, `SimViewBody`, `BodyTrajectory`,
+`SimViewModel`) are **unchanged** — a scene written by 4.x loads in 5.0.0 and vice
+versa, and authoring code needs no edits.
+
+### Removed
+
+- **The PNG-sequence recording format.** The viewer's recording dropdown offered
+  WEBM / MP4 / PNG; PNG captured each frame as a PNG blob and packed the run into a
+  `.tar`, which was the only reason `tar.js` and `download.js` were vendored. Both
+  libraries are gone with it. **WEBM and MP4 are unaffected**, as is the single-frame
+  PNG screenshot button, which is a separate feature.
+- **The `jinja2` dependency.** It rendered six `url_for('static', ...)` calls that all
+  resolved to the constant `/static/` prefix; `index.html` now hardcodes them.
+- **`einops` from the `authoring` extra.** Its four `rearrange()` calls are expressible
+  in plain `torch`, which `model.py` already requires. If your own code imports
+  `einops` while relying on `simview[authoring]` to install it, declare it yourself.
+
+### Changed
+
+- **The CLI now uses real argparse subcommands.** Every documented invocation is
+  unchanged — `simview info <file>`, `simview diff <file> --batches 0 1`,
+  `simview terrain <file> --area --layer all --json` — and output, CSV/JSON rendering
+  and the `0` / `1` / `2` exit codes are byte-for-byte identical. Per-subcommand
+  `--help` is now scoped, so flags no longer have to explain which subcommand they
+  belong to.
+  **Breaking:** a flag written *before* its subcommand (`simview --json info x.json`)
+  is no longer accepted. Write it after the file, as the documentation has always
+  shown: `simview info x.json --json`.
+- **The `grayscale`, `heatmap` and `terrain` color maps now come from the bundled
+  matplotlib maps** (`Greys_r`, `jet`, `terrain`) instead of hand-rolled ramps. Scenes
+  using those three names by name will look slightly different; every other map,
+  including the default `magma`, is unchanged.
+- **`/blob` Range handling** now honours only `bytes=start-end`, the one form the
+  viewer sends. Suffix (`bytes=-N`), open-ended (`bytes=N-`) and multi-range requests
+  serve the whole blob with `200` instead of a partial response, which RFC 9110 permits
+  for a range a server declines. A well-formed but out-of-range request still returns
+  `416`.
+
+### Internal
+
+- The stdlib-only inspection tools (`info`, `diff`, `terrain`) no longer hand-copy the
+  same blob decoding, body-name resolution and scene loading; the shared helpers live
+  in `columnar.py` and `utils.py`. `terrain.py`'s cross-batch queries now call their
+  single-batch counterparts instead of duplicating them.
+- 441 lines of CSS-in-JS moved from six UI panels into `controls.css`, and the three
+  uPlot panels share one chart-setup helper.
+- Dead frontend config removed (`GROUND_CONFIG`, `POINT_VECTOR_CONFIG`,
+  `CONTACT_CONFIG`, `createArrows`, and six `CONTROLS_CONFIG` keys that either restated
+  three.js defaults or overwrote an OrbitControls method with a boolean).
+
+
 ## [4.2.1] - 2026-09-02
 
 ### Added
@@ -383,7 +438,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v4.2.1...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/vlk-jan/simview/compare/v4.2.1...v5.0.0
 [4.2.1]: https://github.com/vlk-jan/simview/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/vlk-jan/simview/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/vlk-jan/simview/compare/v4.0.0...v4.1.0
