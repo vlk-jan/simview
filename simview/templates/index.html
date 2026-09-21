@@ -8,14 +8,8 @@
       content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
     />
     <link rel="icon" type="image/x-icon" href="data:image/x-icon;," />
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', path='css/controls.css') }}"
-    />
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', path='lib/uPlot.min.css') }}"
-    />
+    <link rel="stylesheet" href="/static/css/controls.css" />
+    <link rel="stylesheet" href="/static/lib/uPlot.min.css" />
     <style>
       body {
         margin: 0;
@@ -56,17 +50,14 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "{{ url_for('static', path='lib/three-0.174.0/three.module.js') }}",
-          "three/addons/": "{{ url_for('static', path='lib/three-0.174.0/addons/') }}",
-          "chroma": "{{ url_for('static', path='lib/chroma-js-3.1.2/index.min.js') }}"
+          "three": "/static/lib/three-0.174.0/three.module.js",
+          "three/addons/": "/static/lib/three-0.174.0/addons/",
+          "chroma": "/static/lib/chroma-js-3.1.2/index.min.js"
         }
       }
     </script>
 
-    <script
-      type="module"
-      src="{{ url_for('static', path='js/main.js') }}?v={{ t }}"
-    ></script>
+    <script type="module" src="/static/js/main.js"></script>
     <script>
       console.log("SimView index.html loaded");
       window.onerror = function(msg, url, line, col, error) {

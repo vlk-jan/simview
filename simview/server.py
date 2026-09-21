@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import secrets
-import time
 from collections import deque
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
@@ -27,17 +26,17 @@ from importlib.resources import files
 import uvicorn
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.types import Scope
 
-from simview.columnar import columnarize_states, is_columnar
+from simview.columnar import BLOB_PREFIX, columnarize_states, is_columnar
 from simview.utils import find_free_port, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.server")
 
-TEMPLATES = str(files("simview").joinpath("templates"))
+INDEX_HTML = str(files("simview").joinpath("templates", "index.html"))
 STATIC = str(files("simview").joinpath("static"))
 
 # Local-only viewer: CORS is restricted to localhost/127.0.0.1 on any port so a
@@ -194,14 +193,15 @@ class SimViewServer:
             allow_headers=["*"],
         )
 
-        # Mount static files and setup templates. StaticFiles adds ETag/Last-Modified
-        # headers so unchanged assets (vendored libs, textures) are served from cache;
-        # our own JS is cache-busted via the ?v= query param in index.html. The
-        # Cache-Control subclass additionally marks vendored libs as immutable.
+        # Mount static files. StaticFiles adds ETag/Last-Modified headers so
+        # unchanged assets (vendored libs, textures, our own JS) are served
+        # from cache; the Cache-Control subclass additionally marks vendored
+        # libs as immutable and everything else short-lived (max-age=60), so
+        # index.html's hardcoded /static/... paths never need a cache-busting
+        # query param.
         self.app.mount(
             "/static", CacheControlStaticFiles(directory=STATIC), name="static"
         )
-        self.templates = Jinja2Templates(directory=TEMPLATES)
 
         # Pre-serialized, gzipped payloads for HTTP serving. The parsed dicts are
         # discarded after compression to avoid holding the simulation twice in memory.
@@ -302,17 +302,17 @@ class SimViewServer:
         def extract_blobs(obj):
             if isinstance(obj, dict):
                 for k, v in obj.items():
-                    if isinstance(v, str) and v.startswith("__b64__"):
+                    if isinstance(v, str) and v.startswith(BLOB_PREFIX):
                         blob_id = len(self.blobs)
-                        self.blobs.append(base64.b64decode(v[7:]))
+                        self.blobs.append(base64.b64decode(v[len(BLOB_PREFIX) :]))
                         obj[k] = f"/blob/{self._blob_token}/{blob_id}"
                     else:
                         extract_blobs(v)
             elif isinstance(obj, list):
                 for i, v in enumerate(obj):
-                    if isinstance(v, str) and v.startswith("__b64__"):
+                    if isinstance(v, str) and v.startswith(BLOB_PREFIX):
                         blob_id = len(self.blobs)
-                        self.blobs.append(base64.b64decode(v[7:]))
+                        self.blobs.append(base64.b64decode(v[len(BLOB_PREFIX) :]))
                         obj[i] = f"/blob/{self._blob_token}/{blob_id}"
                     else:
                         extract_blobs(v)
@@ -367,12 +367,8 @@ class SimViewServer:
 
     def setup_routes(self):
         @self.app.get("/")
-        async def index(request: Request):
-            return self.templates.TemplateResponse(
-                request=request,
-                name="index.html",
-                context={"request": request, "t": int(time.time())},
-            )
+        async def index():
+            return FileResponse(INDEX_HTML, media_type="text/html")
 
         _gzip_headers = {"Content-Encoding": "gzip"}
 

@@ -7,7 +7,6 @@ from typing import Any, cast
 
 import numpy as np
 import torch
-from einops import rearrange
 
 logger = logging.getLogger("simview.model")
 
@@ -234,11 +233,9 @@ class SimViewTerrain:
         max_z = heightmap.max().item()
         extent_x = max_x - min_x
         extent_y = max_y - min_y
-        height_data_list = _encode_blob(
-            rearrange(heightmap, "b d1 d2 -> b (d1 d2)").cpu().numpy()
-        )
+        height_data_list = _encode_blob(heightmap.flatten(1).cpu().numpy())
         normals_list = _encode_blob(
-            rearrange(normals, "b c d1 d2 -> b (d1 d2) c").cpu().numpy()
+            normals.permute(0, 2, 3, 1).flatten(1, 2).cpu().numpy()
         )
 
         property_bounds = property_bounds or {}
@@ -264,9 +261,7 @@ class SimViewTerrain:
             else:
                 low, high = prop_map.min().item(), prop_map.max().item()
             properties_out[name] = TerrainProperty(
-                data=_encode_blob(
-                    rearrange(prop_map, "b d1 d2 -> b (d1 d2)").cpu().numpy()
-                ),
+                data=_encode_blob(prop_map.flatten(1).cpu().numpy()),
                 min=low,
                 max=high,
             )
@@ -278,7 +273,7 @@ class SimViewTerrain:
                     f"Embedding map must include a batch dimension (ndim=4); got ndim={embedding_map.ndim}."
                 )
             embedding_data_list = _encode_blob(
-                rearrange(embedding_map, "b k d1 d2 -> b (d1 d2) k").cpu().numpy()
+                embedding_map.permute(0, 2, 3, 1).flatten(1, 2).cpu().numpy()
             )
 
         return SimViewTerrain(

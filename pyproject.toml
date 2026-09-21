@@ -27,7 +27,6 @@ classifiers = [
 dependencies = [
     "fastapi>=0.135.3",
     "httptools>=0.7.1; sys_platform != 'win32'",
-    "jinja2>=3.1.6",
     "orjson>=3.11.8",
     "uvicorn>=0.44.0",
     "uvloop>=0.22.1; sys_platform != 'win32'",
@@ -41,7 +40,7 @@ Issues = "https://github.com/vlk-jan/simview/issues"
 [project.optional-dependencies]
 # Needed only to author simulations via the Python API (simview.scene / state / model).
 # Viewing an existing JSON file does not require these.
-authoring = ["torch", "einops", "numpy"]
+authoring = ["torch", "numpy"]
 # Needed only for `simview render` (headless PNG screenshots, e.g. from a
 # SLURM job with no display). Also requires a one-time `playwright install
 # chromium` to fetch the browser binary itself.
@@ -89,7 +88,7 @@ include = ["simview", "tests"]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 # torch's own stubs are incomplete in places (e.g. some tensor ops), and
-# authoring support (torch/einops/numpy) is an optional extra -- avoid
+# authoring support (torch/numpy) is an optional extra -- avoid
 # noisy false positives from third-party stub gaps rather than contorting
 # working code around them.
 reportMissingTypeStubs = false
