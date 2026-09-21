@@ -1,6 +1,5 @@
 import { PlaybackControls } from "../ui/PlaybackControls.js";
 import { resolveStateBodies } from "../utils/bodyTransforms.js";
-import { loadRecordingLibs } from "../utils/loadRecordingLibs.js";
 import { interpolateTransformRows, lerpVectorRows } from "../utils/interpolate.js";
 
 // Optional per-batch 3-vector attributes that get lerp'd alongside
@@ -42,10 +41,7 @@ function extensionForMimeType(mimeType) {
 }
 
 // Triggers a browser download of `blob` named `filename` via a temporary,
-// never-appended <a download> link -- no library needed for this (CCapture's
-// webm path used to pull in a `download()` helper from lib/download.js; the
-// PNG-sequence path below still uses that helper since tar.js/download.js
-// stay vendored for it).
+// never-appended <a download> link -- no library needed for this.
 function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -65,7 +61,6 @@ export class AnimationController {
         this.isPlaying = false;
         this.playbackSpeed = 1;
         this.isRecording = false;
-        this.isLoadingRecorder = false;
         this.startTime = null;
         this.recordingFormat = "webm"; // Default recording format
 
@@ -78,14 +73,6 @@ export class AnimationController {
         this._recordingMimeType = null;
         this._recordingStopped = null; // Promise resolved once the MediaRecorder actually stops
 
-        // PNG-sequence recording state (tar.js-packed, see captureFrame below).
-        this._pngTar = null;
-        this._pngFrameCount = 0;
-        // Promises for PNG frames still being encoded/appended asynchronously
-        // (toBlob + arrayBuffer are both async) -- stopRecording awaits all of
-        // these before calling tar.save(), so the last frame(s) of the loop
-        // are never dropped from the archive.
-        this._pngPending = [];
         this.currentStateIndex = 0;
         this.totalTime = 0; // Total animation time
         this.currentTime = 0; // Current time in the animation
@@ -154,6 +141,7 @@ export class AnimationController {
     }
 
     setRecordingFormat(format) {
+        if (format !== "webm" && format !== "mp4") return; // ignore unknown formats
         this.recordingFormat = format;
     }
 
@@ -255,33 +243,14 @@ export class AnimationController {
         }
     }
 
-    async startRecording() {
-        if (this.isRecording || this.isLoadingRecorder) return;
-
-        if (this.recordingFormat === "png") {
-            // Only the PNG-sequence path needs the lazily-loaded tar.js/download.js
-            // (see loadRecordingLibs.js) -- webm/mp4 recording is all native
-            // MediaRecorder APIs, nothing to load.
-            this.isLoadingRecorder = true;
-            try {
-                await loadRecordingLibs();
-            } finally {
-                this.isLoadingRecorder = false;
-            }
-        }
+    startRecording() {
         if (this.isRecording) return;
 
         // Reset animation to start; the recording always captures exactly one
         // full loop from time 0 (see captureFrame's auto-stop below).
         this.seekToIndex(0);
 
-        if (this.recordingFormat === "png") {
-            this._pngTar = new Tar();
-            this._pngFrameCount = 0;
-            this._pngPending = [];
-        } else {
-            if (!this.#startVideoRecording()) return;
-        }
+        if (!this.#startVideoRecording()) return;
 
         this.isRecording = true;
         this.startTime = performance.now();
@@ -361,27 +330,7 @@ export class AnimationController {
         this.isRecording = false;
         this.startTime = null;
 
-        if (this._pngTar) {
-            this.#stopPngRecording();
-            return;
-        }
-
         this.#stopVideoRecording();
-    }
-
-    async #stopPngRecording() {
-        const tar = this._pngTar;
-        this._pngTar = null;
-        this._pngFrameCount = 0;
-        // Wait for every in-flight toBlob()/arrayBuffer() encode to finish
-        // appending to the tar before saving it, so the last frame(s)
-        // captured before the auto-stop aren't silently dropped.
-        const pending = this._pngPending;
-        this._pngPending = [];
-        await Promise.all(pending);
-
-        const blob = tar.save();
-        download(blob, "simview-recording.tar", "application/x-tar");
     }
 
     async #stopVideoRecording() {
@@ -457,9 +406,7 @@ export class AnimationController {
         const elapsed = now - this.startTime;
         const duration = this.totalTime * 1000; // Convert to milliseconds
 
-        if (this._pngTar) {
-            this.#capturePngFrame();
-        } else if (this._captureTrack) {
+        if (this._captureTrack) {
             // Manual-mode capture stream (see #startVideoRecording): pull
             // exactly one new frame per actually-rendered frame, so the
             // output is frame-for-frame deterministic rather than racing a
@@ -473,33 +420,6 @@ export class AnimationController {
         if (elapsed >= duration) {
             this.playbackControls.recordButtonClick();
         }
-    }
-
-    // Encodes the current canvas as a PNG blob and appends it to the in-progress
-    // tar (see startRecording/stopRecording) -- this is all CCapture's old "png"
-    // format did, just without CCapture itself. Frame filenames are zero-padded
-    // so a naive lexicographic sort (e.g. `tar tf` or an archive browser)
-    // reconstructs playback order, matching CCapture's own PNG-sequence naming.
-    #capturePngFrame() {
-        const canvas = this.app.scene.renderer.domElement;
-        const tar = this._pngTar;
-        const index = this._pngFrameCount++;
-        const encoded = new Promise((resolve) => {
-            canvas.toBlob((blob) => {
-                if (!blob || !tar) {
-                    resolve();
-                    return;
-                }
-                blob
-                    .arrayBuffer()
-                    .then((buf) => {
-                        const name = String(index).padStart(7, "0") + ".png";
-                        tar.append(name, new Uint8Array(buf));
-                    })
-                    .finally(resolve);
-            }, "image/png");
-        });
-        this._pngPending.push(encoded);
     }
 
     // Single-frame PNG screenshot (see ui/PlaybackControls.js's camera button
@@ -650,8 +570,6 @@ export class AnimationController {
             this._mediaRecorder = null;
             this._captureTrack = null;
             this._recordedChunks = null;
-            this._pngTar = null;
-            this._pngPending = [];
         }
     }
 }

@@ -185,8 +185,8 @@ export class PlaybackControls {
         // actually produce it (see isMp4RecordingSupported) -- webm is
         // always available wherever MediaRecorder is, so it's the
         // unconditional default/fallback.
-        const formats = isMp4RecordingSupported() ? ["webm", "mp4", "png"] : ["webm", "png"];
-        const formatLabels = { webm: "WEBM", mp4: "MP4", png: "PNG" };
+        const formats = isMp4RecordingSupported() ? ["webm", "mp4"] : ["webm"];
+        const formatLabels = { webm: "WEBM", mp4: "MP4" };
         formats.forEach((format) => {
             const option = document.createElement("option");
             option.value = format;

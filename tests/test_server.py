@@ -206,7 +206,7 @@ def test_static_assets_carry_cache_control_header(client):
 
 
 def test_vendored_static_libs_are_marked_immutable(client):
-    resp = client.get("/static/lib/tar.js")
+    resp = client.get("/static/lib/js-colormaps.js")
     assert resp.status_code == 200
     assert "immutable" in resp.headers["cache-control"]
 

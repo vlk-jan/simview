@@ -32,11 +32,6 @@
       <h1>Loading...</h1>
     </div>
 
-    <!-- WEBM/MP4 recording uses native canvas.captureStream() + MediaRecorder
-         (no library needed). The PNG-sequence recording format still needs
-         tar.js + download.js, but only loads them on demand, when the user
-         starts a PNG recording -- see static/js/utils/loadRecordingLibs.js. -->
-
     <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are
          vendored locally (same-origin) instead of loaded from a CDN, so the
          viewer keeps working with no internet access. Each library lives in
