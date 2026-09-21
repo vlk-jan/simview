@@ -251,7 +251,7 @@ def test_info_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one file" in capsys.readouterr().err
+    assert "required: file" in capsys.readouterr().err
 
     a, b = tmp_path / "a.json", tmp_path / "b.json"
     a.write_text("{}")
@@ -260,7 +260,7 @@ def test_info_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one file" in capsys.readouterr().err
+    assert "unrecognized arguments" in capsys.readouterr().err
 
 
 def test_info_works_on_gzipped_scene(capsys, monkeypatch, tmp_path):
@@ -347,13 +347,15 @@ def test_terrain_point_and_area_are_mutually_exclusive(capsys, monkeypatch, tmp_
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one of --point, --area, or --along-body" in capsys.readouterr().err
+    assert "not allowed with argument --point" in capsys.readouterr().err
 
     monkeypatch.setattr(cli.sys, "argv", ["simview", "terrain", str(sim_file)])
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one of --point, --area, or --along-body" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "--point" in err and "--area" in err and "--along-body" in err
+    assert "is required" in err
 
     monkeypatch.setattr(
         cli.sys,
@@ -372,7 +374,7 @@ def test_terrain_point_and_area_are_mutually_exclusive(capsys, monkeypatch, tmp_
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one of --point, --area, or --along-body" in capsys.readouterr().err
+    assert "not allowed with argument --point" in capsys.readouterr().err
 
 
 def test_terrain_missing_file_errors(capsys, monkeypatch, tmp_path):
@@ -681,7 +683,7 @@ def test_diff_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "exactly one file" in capsys.readouterr().err
+    assert "required: file" in capsys.readouterr().err
 
 
 def test_diff_body_flag_filters_to_one_body(capsys, monkeypatch, tmp_path):
@@ -975,7 +977,7 @@ def test_json_and_csv_together_errors(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "mutually exclusive" in capsys.readouterr().err
+    assert "not allowed with argument --json" in capsys.readouterr().err
 
 
 def test_render_requires_output_flag(capsys, monkeypatch, tmp_path):
@@ -1010,7 +1012,7 @@ def test_render_requires_exactly_one_path(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "requires exactly one file" in capsys.readouterr().err
+    assert "required: file" in capsys.readouterr().err
 
 
 def test_render_reports_missing_playwright_cleanly(capsys, monkeypatch, tmp_path):
@@ -1214,9 +1216,14 @@ def test_remote_output_paths_are_rejected(monkeypatch, capsys, tmp_path, flag):
     scene_file = tmp_path / "sim.json"
     build_scene(batch_size=1).save(scene_file)
     monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(_fail_if_called))
-    monkeypatch.setattr(
-        cli.sys, "argv", ["simview", str(scene_file), flag, "rci:~/out.json"]
+    # --output only exists on 'simview render' now that flags are subcommand-scoped;
+    # --save-merged stays on the keyword-less view form.
+    argv = (
+        ["simview", "render", str(scene_file), flag, "rci:~/out.json"]
+        if flag == "--output"
+        else ["simview", str(scene_file), flag, "rci:~/out.json"]
     )
+    monkeypatch.setattr(cli.sys, "argv", argv)
 
     with pytest.raises(SystemExit) as exc_info:
         cli.main()

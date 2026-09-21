@@ -40,6 +40,9 @@ from pathlib import Path
 
 from simview import CACHE_DIR
 
+# Re-exported: __main__.clear_cache and tests reach it as remote.human_bytes.
+from simview.utils import human_bytes as human_bytes
+
 logger = logging.getLogger("simview.remote")
 
 # Deliberately restrictive: a single-character host is rejected so a Windows
@@ -54,15 +57,6 @@ _PROGRESS_STEP = 32 << 20
 
 class RemoteError(Exception):
     """A remote spec could not be resolved (bad spec, ssh failure, missing file)."""
-
-
-def human_bytes(n: int) -> str:
-    size = float(n)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{size:.1f}{unit}" if unit != "B" else f"{int(size)}B"
-        size /= 1024
-    return f"{size:.1f}GB"
 
 
 def parse_remote_spec(spec: str) -> tuple[str, str] | None:

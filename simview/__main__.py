@@ -14,6 +14,10 @@ logger = logging.getLogger("simview.cli")
 
 _logging_configured = False
 
+# Subcommands with their own scoped flags. "view" (bare `simview <file>...`)
+# has no keyword of its own -- see main()'s routing.
+_SUBCOMMANDS = ("info", "diff", "terrain", "render", "clear")
+
 
 def _configure_logging() -> None:
     """CLI entry point default: INFO-level, message-only output on stderr.
@@ -112,22 +116,12 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
     trajectory -- see `query_along_body_diff`)."""
     from simview import terrain as terrain_mod
 
-    mode_count = sum(v is not None for v in (args.point, args.area, args.along_body))
-    if mode_count != 1:
-        logger.error(
-            "Error: 'simview terrain' requires exactly one of --point, --area, "
-            "or --along-body."
-        )
-        sys.exit(1)
     if args.area is not None and len(args.area) not in (0, 4):
         logger.error(
             "Error: --area requires 0 values (whole terrain extent) or 4 values "
             "(xmin xmax ymin ymax); got %d.",
             len(args.area),
         )
-        sys.exit(1)
-    if args.json and args.csv:
-        logger.error("Error: --json and --csv are mutually exclusive.")
         sys.exit(1)
 
     diff_mode = args.batches is not None
@@ -146,8 +140,8 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                     args.layer,
                     args.every,
                 )
-                text = terrain_mod.format_along_diff_text(result)
-                csv_text = terrain_mod.format_along_diff_csv(result)
+                text_fn = terrain_mod.format_along_diff_text
+                csv_fn = terrain_mod.format_along_diff_csv
             else:
                 result = terrain_mod.query_along_body(
                     model_data,
@@ -157,8 +151,8 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                     args.batch,
                     args.every,
                 )
-                text = terrain_mod.format_along_text(result)
-                csv_text = terrain_mod.format_along_csv(result)
+                text_fn = terrain_mod.format_along_text
+                csv_fn = terrain_mod.format_along_csv
         else:
             model_data = terrain_mod.load_scene_model(path)
             if diff_mode:
@@ -172,38 +166,38 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                         batch_b,
                         args.layer,
                     )
-                    text = terrain_mod.format_point_diff_text(result)
-                    csv_text = terrain_mod.format_point_diff_csv(result)
+                    text_fn = terrain_mod.format_point_diff_text
+                    csv_fn = terrain_mod.format_point_diff_csv
                 else:
                     bounds = tuple(args.area) if args.area else None
                     result = terrain_mod.query_area_diff(
                         model_data, bounds, batch_a, batch_b, args.layer, args.stride
                     )
-                    text = terrain_mod.format_area_diff_text(result)
-                    csv_text = terrain_mod.format_area_diff_csv(result)
+                    text_fn = terrain_mod.format_area_diff_text
+                    csv_fn = terrain_mod.format_area_diff_csv
             elif args.point is not None:
                 result = terrain_mod.query_point(
                     model_data, args.point[0], args.point[1], args.layer, args.batch
                 )
-                text = terrain_mod.format_point_text(result)
-                csv_text = terrain_mod.format_point_csv(result)
+                text_fn = terrain_mod.format_point_text
+                csv_fn = terrain_mod.format_point_csv
             else:
                 bounds = tuple(args.area) if args.area else None
                 result = terrain_mod.query_area(
                     model_data, bounds, args.layer, args.batch, args.stride
                 )
-                text = terrain_mod.format_area_text(result)
-                csv_text = terrain_mod.format_area_csv(result)
+                text_fn = terrain_mod.format_area_text
+                csv_fn = terrain_mod.format_area_csv
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
 
     if args.csv:
-        print(csv_text, end="")
+        print(csv_fn(result), end="")
     elif args.json:
         print(json.dumps(result, indent=2))
     else:
-        print(text)
+        print(text_fn(result))
 
 
 def run_diff(path: Path, args: argparse.Namespace) -> None:
@@ -219,9 +213,6 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
             "Error: 'simview diff' requires --batches A B, e.g. 'simview diff "
             "scene.json --batches 0 1'."
         )
-        sys.exit(1)
-    if args.json and args.csv:
-        logger.error("Error: --json and --csv are mutually exclusive.")
         sys.exit(1)
     if (
         args.fail_on_exceed
@@ -247,18 +238,16 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
             rot_threshold_deg=args.rot_threshold_deg,
             per_axis=args.per_axis,
         )
-        text = diff_mod.format_diff_text(result)
-        csv_text = diff_mod.format_diff_csv(result)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
 
     if args.csv:
-        print(csv_text, end="")
+        print(diff_mod.format_diff_csv(result), end="")
     elif args.json:
         print(json.dumps(result, indent=2))
     else:
-        print(text)
+        print(diff_mod.format_diff_text(result))
 
     if args.fail_on_exceed:
         exceeded = any(
@@ -338,201 +327,92 @@ def _resolve_input(spec: str, args: argparse.Namespace) -> Path:
     return path
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="SimView CLI")
-    parser.add_argument(
-        "inputs",
-        nargs="*",
+class _ArgParser(argparse.ArgumentParser):
+    """argparse's default error() exits with code 2; this CLI reserves 2 for
+    `diff --fail-on-exceed` (a threshold was exceeded), so every other
+    usage/parse error -- ours or argparse's own -- must exit 1 instead."""
+
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(1, f"{self.prog}: error: {message}\n")
+
+
+def _add_remote_flags(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "--refresh",
+        action="store_true",
         help=(
-            "Path(s) to simulation JSON file(s) to visualize, 'clear' to clear "
-            "cache, 'info <file>' to print a structural summary of one scene "
-            "file, 'terrain <file>' to query terrain values at a point, over "
-            "an area, or along a body's trajectory, 'diff <file>' to compare "
-            "two batches' trajectories, or 'render <file>' to headlessly save "
-            "a PNG screenshot (needs the 'render' extra). Multiple "
-            "visualize-mode files are merged into one scene, each file's "
-            "batches appended as extra batches (e.g. a real-world recording "
-            "plus a simulated rerun). Append '#<batches>' to a file to merge "
-            "only some of its batches (e.g. 'run.json#1', 'run.json#0,2-3', "
-            "'run.json#-1' or 'run.json#<batch name>'), so a ground truth "
-            "shared by several files isn't merged once per file. Any input "
-            "may instead be an scp-style "
-            "'host:path' spec (e.g. 'rci:~/results/scene.json'), which is "
-            "fetched over ssh -- compressed on the wire -- into a local cache "
-            "and re-fetched only when the remote file changes."
+            "Re-fetch remote 'host:path' inputs even if the cached copy still "
+            "matches the remote file."
         ),
+    )
+    sp.add_argument(
+        "--offline",
+        action="store_true",
+        help=(
+            "Use the cached copy of remote 'host:path' inputs without contacting "
+            "the host at all; fails if nothing is cached for them yet."
+        ),
+    )
+
+
+def _add_json_csv_flags(sp: argparse.ArgumentParser) -> None:
+    fmt = sp.add_mutually_exclusive_group()
+    fmt.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON instead of text.",
+    )
+    fmt.add_argument("--csv", action="store_true", help="Print CSV instead of text.")
+
+
+def _add_file_arg(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "file",
+        help=(
+            "Path to a simulation JSON file, or an scp-style 'host:path' spec "
+            "(e.g. 'rci:~/results/scene.json'), fetched over ssh into a local "
+            "cache and re-fetched only when the remote file changes."
+        ),
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = _ArgParser(
+        description=(
+            "SimView CLI. Run with one or more simulation JSON file paths to "
+            "launch the viewer -- multiple files are merged into one scene, "
+            "each file's batches appended as extra batches (e.g. a real-world "
+            "recording plus a simulated rerun). Append '#<batches>' to a file "
+            "to merge only some of its batches (e.g. 'run.json#1', "
+            "'run.json#0,2-3', 'run.json#-1' or 'run.json#<batch name>'), so a "
+            "ground truth shared by several files isn't merged once per file. "
+            "Any input may instead be an scp-style 'host:path' spec, fetched "
+            "over ssh -- compressed on the wire -- into a local cache."
+        )
     )
     parser.add_argument(
         "--version",
         action="store_true",
         help="Print the installed simview version and exit.",
     )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help=(
-            "With 'simview info <file>', 'simview terrain <file>', or "
-            "'simview diff <file>', print machine-readable JSON instead of "
-            "text."
-        ),
+    sub = parser.add_subparsers(dest="command")
+
+    view = sub.add_parser(
+        "view", help="Launch the viewer on one or more scene files (the default)."
     )
-    parser.add_argument(
-        "--csv",
-        action="store_true",
-        help=(
-            "With 'simview terrain <file>' or 'simview diff <file>', print "
-            "CSV instead of text. Mutually exclusive with --json."
-        ),
-    )
-    parser.add_argument(
-        "--point",
-        nargs=2,
-        type=float,
-        metavar=("X", "Y"),
-        help=(
-            "With 'simview terrain <file>', query terrain value(s) at a single "
-            "(x, y) point (bilinear-interpolated). Mutually exclusive with "
-            "--area and --along-body."
-        ),
-    )
-    parser.add_argument(
-        "--area",
+    view.add_argument(
+        "inputs",
         nargs="*",
-        type=float,
-        metavar="BOUND",
-        help=(
-            "With 'simview terrain <file>', query terrain values over a "
-            "rectangular area: pass no values for the whole terrain extent, "
-            "or exactly 4 values 'XMIN XMAX YMIN YMAX' for a sub-box. Mutually "
-            "exclusive with --point and --along-body."
-        ),
+        help="Path(s) to simulation JSON file(s) to visualize.",
     )
-    parser.add_argument(
-        "--along-body",
-        type=str,
-        default=None,
-        metavar="BODY",
-        help=(
-            "With 'simview terrain <file>', sample terrain value(s) "
-            "bilinear-interpolated at BODY's (x, y) position in every "
-            "sampled state (e.g. friction/stiffness under a robot's driven "
-            "path). BODY is matched the same way as 'simview diff' --body "
-            "(full label, or any single name inside a rigidly-grouped body). "
-            "With --batches A B, samples both batches' terrains along batch "
-            "A's trajectory instead and reports the delta per layer. "
-            "Mutually exclusive with --point and --area."
-        ),
-    )
-    parser.add_argument(
-        "--layer",
-        default="all",
-        help=(
-            "With 'simview terrain <file>', which terrain layer to query: "
-            "'height', 'all' (default: all present), or the name of any "
-            "arbitrary property the terrain was authored with (e.g. "
-            "'friction', 'stiffness', or a custom name)."
-        ),
-    )
-    parser.add_argument(
-        "--batch",
-        type=int,
-        default=0,
-        help="With 'simview terrain <file>', batch index to query (default: 0).",
-    )
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=1,
-        help=(
-            "With 'simview terrain <file> --area', subsample every Nth grid "
-            "point in both directions (default: 1)."
-        ),
-    )
-    parser.add_argument(
-        "--batches",
-        nargs=2,
-        type=int,
-        metavar=("A", "B"),
-        help=(
-            "Two batch indices to compare. Required by 'simview diff <file>'. "
-            "With 'simview terrain <file> --point|--area|--along-body', "
-            "switches into cross-batch diff mode (value_a/value_b/delta per "
-            "layer) instead of a single-batch query, and takes precedence "
-            "over --batch if both are given. For --along-body, both batches' "
-            "terrains are sampled along batch A's trajectory."
-        ),
-    )
-    parser.add_argument(
-        "--body",
-        type=str,
-        default=None,
-        metavar="NAME",
-        help=(
-            "With 'simview diff <file>', restrict the trajectory diff to one "
-            "body (matched by its full label, e.g. 'wheel_fl+wheel_fr', or by "
-            "any single name inside a rigidly-grouped body). Default: diff "
-            "every body present in states, plus any rigidly-attached body "
-            "resolvable from them. Poses are compared in world space (parent "
-            "chains resolved), matching the viewer's Error Metrics panel."
-        ),
-    )
-    parser.add_argument(
-        "--every",
-        type=int,
-        default=1,
-        help=(
-            "With 'simview diff <file>' or 'simview terrain <file> "
-            "--along-body', sample every Nth frame (default: 1)."
-        ),
-    )
-    parser.add_argument(
-        "--pos-threshold",
-        type=float,
-        default=None,
-        metavar="METERS",
-        help=(
-            "With 'simview diff <file>', report the first sampled frame whose "
-            "position error exceeds this many meters."
-        ),
-    )
-    parser.add_argument(
-        "--rot-threshold-deg",
-        type=float,
-        default=None,
-        metavar="DEGREES",
-        help=(
-            "With 'simview diff <file>', report the first sampled frame whose "
-            "orientation error exceeds this many degrees."
-        ),
-    )
-    parser.add_argument(
-        "--per-axis",
-        action="store_true",
-        help=(
-            "With 'simview diff <file>', also report signed per-axis "
-            "(err_x/err_y/err_z = batch_a - batch_b) position error, matching "
-            "the browser Error Metrics panel's per-axis toggle."
-        ),
-    )
-    parser.add_argument(
-        "--fail-on-exceed",
-        action="store_true",
-        help=(
-            "With 'simview diff <file>', exit with code 2 (after printing the "
-            "normal output) if any diffed body's trajectory exceeds "
-            "--pos-threshold or --rot-threshold-deg; requires at least one of "
-            "them. Exit codes: 0 = within thresholds, 1 = usage/parse error, "
-            "2 = threshold exceeded -- lets scripts/CI tell divergence apart "
-            "from a broken invocation."
-        ),
-    )
-    parser.add_argument(
+    view.add_argument(
         "--host",
         type=str,
         default="127.0.0.1",
         help="Host/interface for the server to bind to (default: 127.0.0.1).",
     )
-    parser.add_argument(
+    view.add_argument(
         "--port",
         type=int,
         default=5420,
@@ -541,59 +421,12 @@ def build_parser() -> argparse.ArgumentParser:
             "the next free port is used instead."
         ),
     )
-    parser.add_argument(
-        "--refresh",
-        action="store_true",
-        help=(
-            "Re-fetch remote 'host:path' inputs even if the cached copy still "
-            "matches the remote file."
-        ),
-    )
-    parser.add_argument(
-        "--offline",
-        action="store_true",
-        help=(
-            "Use the cached copy of remote 'host:path' inputs without contacting "
-            "the host at all; fails if nothing is cached for them yet."
-        ),
-    )
-    parser.add_argument(
+    view.add_argument(
         "--no-browser",
         action="store_true",
         help="Don't automatically open a browser tab once the server starts.",
     )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=None,
-        metavar="PATH",
-        help="With 'simview render <file>', PNG file path to save the screenshot to.",
-    )
-    parser.add_argument(
-        "--view",
-        type=str,
-        default=None,
-        metavar="HASH",
-        help=(
-            "With 'simview render <file>', a shareable view-link hash (from "
-            "the viewer's 'Copy view link' button, with or without the "
-            "leading '#') to set the camera/playback/terrain state before "
-            "capturing. Default: the viewer's startup state."
-        ),
-    )
-    parser.add_argument(
-        "--width",
-        type=int,
-        default=1280,
-        help="With 'simview render <file>', screenshot width in pixels (default: 1280).",
-    )
-    parser.add_argument(
-        "--height",
-        type=int,
-        default=720,
-        help="With 'simview render <file>', screenshot height in pixels (default: 720).",
-    )
-    parser.add_argument(
+    view.add_argument(
         "--save-merged",
         type=str,
         default=None,
@@ -604,25 +437,252 @@ def build_parser() -> argparse.ArgumentParser:
             "output if PATH ends in .gz."
         ),
     )
+    _add_remote_flags(view)
+
+    info = sub.add_parser("info", help="Print a structural summary of a scene file.")
+    _add_file_arg(info)
+    info.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON instead of text.",
+    )
+    _add_remote_flags(info)
+
+    terrain = sub.add_parser(
+        "terrain",
+        help="Query terrain values at a point, over an area, or along a body's trajectory.",
+    )
+    _add_file_arg(terrain)
+    mode = terrain.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
+        "--point",
+        nargs=2,
+        type=float,
+        metavar=("X", "Y"),
+        help="Query terrain value(s) at a single (x, y) point (bilinear-interpolated).",
+    )
+    mode.add_argument(
+        "--area",
+        nargs="*",
+        type=float,
+        metavar="BOUND",
+        help=(
+            "Query terrain values over a rectangular area: pass no values for the "
+            "whole terrain extent, or exactly 4 values 'XMIN XMAX YMIN YMAX' for a "
+            "sub-box."
+        ),
+    )
+    mode.add_argument(
+        "--along-body",
+        type=str,
+        default=None,
+        metavar="BODY",
+        help=(
+            "Sample terrain value(s) bilinear-interpolated at BODY's (x, y) "
+            "position in every sampled state (e.g. friction/stiffness under a "
+            "robot's driven path). BODY is matched the same way as 'simview diff' "
+            "--body (full label, or any single name inside a rigidly-grouped "
+            "body). With --batches A B, samples both batches' terrains along "
+            "batch A's trajectory instead and reports the delta per layer."
+        ),
+    )
+    terrain.add_argument(
+        "--layer",
+        default="all",
+        help=(
+            "Which terrain layer to query: 'height', 'all' (default: all "
+            "present), or the name of any arbitrary property the terrain was "
+            "authored with (e.g. 'friction', 'stiffness', or a custom name)."
+        ),
+    )
+    terrain.add_argument(
+        "--batch", type=int, default=0, help="Batch index to query (default: 0)."
+    )
+    terrain.add_argument(
+        "--stride",
+        type=int,
+        default=1,
+        help="With --area, subsample every Nth grid point in both directions (default: 1).",
+    )
+    terrain.add_argument(
+        "--batches",
+        nargs=2,
+        type=int,
+        metavar=("A", "B"),
+        help=(
+            "Two batch indices to compare. Switches into cross-batch diff mode "
+            "(value_a/value_b/delta per layer) instead of a single-batch query, "
+            "and takes precedence over --batch if both are given. For "
+            "--along-body, both batches' terrains are sampled along batch A's "
+            "trajectory."
+        ),
+    )
+    terrain.add_argument(
+        "--every",
+        type=int,
+        default=1,
+        help="With --along-body, sample every Nth frame (default: 1).",
+    )
+    _add_json_csv_flags(terrain)
+    _add_remote_flags(terrain)
+
+    diff = sub.add_parser("diff", help="Compare two batches' trajectories.")
+    _add_file_arg(diff)
+    diff.add_argument(
+        "--batches",
+        nargs=2,
+        type=int,
+        metavar=("A", "B"),
+        help="Two batch indices to compare. Required.",
+    )
+    diff.add_argument(
+        "--body",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help=(
+            "Restrict the trajectory diff to one body (matched by its full "
+            "label, e.g. 'wheel_fl+wheel_fr', or by any single name inside a "
+            "rigidly-grouped body). Default: diff every body present in states, "
+            "plus any rigidly-attached body resolvable from them. Poses are "
+            "compared in world space (parent chains resolved), matching the "
+            "viewer's Error Metrics panel."
+        ),
+    )
+    diff.add_argument(
+        "--every",
+        type=int,
+        default=1,
+        help="Sample every Nth frame (default: 1).",
+    )
+    diff.add_argument(
+        "--pos-threshold",
+        type=float,
+        default=None,
+        metavar="METERS",
+        help="Report the first sampled frame whose position error exceeds this many meters.",
+    )
+    diff.add_argument(
+        "--rot-threshold-deg",
+        type=float,
+        default=None,
+        metavar="DEGREES",
+        help=(
+            "Report the first sampled frame whose orientation error exceeds "
+            "this many degrees."
+        ),
+    )
+    diff.add_argument(
+        "--per-axis",
+        action="store_true",
+        help=(
+            "Also report signed per-axis (err_x/err_y/err_z = batch_a - batch_b) "
+            "position error, matching the browser Error Metrics panel's per-axis "
+            "toggle."
+        ),
+    )
+    diff.add_argument(
+        "--fail-on-exceed",
+        action="store_true",
+        help=(
+            "Exit with code 2 (after printing the normal output) if any diffed "
+            "body's trajectory exceeds --pos-threshold or --rot-threshold-deg; "
+            "requires at least one of them. Exit codes: 0 = within thresholds, "
+            "1 = usage/parse error, 2 = threshold exceeded -- lets scripts/CI "
+            "tell divergence apart from a broken invocation."
+        ),
+    )
+    _add_json_csv_flags(diff)
+    _add_remote_flags(diff)
+
+    render = sub.add_parser(
+        "render", help="Headlessly save a PNG screenshot (needs the 'render' extra)."
+    )
+    _add_file_arg(render)
+    render.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="PNG file path to save the screenshot to. Required.",
+    )
+    render.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host/interface for the server to bind to (default: 127.0.0.1).",
+    )
+    render.add_argument(
+        "--port",
+        type=int,
+        default=5420,
+        help=(
+            "Port for the server to use (default: 5420). If it's already taken, "
+            "the next free port is used instead."
+        ),
+    )
+    render.add_argument(
+        "--view",
+        type=str,
+        default=None,
+        metavar="HASH",
+        help=(
+            "A shareable view-link hash (from the viewer's 'Copy view link' "
+            "button, with or without the leading '#') to set the "
+            "camera/playback/terrain state before capturing. Default: the "
+            "viewer's startup state."
+        ),
+    )
+    render.add_argument(
+        "--width",
+        type=int,
+        default=1280,
+        help="Screenshot width in pixels (default: 1280).",
+    )
+    render.add_argument(
+        "--height",
+        type=int,
+        default=720,
+        help="Screenshot height in pixels (default: 720).",
+    )
+    _add_remote_flags(render)
+
+    sub.add_parser("clear", help="Remove simview's on-disk cache.")
+
     return parser
 
 
 def main():
     _configure_logging()
-    parser = build_parser()
-    args = parser.parse_args()
+    argv = sys.argv[1:]
 
-    if args.version:
+    # Checked first, and unconditionally, to match every other flag/subcommand
+    # combination -- mirrors the old flat parser, where --version short-circuited
+    # before any other validation ran.
+    if "--version" in argv:
         print(_package_version())
         return
 
-    if not args.inputs:
+    parser = build_parser()
+
+    if not argv:
         parser.print_help()
         sys.exit(1)
 
+    # No subcommand keyword names the bare `simview <file>...` view form, so
+    # anything that isn't a known subcommand (or -h/--help, which the top-level
+    # parser should still handle itself) is routed to the hidden "view" one.
+    if argv[0] not in _SUBCOMMANDS and argv[0] not in ("-h", "--help"):
+        argv = ["view", *argv]
+
+    args = parser.parse_args(argv)
+
     # Remote specs are an input-side convenience only; writing back over ssh is
     # deliberately out of scope, so catch it here rather than at open() time.
-    for flag, value in (("--output", args.output), ("--save-merged", args.save_merged)):
+    for flag, value in (
+        ("--output", getattr(args, "output", None)),
+        ("--save-merged", getattr(args, "save_merged", None)),
+    ):
         if value is not None and remote.is_remote_spec(value):
             logger.error(
                 "Error: %s must be a local path, but '%s' looks like a remote "
@@ -632,57 +692,34 @@ def main():
             )
             sys.exit(1)
 
-    if args.inputs and args.inputs[0] == "info":
-        info_args = args.inputs[1:]
-        if len(info_args) != 1:
-            logger.error(
-                "Error: 'simview info' requires exactly one file argument, e.g. "
-                "'simview info scene.json'."
-            )
-            sys.exit(1)
-        info_path = _resolve_input(info_args[0], args)
-        run_info(info_path, as_json=args.json)
-        return
-
-    if args.inputs and args.inputs[0] == "terrain":
-        terrain_args = args.inputs[1:]
-        if len(terrain_args) != 1:
-            logger.error(
-                "Error: 'simview terrain' requires exactly one file argument, "
-                "e.g. 'simview terrain scene.json --point 0 0'."
-            )
-            sys.exit(1)
-        terrain_path = _resolve_input(terrain_args[0], args)
-        run_terrain(terrain_path, args)
-        return
-
-    if args.inputs and args.inputs[0] == "diff":
-        diff_args = args.inputs[1:]
-        if len(diff_args) != 1:
-            logger.error(
-                "Error: 'simview diff' requires exactly one file argument, "
-                "e.g. 'simview diff scene.json --batches 0 1'."
-            )
-            sys.exit(1)
-        diff_path = _resolve_input(diff_args[0], args)
-        run_diff(diff_path, args)
-        return
-
-    if args.inputs and args.inputs[0] == "render":
-        render_args = args.inputs[1:]
-        if len(render_args) != 1:
-            logger.error(
-                "Error: 'simview render' requires exactly one file argument, "
-                "e.g. 'simview render scene.json --output frame.png'."
-            )
-            sys.exit(1)
-        render_path = _resolve_input(render_args[0], args)
-        run_render(render_path, args)
-        return
-
-    if args.inputs == ["clear"]:
+    if args.command == "clear":
         clear_cache()
         return
+
+    if args.command == "info":
+        path = _resolve_input(args.file, args)
+        run_info(path, as_json=args.json)
+        return
+
+    if args.command == "terrain":
+        path = _resolve_input(args.file, args)
+        run_terrain(path, args)
+        return
+
+    if args.command == "diff":
+        path = _resolve_input(args.file, args)
+        run_diff(path, args)
+        return
+
+    if args.command == "render":
+        path = _resolve_input(args.file, args)
+        run_render(path, args)
+        return
+
+    # view mode: launch the viewer (or --save-merged) over one or more inputs.
+    if not args.inputs:
+        parser.print_help()
+        sys.exit(1)
 
     # Split "scene.json#1,3" into the file and the batches to take from it
     # before resolving the file, so a remote spec can carry a selection too.
