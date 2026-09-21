@@ -81,7 +81,7 @@ def inline_blob(raw: bytes) -> str:
     return BLOB_PREFIX + base64.b64encode(raw).decode()
 
 
-def _blob_floats(value: Any) -> list[float]:
+def blob_floats(value: Any) -> list[float]:
     """Decode one ``__b64__`` blob (or pass through an already-plain nested
     list, flattened) into a flat list of floats, without numpy."""
     if isinstance(value, str):
@@ -101,6 +101,37 @@ def _blob_floats(value: Any) -> list[float]:
 
     _flatten(value)
     return flat
+
+
+def is_blob(value: Any) -> bool:
+    """True if `value` is an inline ``__b64__`` blob string."""
+    return isinstance(value, str) and value.startswith(BLOB_PREFIX)
+
+
+def encode_floats(flat) -> str:
+    """Pack a flat float sequence as an inline little-endian float32 blob."""
+    return inline_blob(struct.pack(f"<{len(flat)}f", *flat))
+
+
+def decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[float]:
+    """Decode one state's `bodyTransform` field value for a single batch into
+    a flat 7-element `[x, y, z, w, qx, qy, qz]` row, without numpy.
+
+    Mirrors the shapes `_decode_state_field_rows` handles (blob = always
+    batch_size rows; plain list = nested one-row-per-batch, or flat 7 floats
+    when batch_size == 1)."""
+    width = STATE_FIELD_WIDTHS["bodyTransform"]
+    flat = blob_floats(value)
+    if len(flat) == batch_size * width:
+        start = batch_idx * width
+        return flat[start : start + width]
+    if len(flat) == width and batch_size == 1:
+        return flat
+    raise ValueError(
+        f"bodyTransform has {len(flat)} floats; expected {width} "
+        f"(batch_size=1, flat) or {batch_size * width} "
+        f"({batch_size} batches x {width})"
+    )
 
 
 def _decode_state_field_rows(value, width: int, batch_size: int):
@@ -337,7 +368,7 @@ def expand_columnar_states(states_doc: Any, batch_size: int) -> list[dict]:
             width = STATE_FIELD_WIDTHS.get(field)
             if width is None:
                 raise ValueError(f"unknown columnar field '{field}' for body '{name}'")
-            flat = _blob_floats(blob)
+            flat = blob_floats(blob)
             expected = T * B * width
             if len(flat) != expected:
                 raise ValueError(
@@ -349,7 +380,7 @@ def expand_columnar_states(states_doc: Any, batch_size: int) -> list[dict]:
 
     decoded_scalars = {}
     for name, blob in (states_doc.get("scalars") or {}).items():
-        flat = _blob_floats(blob)
+        flat = blob_floats(blob)
         if len(flat) != T * B:
             raise ValueError(
                 f"scalar '{name}' has {len(flat)} floats; expected {T * B} "
