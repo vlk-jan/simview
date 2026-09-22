@@ -1306,7 +1306,7 @@
 </span></code></pre></div>
 <p>This script demonstrates how to use the Python API to create a simulation with wavy terrain, dynamic bodies, and time-series data.</p>
 <p>The Python authoring API (<code>simview.scene</code>, <code>simview.state</code>, <code>simview.model</code>) depends on
-<code>torch</code> and <code>einops</code>. Install them with the optional <code>authoring</code> extra shown below.
+<code>torch</code> and <code>numpy</code>. Install them with the optional <code>authoring</code> extra shown below.
 Only these are needed to <em>build</em> simulations; <em>viewing</em> an existing JSON file does not
 require <code>torch</code>.</p>
 <h2 id="installation">Installation</h2>
@@ -1315,7 +1315,7 @@ require <code>torch</code>.</p>
 <p>To only view existing simulation JSON files:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>simview
 </span></code></pre></div>
-<p>To also author simulations from Python (installs <code>torch</code> and <code>einops</code>):</p>
+<p>To also author simulations from Python (installs <code>torch</code> and <code>numpy</code>):</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;simview[authoring]&quot;</span>
 </span></code></pre></div>
 <h3 id="from-source">From source</h3>

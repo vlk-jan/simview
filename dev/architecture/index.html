@@ -1431,7 +1431,7 @@ beyond the <a href="../json-format/">JSON wire format</a> they agree on.</p>
 <code>SimViewBody</code>, etc.) on first attribute access, via a module-level <code>__getattr__</code>
 that looks each name up in a <code>_LAZY_EXPORTS</code> table. This keeps <code>import simview</code>
 torch-free for viewing-only installs — a viewing-only install can <code>import simview</code>
-and use <code>SimViewServer</code>/CLI features without ever needing <code>torch</code>/<code>einops</code>/<code>numpy</code>
+and use <code>SimViewServer</code>/CLI features without ever needing <code>torch</code>/<code>numpy</code>
 installed, and only pays that import cost (and dependency requirement) the moment
 an authoring symbol like <code>SimulationScene</code> is actually touched.</p>
 <h2 id="frontend-simviewstaticjs">Frontend (<code>simview/static/js/</code>)</h2>
@@ -1450,8 +1450,9 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
   package) into small, dependency-light modules used by both <code>Body</code>'s
   click-to-similarity point coloring and <code>Terrain</code>'s "features" mode.</li>
 <li><strong><code>ui/</code></strong> — DOM-based UI panels: <code>Controls</code> (main options panel), <code>PlaybackControls</code>,
-  <code>BodyStateWindow</code>, <code>Legend</code>/<code>BatchLegend</code>, <code>ScalarPlotter</code> and <code>ErrorMetrics</code> (both
-  behind <code>AnalysisPanel</code>'s tab switcher, both plotted with vendored uPlot).</li>
+  <code>BodyStateWindow</code>, <code>Legend</code>/<code>BatchLegend</code>, and <code>ScalarPlotter</code>/<code>ErrorMetrics</code>/
+  <code>TerrainProfile</code> (all three behind <code>AnalysisPanel</code>'s tab switcher, all three plotted
+  with vendored uPlot via the shared <code>utils/uplot.js</code> chart helper).</li>
 <li><strong><code>utils/</code></strong> — pure logic factored out for unit testing without a DOM/THREE.js:
   <code>blobCodec.js</code> (decode the server's columnar float32 blobs — must stay in sync with
   the server's repack logic), <code>bodyTransforms.js</code> (resolve parent-relative poses,
@@ -1462,11 +1463,14 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
   shows up for a given body), <code>episodes.js</code> (episode segments, navigation and
   per-episode aggregates), <code>batchVisibility.js</code> (which batches get built and drawn),
   <code>blobWindow.js</code> (window arithmetic for range-fetching a long trajectory's field blobs,
-  used by <code>components/WindowedField.js</code>).</li>
+  used by <code>components/WindowedField.js</code>), <code>batchPresets.js</code>, <code>cameraRange.js</code>. The one
+  exception to "pure logic" is <code>uplot.js</code>, which owns the uPlot chart skeleton the three
+  Analysis-panel plots share.</li>
 </ul>
 <h3 id="vendored-third-party-libraries">Vendored third-party libraries</h3>
 <p><a href="https://github.com/leeoniya/uPlot"><strong>uPlot</strong></a> (MIT), <a href="https://github.com/mrdoob/three.js"><strong>three.js</strong></a>
-(MIT), and <a href="https://github.com/gka/chroma.js"><strong>chroma-js</strong></a> (MIT) are vendored under
+(MIT), <a href="https://github.com/gka/chroma.js"><strong>chroma-js</strong></a> (MIT) and <code>js-colormaps.js</code>
+(the matplotlib color-map tables) are vendored under
 <code>simview/static/lib/</code> (version-stamped directories, e.g. <code>lib/three-0.174.0/</code>) rather
 than loaded from a CDN, so the viewer works fully offline. All third-party libraries
 used by SimView are permissively licensed (MIT/BSD), so there are no licensing

@@ -1438,8 +1438,8 @@
 <li><strong>Step Forward/Backward</strong>: <code>Alt</code> + Arrow Right / Arrow Left</li>
 <li><strong>Seek (and Pause)</strong>: Click on the timeline bar</li>
 <li><strong>Play/Pause</strong>: <code>Space</code> or Click the Play button</li>
-<li><strong>Record</strong>: <code>R</code> or Click the Record button (select WEBM, MP4 -- if your browser supports
-  recording it -- or PNG sequence via the dropdown). Recording seeks to the start, plays
+<li><strong>Record</strong>: <code>R</code> or Click the Record button (select WEBM or, if your browser supports
+  recording it, MP4 via the dropdown). Recording seeks to the start, plays
   exactly one loop, then automatically stops and downloads the file.</li>
 <li><strong>Screenshot</strong>: <code>S</code> or Click the camera button next to Record to save the current frame as a PNG.</li>
 <li><strong>Playback Speed</strong>: Adjust speed (0.1x to 5x) via the dropdown next to the timeline</li>
@@ -1490,10 +1490,10 @@ path from the start of the simulation up to the current playback time, one line 
 batch in that batch's color. Useful for comparing the overall shape of two
 trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by frame.</p>
 <h2 id="analysis-panel">Analysis Panel</h2>
-<p>Scalars and Error Metrics share one collapsible panel at the top-center of the screen.
-When both are available, a mode switcher lets you flip between them; if only one is
-available (e.g. a single-batch scene has no Error Metrics), that one is shown directly
-without the switcher.</p>
+<p>Scalars, Error Metrics and Terrain share one collapsible panel at the top-center of
+the screen. When more than one is available, a mode switcher lets you flip between
+them; if only one is available (e.g. a single-batch scene has no Error Metrics), that
+one is shown directly without the switcher.</p>
 <ul>
 <li><strong>Scalars</strong>: one tab per scalar defined in the model, each plotting its value over
   time for every batch (colored per batch, click a line to focus that batch). An
@@ -1513,6 +1513,14 @@ without the switcher.</p>
   orientation RMSE and max angle error. An "Export CSV" button downloads the current
   selection's per-frame series (<code>time</code>, <code>pos_error</code>, <code>err_x</code>, <code>err_y</code>, <code>err_z</code>,
   <code>angle_error_deg</code>).</li>
+<li><strong>Terrain</strong>: shown for a scene that has terrain and at least one body with a
+  trajectory. Samples one terrain layer (<code>Height</code>, or any named property the terrain
+  was authored with, e.g. friction/stiffness) under a body's path over time, one curve
+  per batch, with a marker at the current playback position — so a divergence you spot
+  in Error Metrics can be lined up against the terrain the body was on at that moment.
+  Pick the layer, the body, and whether each batch is sampled along its <strong>own</strong> path or
+  all batches along one chosen batch's path (the usual ground-truth-path comparison).
+  An "Export CSV" button downloads the sampled series.</li>
 </ul>
 <h2 id="batch-legend">Batch Legend</h2>
 <p>When a scene has 2 or more batches, a toggleable "Batches" legend appears in the

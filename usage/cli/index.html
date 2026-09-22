@@ -1462,17 +1462,19 @@ breakdown, plus consistency warnings) without opening the viewer:</p>
 <p>Works on gzip-compressed files automatically, and does not require the
 <code>authoring</code> extra.</p>
 <h2 id="querying-terrain-data">Querying terrain data</h2>
-<p>To read raw numeric terrain values (height, and friction/stiffness if present)
-at a single point or over an area, without opening the viewer:</p>
+<p>To read raw numeric terrain values (height, plus any named property the terrain
+was authored with) at a single point or over an area, without opening the viewer:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--point<span class="w"> </span><span class="m">1</span>.5<span class="w"> </span>-2.0<span class="w">        </span><span class="c1"># bilinear-interpolated value(s) at (x, y)</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w">                  </span><span class="c1"># whole terrain extent</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>-5<span class="w"> </span><span class="m">5</span><span class="w"> </span>-5<span class="w"> </span><span class="m">0</span><span class="w">        </span><span class="c1"># xmin xmax ymin ymax sub-box</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--json<span class="w">           </span><span class="c1"># machine-readable JSON (for scripts/agents)</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--csv<span class="w">            </span><span class="c1"># CSV (for pandas/spreadsheets)</span>
 </span></code></pre></div>
-<p>Add <code>--layer height|friction|stiffness</code> to restrict to one layer, <code>--batch N</code>
-to pick a batch (only matters when the terrain isn't a singleton), and
-<code>--stride N</code> to subsample an <code>--area</code> query. Like <code>simview info</code>, this works
+<p>Add <code>--layer NAME</code> to restrict to one layer: <code>height</code>, <code>all</code> (the default —
+every layer present), or any property the terrain was authored with (e.g.
+<code>friction</code>, <code>stiffness</code>, or a custom name). Add <code>--batch N</code> to pick a batch
+(only matters when the terrain isn't a singleton), and <code>--stride N</code> to
+subsample an <code>--area</code> query. Like <code>simview info</code>, this works
 on gzip-compressed files and doesn't require the <code>authoring</code> extra.</p>
 <p>Pass <code>--batches A B</code> instead of <code>--batch N</code> to compare two batches directly
 (e.g. a ground-truth terrain vs. a recovered friction/stiffness estimate)
@@ -1510,8 +1512,10 @@ viewer:</p>
 </span></code></pre></div>
 <p>For each body, this reports per-frame position error (meters) and
 orientation error (degrees, quaternion angular distance) between the two
-batches, plus mean/max/final summaries. Add <code>--every N</code> to subsample frames,
-and <code>--pos-threshold METERS</code>/<code>--rot-threshold-deg DEGREES</code> to report the
+batches, plus mean/max/final summaries. Add <code>--per-axis</code> to also report the
+signed per-axis components (<code>err_x</code>/<code>err_y</code>/<code>err_z</code> = batch A minus batch B),
+matching the viewer's Error Metrics "Per-axis" toggle. Add <code>--every N</code> to
+subsample frames, and <code>--pos-threshold METERS</code>/<code>--rot-threshold-deg DEGREES</code> to report the
 first frame where a batch's trajectory diverges past a given tolerance. Like
 <code>simview info</code>/<code>simview terrain</code>, this works on gzip-compressed files and
 doesn't require the <code>authoring</code> extra.</p>
