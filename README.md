@@ -45,7 +45,7 @@ python example.py
 This script demonstrates how to use the Python API to create a simulation with wavy terrain, dynamic bodies, and time-series data.
 
 The Python authoring API (`simview.scene`, `simview.state`, `simview.model`) depends on
-`torch` and `einops`. Install them with the optional `authoring` extra shown below.
+`torch` and `numpy`. Install them with the optional `authoring` extra shown below.
 Only these are needed to *build* simulations; *viewing* an existing JSON file does not
 require `torch`.
 
@@ -63,7 +63,7 @@ To only view existing simulation JSON files:
 pip install simview
 ```
 
-To also author simulations from Python (installs `torch` and `einops`):
+To also author simulations from Python (installs `torch` and `numpy`):
 
 ```bash
 pip install "simview[authoring]"

@@ -28,8 +28,8 @@ Works on gzip-compressed files automatically, and does not require the
 
 ## Querying terrain data
 
-To read raw numeric terrain values (height, and friction/stiffness if present)
-at a single point or over an area, without opening the viewer:
+To read raw numeric terrain values (height, plus any named property the terrain
+was authored with) at a single point or over an area, without opening the viewer:
 
 ```bash
 simview terrain scene.json --point 1.5 -2.0        # bilinear-interpolated value(s) at (x, y)
@@ -39,9 +39,11 @@ simview terrain scene.json --area --json           # machine-readable JSON (for 
 simview terrain scene.json --area --csv            # CSV (for pandas/spreadsheets)
 ```
 
-Add `--layer height|friction|stiffness` to restrict to one layer, `--batch N`
-to pick a batch (only matters when the terrain isn't a singleton), and
-`--stride N` to subsample an `--area` query. Like `simview info`, this works
+Add `--layer NAME` to restrict to one layer: `height`, `all` (the default —
+every layer present), or any property the terrain was authored with (e.g.
+`friction`, `stiffness`, or a custom name). Add `--batch N` to pick a batch
+(only matters when the terrain isn't a singleton), and `--stride N` to
+subsample an `--area` query. Like `simview info`, this works
 on gzip-compressed files and doesn't require the `authoring` extra.
 
 Pass `--batches A B` instead of `--batch N` to compare two batches directly
@@ -95,8 +97,10 @@ simview diff scene.json --batches 0 1 --body Box       # restrict to one body
 
 For each body, this reports per-frame position error (meters) and
 orientation error (degrees, quaternion angular distance) between the two
-batches, plus mean/max/final summaries. Add `--every N` to subsample frames,
-and `--pos-threshold METERS`/`--rot-threshold-deg DEGREES` to report the
+batches, plus mean/max/final summaries. Add `--per-axis` to also report the
+signed per-axis components (`err_x`/`err_y`/`err_z` = batch A minus batch B),
+matching the viewer's Error Metrics "Per-axis" toggle. Add `--every N` to
+subsample frames, and `--pos-threshold METERS`/`--rot-threshold-deg DEGREES` to report the
 first frame where a batch's trajectory diverges past a given tolerance. Like
 `simview info`/`simview terrain`, this works on gzip-compressed files and
 doesn't require the `authoring` extra.

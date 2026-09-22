@@ -20,7 +20,7 @@ uv sync --extra authoring --group dev
 npm ci
 ```
 
-`--extra authoring` installs `torch`/`einops`/`numpy`, needed to run the full test
+`--extra authoring` installs `torch`/`numpy`, needed to run the full test
 suite (some tests are authoring-only and skip cleanly without it, see
 [Testing](testing.md)).
 

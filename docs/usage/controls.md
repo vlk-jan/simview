@@ -19,8 +19,8 @@ Once the visualizer is running, you can interact with the simulation using the f
 - **Step Forward/Backward**: `Alt` + Arrow Right / Arrow Left
 - **Seek (and Pause)**: Click on the timeline bar
 - **Play/Pause**: `Space` or Click the Play button
-- **Record**: `R` or Click the Record button (select WEBM, MP4 -- if your browser supports
-  recording it -- or PNG sequence via the dropdown). Recording seeks to the start, plays
+- **Record**: `R` or Click the Record button (select WEBM or, if your browser supports
+  recording it, MP4 via the dropdown). Recording seeks to the start, plays
   exactly one loop, then automatically stops and downloads the file.
 - **Screenshot**: `S` or Click the camera button next to Record to save the current frame as a PNG.
 - **Playback Speed**: Adjust speed (0.1x to 5x) via the dropdown next to the timeline
@@ -80,10 +80,10 @@ trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by
 
 ## Analysis Panel
 
-Scalars and Error Metrics share one collapsible panel at the top-center of the screen.
-When both are available, a mode switcher lets you flip between them; if only one is
-available (e.g. a single-batch scene has no Error Metrics), that one is shown directly
-without the switcher.
+Scalars, Error Metrics and Terrain share one collapsible panel at the top-center of
+the screen. When more than one is available, a mode switcher lets you flip between
+them; if only one is available (e.g. a single-batch scene has no Error Metrics), that
+one is shown directly without the switcher.
 
 - **Scalars**: one tab per scalar defined in the model, each plotting its value over
   time for every batch (colored per batch, click a line to focus that batch). An
@@ -103,6 +103,14 @@ without the switcher.
   orientation RMSE and max angle error. An "Export CSV" button downloads the current
   selection's per-frame series (`time`, `pos_error`, `err_x`, `err_y`, `err_z`,
   `angle_error_deg`).
+- **Terrain**: shown for a scene that has terrain and at least one body with a
+  trajectory. Samples one terrain layer (`Height`, or any named property the terrain
+  was authored with, e.g. friction/stiffness) under a body's path over time, one curve
+  per batch, with a marker at the current playback position — so a divergence you spot
+  in Error Metrics can be lined up against the terrain the body was on at that moment.
+  Pick the layer, the body, and whether each batch is sampled along its **own** path or
+  all batches along one chosen batch's path (the usual ground-truth-path comparison).
+  An "Export CSV" button downloads the sampled series.
 
 ## Batch Legend
 

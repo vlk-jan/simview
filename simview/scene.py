@@ -1,6 +1,7 @@
 import gzip
 import json
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -340,7 +341,7 @@ class SimulationScene:
 
     def add_trajectory(
         self,
-        times,
+        times: torch.Tensor | np.ndarray | Sequence[float],
         trajectories: list[BodyTrajectory],
         scalar_values: dict[str, torch.Tensor | np.ndarray | list] | None = None,
         binary: bool = True,

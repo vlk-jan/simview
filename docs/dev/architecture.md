@@ -79,7 +79,7 @@ Python (authoring or file-on-disk)           Browser
 `SimViewBody`, etc.) on first attribute access, via a module-level `__getattr__`
 that looks each name up in a `_LAZY_EXPORTS` table. This keeps `import simview`
 torch-free for viewing-only installs — a viewing-only install can `import simview`
-and use `SimViewServer`/CLI features without ever needing `torch`/`einops`/`numpy`
+and use `SimViewServer`/CLI features without ever needing `torch`/`numpy`
 installed, and only pays that import cost (and dependency requirement) the moment
 an authoring symbol like `SimulationScene` is actually touched.
 
@@ -100,8 +100,9 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   package) into small, dependency-light modules used by both `Body`'s
   click-to-similarity point coloring and `Terrain`'s "features" mode.
 - **`ui/`** — DOM-based UI panels: `Controls` (main options panel), `PlaybackControls`,
-  `BodyStateWindow`, `Legend`/`BatchLegend`, `ScalarPlotter` and `ErrorMetrics` (both
-  behind `AnalysisPanel`'s tab switcher, both plotted with vendored uPlot).
+  `BodyStateWindow`, `Legend`/`BatchLegend`, and `ScalarPlotter`/`ErrorMetrics`/
+  `TerrainProfile` (all three behind `AnalysisPanel`'s tab switcher, all three plotted
+  with vendored uPlot via the shared `utils/uplot.js` chart helper).
 - **`utils/`** — pure logic factored out for unit testing without a DOM/THREE.js:
   `blobCodec.js` (decode the server's columnar float32 blobs — must stay in sync with
   the server's repack logic), `bodyTransforms.js` (resolve parent-relative poses,
@@ -112,12 +113,15 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   shows up for a given body), `episodes.js` (episode segments, navigation and
   per-episode aggregates), `batchVisibility.js` (which batches get built and drawn),
   `blobWindow.js` (window arithmetic for range-fetching a long trajectory's field blobs,
-  used by `components/WindowedField.js`).
+  used by `components/WindowedField.js`), `batchPresets.js`, `cameraRange.js`. The one
+  exception to "pure logic" is `uplot.js`, which owns the uPlot chart skeleton the three
+  Analysis-panel plots share.
 
 ### Vendored third-party libraries
 
 [**uPlot**](https://github.com/leeoniya/uPlot) (MIT), [**three.js**](https://github.com/mrdoob/three.js)
-(MIT), and [**chroma-js**](https://github.com/gka/chroma.js) (MIT) are vendored under
+(MIT), [**chroma-js**](https://github.com/gka/chroma.js) (MIT) and `js-colormaps.js`
+(the matplotlib color-map tables) are vendored under
 `simview/static/lib/` (version-stamped directories, e.g. `lib/three-0.174.0/`) rather
 than loaded from a CDN, so the viewer works fully offline. All third-party libraries
 used by SimView are permissively licensed (MIT/BSD), so there are no licensing

@@ -13,7 +13,7 @@ SimView is split into two things you can use independently:
 - **Viewing** an existing simulation JSON file — needs only the base install
   (`fastapi`, `uvicorn`, `orjson`, ...).
 - **Authoring** simulations from Python (`simview.scene`/`state`/`model`) —
-  needs the `authoring` extra (`torch`, `einops`, `numpy`).
+  needs the `authoring` extra (`torch`, `numpy`).
 
 If you only need to open a `.json`/`.json.gz` scene someone else produced, you
 never need `torch` installed.
