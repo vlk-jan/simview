@@ -8,6 +8,17 @@ import uPlot from "../../lib/uPlot.esm.js";
 // click (with the chart, the clicked data index, and the raw event) for a
 // panel that needs more than a seek -- e.g. ScalarPlotter also focuses the
 // batch whose series is closest to the click.
+// Candidate y-axis tick steps for `incrs`. uPlot walks the list and takes the
+// first step whose ticks fit the axis's length (at least `space` px apart).
+// Offering exactly one (range/steps) meant that in a short panel -- which is
+// what the Analysis panel gives us -- no step fit, and uPlot drew no ticks or
+// labels at all. Coarser multiples let it degrade instead of giving up.
+export function yIncrements(min, max, steps = 5) {
+    const diff = max - min;
+    const base = diff === 0 ? Math.max(Math.abs(max) / steps, 1e-3) : diff / steps;
+    return [1, 2, 5, 10, 20, 50, 100].map((m) => base * m);
+}
+
 export function makeChart(
     plotDiv,
     { series, scales, axes, hooks, padding = [8, 8, 0, 8], onClick },

@@ -7,30 +7,22 @@
       name="viewport"
       content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
     />
-    <link rel="icon" type="image/x-icon" href="data:image/x-icon;," />
+    <meta name="description" content="Interactive 3D viewer for simulation trajectories." />
+    <meta name="theme-color" content="#181825" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23181825'/%3E%3Cg stroke='%23181825' stroke-linejoin='round'%3E%3Cpath d='M16 3.5 27.5 10 16 16.5 4.5 10Z' fill='%23b4befe'/%3E%3Cpath d='M4.5 10 16 16.5V29L4.5 22.5Z' fill='%2389b4fa'/%3E%3Cpath d='M16 16.5 27.5 10V22.5L16 29Z' fill='%235e7fc0'/%3E%3C/g%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="./static/css/controls.css" />
     <link rel="stylesheet" href="./static/lib/uPlot.min.css" />
-    <style>
-      body {
-        margin: 0;
-        background-color: #000;
-        color: #fff;
-      }
-      #info {
-        position: absolute;
-        top: 10px;
-        width: 100%;
-        text-align: center;
-      }
-    </style>
   <script>window.__simviewStaticBase = ".";</script>
 </head>
   <body>
     <div id="container"></div>
 
-    <!-- Add loading splash screen -->
-    <div id="loading-splash">
-      <h1>Loading...</h1>
+    <div id="loading-splash" role="status" aria-live="polite">
+      <h1>Loading…</h1>
     </div>
 
     <!-- three.js, its addons (OrbitControls, lil-gui) and chroma-js are
@@ -60,7 +52,7 @@
         console.error("Global Error:", msg, "at", url, ":", line);
         const splash = document.getElementById("loading-splash");
         if (splash) {
-          splash.innerHTML = `<h1 style="color: red;">JS Error</h1><p>${msg}</p><p>${url}:${line}</p>`;
+          splash.innerHTML = `<h1 class="sv-splash-error">JavaScript error</h1><p>${msg}</p><p>${url}:${line}</p>`;
         }
       };
     </script>

@@ -1,38 +1,429 @@
+/* ==========================================================================
+   Design tokens: Catppuccin Mocha (https://catppuccin.com/palette), blue as
+   the single UI accent, red/green for state. The same palette is mirrored
+   for canvas/WebGL colors in THEME (static/js/config.js) -- keep the two in
+   sync. Fonts are system stacks on purpose: the viewer must work offline,
+   so no web-font download.
+   ========================================================================== */
+:root {
+    --ctp-crust: #11111b;
+    --ctp-mantle: #181825;
+    --ctp-base: #1e1e2e;
+    --ctp-surface0: #313244;
+    --ctp-surface1: #45475a;
+    --ctp-surface2: #585b70;
+    --ctp-overlay0: #6c7086;
+    --ctp-subtext0: #a6adc8;
+    --ctp-text: #cdd6f4;
+    --ctp-blue: #89b4fa;
+    --ctp-red: #f38ba8;
+    --ctp-green: #a6e3a1;
+    --ctp-peach: #fab387;
+
+    --sv-bg: var(--ctp-mantle);
+    --sv-surface: color-mix(in srgb, var(--ctp-base) 85%, transparent);
+    --sv-surface-solid: var(--ctp-base);
+    --sv-raised: var(--ctp-surface0);
+    --sv-hover: color-mix(in srgb, var(--ctp-text) 10%, transparent);
+    --sv-pressed: color-mix(in srgb, var(--ctp-text) 16%, transparent);
+    --sv-border: var(--ctp-surface0);
+    --sv-border-strong: var(--ctp-surface1);
+    --sv-text: var(--ctp-text);
+    --sv-muted: var(--ctp-subtext0);
+    --sv-accent: var(--ctp-blue);
+    --sv-accent-soft: color-mix(in srgb, var(--ctp-blue) 20%, transparent);
+    --sv-danger: var(--ctp-red);
+    --sv-success: var(--ctp-green);
+    --sv-on-accent: var(--ctp-crust);
+    --sv-shadow: 0 8px 24px color-mix(in srgb, var(--ctp-crust) 55%, transparent);
+
+    --sv-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", sans-serif;
+    --sv-font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+        monospace;
+
+    --sv-radius-sm: 4px;
+    --sv-radius: 6px;
+    --sv-radius-lg: 10px;
+    --sv-ease: 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
+
+    /* lil-gui's auto-placed root sits at 1001: panels stay under it,
+       tooltips and the splash above it. */
+    --sv-z-panel: 1000;
+    --sv-z-tooltip: 1010;
+    --sv-z-splash: 2000;
+}
+
+html {
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    background-color: var(--sv-bg);
+    color: var(--sv-text);
+    font-family: var(--sv-font);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Shared floating-panel surface: translucent, blurred, hairline edge. */
+.analysis-container,
+.body-state-window,
+.batch-legend-container,
+.sv-legend,
+.sv-playback,
+.lil-gui.root {
+    background-color: var(--sv-surface);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    backdrop-filter: blur(10px) saturate(1.2);
+    border: 1px solid var(--sv-border);
+    box-shadow: var(--sv-shadow), inset 0 1px 0 color-mix(in srgb, var(--ctp-text) 4%, transparent);
+    color: var(--sv-text);
+    font-family: var(--sv-font);
+}
+
+/* Form controls. One look for every button/select in the viewer (lil-gui
+   styles its own widgets and is themed separately below). */
+button,
 select {
-  background-color: #444;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 5px;
-  cursor: pointer;
+    background-color: var(--sv-raised);
+    color: var(--sv-text);
+    border: 1px solid var(--sv-border);
+    border-radius: var(--sv-radius-sm);
+    font-family: inherit;
+    cursor: pointer;
+    transition: background-color var(--sv-ease), border-color var(--sv-ease),
+        transform var(--sv-ease);
 }
 
+select {
+    padding: 0.2em 0.4em;
+}
+
+button:hover,
 select:hover {
-  background-color: #555;
-}
-
-button:hover {
-  background-color: #555;
+    background-color: var(--sv-hover);
+    border-color: var(--sv-border-strong);
 }
 
 button:active {
-  background-color: #666;
+    background-color: var(--sv-pressed);
+    transform: translateY(1px);
 }
 
-/* Add styles for the loading splash screen */
+select option {
+    background-color: var(--sv-surface-solid);
+    color: var(--sv-text);
+}
+
+:focus-visible {
+    outline: 2px solid var(--sv-accent);
+    outline-offset: 2px;
+}
+
+/* lil-gui theme. lil-gui defines these on every `.lil-gui` element in a
+   <style> injected after this sheet, so the doubled class is needed to win.
+   Backgrounds are transparent so the root panel gets the shared surface above
+   and nested folders don't stack opaque fills on top of it. */
+.lil-gui.lil-gui {
+    --background-color: transparent;
+    --title-background-color: transparent;
+    --font-size: 12px;
+    --input-font-size: 12px;
+    --padding: 8px;
+    --width: 260px;
+    --widget-color: var(--ctp-surface0);
+    --hover-color: var(--ctp-surface1);
+    --focus-color: var(--ctp-surface2);
+    --number-color: var(--ctp-peach);
+    --string-color: var(--ctp-green);
+    --text-color: var(--sv-text);
+    --title-text-color: var(--sv-text);
+    --font-family: var(--sv-font);
+    --font-family-mono: var(--sv-font-mono);
+    --widget-border-radius: var(--sv-radius-sm);
+}
+
+/* Float the Controls panel like the other panels instead of docking it
+   flush to the top edge (lil-gui's .autoPlace rule). */
+.lil-gui.root.autoPlace {
+    top: 10px;
+    right: 1rem;
+    max-height: calc(100% - 20px);
+    border-radius: var(--sv-radius-lg);
+    overflow: hidden;
+}
+.lil-gui.lil-gui.root > .title {
+    font-size: 1.1em;
+}
+.lil-gui.lil-gui.root > .title:hover {
+    background-color: var(--sv-hover);
+}
+.lil-gui.lil-gui.root > .children > .lil-gui > .title {
+    border-color: var(--sv-border);
+}
+.lil-gui.lil-gui.root > .children > .lil-gui.closed > .title {
+    border-bottom-color: transparent;
+}
+
+/* Collapse indicators. The panels write the same ▾/▸ characters lil-gui
+   does; drawing them in lil-gui's bundled icon font (registered by its
+   injected <style>) turns them into the Controls panel's chevrons. Their
+   headers align to the baseline, as lil-gui's inline chevron does. */
+.analysis-header-icon,
+.body-state-window-toggle-icon,
+.batch-legend-header-icon {
+    font-family: lil-gui, var(--sv-font);
+    font-weight: 600;
+    color: var(--sv-text);
+    padding-right: 3px;
+}
+
+/* Loading splash. Its <h1> is rewritten by SimView.loadData as each phase
+   starts; the bar underneath just signals that work is in progress. */
 #loading-splash {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: #000;
-  color: #fff;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 10000;
-  font-family: sans-serif;
+    position: fixed;
+    inset: 0;
+    background:
+        radial-gradient(ellipse at 50% 40%, var(--ctp-base) 0%, var(--sv-bg) 70%);
+    color: var(--sv-text);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem;
+    z-index: var(--sv-z-splash);
+    font-family: var(--sv-font);
+    text-align: center;
+    padding: 0 1rem;
+}
+#loading-splash h1 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--sv-muted);
+}
+#loading-splash::after {
+    content: "";
+    width: 220px;
+    height: 2px;
+    border-radius: 1px;
+    background: linear-gradient(90deg, transparent, var(--sv-accent), transparent)
+        0 0 / 40% 100% no-repeat, var(--sv-border);
+    animation: sv-splash-scan 1.2s ease-in-out infinite;
+}
+#loading-splash p {
+    margin: 0;
+    max-width: 65ch;
+    font-family: var(--sv-font-mono);
+    font-size: 0.95rem;
+    color: var(--sv-muted);
+    overflow-wrap: anywhere;
+}
+#loading-splash .sv-splash-error {
+    color: var(--sv-danger);
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+#loading-splash:has(.sv-splash-error)::after {
+    display: none;
+}
+@keyframes sv-splash-scan {
+    from { background-position: -70% 0, 0 0; }
+    to   { background-position: 170% 0, 0 0; }
+}
+
+/* Small mono tooltip shared by the uPlot charts (positioned by JS). */
+.sv-chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    display: none;
+    background: color-mix(in srgb, var(--ctp-crust) 92%, transparent);
+    border: 1px solid var(--sv-border-strong);
+    border-radius: var(--sv-radius-sm);
+    padding: 4px 6px;
+    font-family: var(--sv-font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--sv-text);
+    white-space: nowrap;
+    z-index: 10;
+}
+
+/* Hover readout over the terrain (InteractionController). */
+#terrain-tooltip {
+    position: absolute;
+    background: color-mix(in srgb, var(--ctp-crust) 88%, transparent);
+    border: 1px solid var(--sv-border);
+    color: var(--sv-text);
+    padding: 8px;
+    border-radius: var(--sv-radius-sm);
+    pointer-events: none;
+    z-index: var(--sv-z-tooltip);
+    font-size: 12px;
+    font-family: var(--sv-font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: pre;
+}
+
+/* Colormap legends (Legend.js). */
+.sv-legend {
+    position: absolute;
+    left: 20px;
+    padding: 10px;
+    border-radius: var(--sv-radius);
+    font-size: 12px;
+    pointer-events: none;
+    z-index: var(--sv-z-panel);
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    font-variant-numeric: tabular-nums;
+}
+.sv-legend-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+    text-align: center;
+}
+.sv-legend .legend-gradient {
+    height: 12px;
+    width: 100%;
+    margin-bottom: 4px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px var(--sv-border-strong);
+}
+.sv-legend-range {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--sv-font-mono);
+    color: var(--sv-muted);
+}
+
+/* Live-stream badge (SimView.showLiveBadge). */
+.sv-live-badge {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--sv-radius-sm);
+    background-color: color-mix(in srgb, var(--sv-danger) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sv-danger) 60%, transparent);
+    color: var(--sv-danger);
+    font-family: var(--sv-font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    z-index: var(--sv-z-panel);
+}
+.sv-live-badge::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--sv-danger);
+    animation: sv-pulse 1.4s ease-in-out infinite;
+}
+@keyframes sv-pulse {
+    50% { opacity: 0.3; }
+}
+
+/* ==========================================================================
+   PlaybackControls (simview/static/js/ui/PlaybackControls.js)
+   ========================================================================== */
+
+.sv-playback {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px 12px;
+    border-radius: var(--sv-radius-lg);
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+}
+.sv-playback-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+.sv-playback button,
+.sv-playback select {
+    height: 26px;
+    min-width: 36px;
+    padding: 0 8px;
+    font-size: 13px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+}
+.sv-playback select {
+    text-align: center;
+}
+.sv-playback .sv-play {
+    background-color: var(--sv-accent-soft);
+    border-color: color-mix(in srgb, var(--sv-accent) 45%, transparent);
+    font-weight: 600;
+}
+.sv-playback .sv-play:hover {
+    background-color: color-mix(in srgb, var(--sv-accent) 30%, transparent);
+}
+.sv-playback .is-recording {
+    background-color: var(--sv-danger);
+    border-color: var(--sv-danger);
+    color: var(--sv-on-accent);
+}
+.sv-readout {
+    display: flex;
+    align-items: center;
+    height: 26px;
+    font-family: var(--sv-font-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--sv-muted);
+    white-space: nowrap;
+}
+.sv-progress {
+    /* `relative` so the absolutely-positioned episode ticks are placed
+       against the bar rather than the page. */
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background-color: var(--ctp-surface0);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: height var(--sv-ease);
+}
+.sv-progress:hover {
+    height: 8px;
+}
+.sv-progress-fill {
+    width: 0%;
+    height: 100%;
+    background-color: var(--sv-accent);
+    border-radius: inherit;
+}
+.sv-progress-ticks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.sv-episode-tick {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    margin-left: -1px;
+    background-color: var(--ctp-peach);
 }
 
 /* Metadata (Scene Info) value cells.
@@ -95,7 +486,7 @@ button:active {
 
 /* Brief green flash on successful copy */
 @keyframes simview-copy-flash {
-  0%   { background: #2a7a4a; color: #fff; }
+  0%   { background: var(--sv-success); color: var(--sv-on-accent); }
   100% { background: var(--widget-color); color: var(--text-color); }
 }
 
@@ -113,43 +504,38 @@ button:active {
     top: 10px;
     left: 50%;
     transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
+    border-radius: var(--sv-radius-lg);
     font-size: 12px;
-    z-index: 1000;
+    z-index: var(--sv-z-panel);
 }
 
 .analysis-header {
     display: flex;
     justify-content: flex-start;
     background-color: transparent;
-    align-items: center;
+    align-items: baseline;
     width: 100%;
     padding: 7px 10px;
-    color: white;
+    color: var(--sv-text);
     cursor: pointer;
-    border-radius: 5px 5px 0 0;
+    border-radius: var(--sv-radius-lg) var(--sv-radius-lg) 0 0;
     transition: background-color 0.2s ease;
     box-sizing: border-box;
 }
 .analysis-header:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--sv-hover);
 }
 .analysis-header-title {
-    font-weight: bold;
+    font-weight: 600;
     font-size: 1.1em;
 }
 .analysis-header-icon {
     display: inline-block;
     user-select: none;
-    padding-right: 0.4rem;
-    color: #ccc;
 }
 
 .analysis-content {
-    border-radius: 0 0 5px 5px;
+    border-radius: 0 0 var(--sv-radius-lg) var(--sv-radius-lg);
     display: none;
     box-sizing: border-box;
 }
@@ -167,22 +553,25 @@ button:active {
 .analysis-mode-tab {
     flex: 1;
     text-align: center;
-    padding: 6px 10px;
-    cursor: pointer;
-    background-color: rgba(255, 255, 255, 0.05);
+    padding: 7px 10px;
     font-size: 1.0em;
-    color: #ccc;
+    font-weight: 600;
+    color: var(--sv-muted);
+    background-color: transparent;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-    font-weight: bold;
+    border-bottom: 1px solid var(--sv-border);
+    border-radius: 0;
 }
 .analysis-mode-tab:hover {
-    background-color: rgba(255, 255, 255, 0.12);
+    color: var(--sv-text);
+    background-color: var(--sv-hover);
+}
+.analysis-mode-tab:active {
+    transform: none;
 }
 .analysis-mode-tab.active {
-    color: white;
-    background-color: rgba(255, 255, 255, 0.18);
-    border-bottom: 1px solid white;
+    color: var(--sv-text);
+    border-bottom: 2px solid var(--sv-accent);
 }
 
 .analysis-section {
@@ -205,49 +594,34 @@ button:active {
     position: sticky;
     top: 0;
     z-index: 1;
+    border-bottom: 1px solid var(--sv-border);
 }
 
 /* Tabs */
 .scalar-tab {
-    flex: 1;
+    flex: 0 1 auto;
     text-align: center;
-    padding: 5px 10px; /* Adjusted padding */
-    margin-right: 2px; /* Space between tabs */
-    cursor: pointer;
-    background-color: rgba(0, 0, 0, 1);
-    border-radius: 2px 2px 0 0;
-    font-size: 1.0em;
-    color: white;
-    transition: background-color 0.2s ease, color 0.2s ease;
-    position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-bottom: 1px solid white;
+    padding: 5px 10px;
+    font-size: 0.95em;
+    font-weight: 500;
+    color: var(--sv-muted);
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     margin-bottom: -1px;
-    font-weight: bold;
-    white-space: nowrap; /* Prevent wrapping */
-    overflow: hidden; /* Hide overflow */
-    text-overflow: ellipsis; /* Add ellipsis if text too long */
+    white-space: nowrap; /* Prevent wrapping; the tab bar wraps instead */
 }
-.scalar-tab:first-child {
-    margin-left: 0;
-    border-left: none;
+.scalar-tab:hover {
+    color: var(--sv-text);
+    background-color: transparent;
 }
-.scalar-tab:last-child {
-    margin-right: 0;
-    border-right: none;
+.scalar-tab:active {
+    transform: none;
 }
 .scalar-tab.active {
-    border: 1px solid white;
-    border-bottom: 1px solid rgba(0, 0, 0, 1);
-}
-.scalar-tab.active:hover {
-    background-color: rgba(0, 0, 0, 1);
-}
-.scalar-tab.active:first-child {
-    border-left: none;
-}
-.scalar-tab.active:last-child {
-    border-right: none;
+    color: var(--sv-text);
+    border-bottom-color: var(--sv-accent);
 }
 
 /* Export toolbar */
@@ -257,27 +631,29 @@ button:active {
     padding: 6px 0 0;
 }
 .scalar-export-bar button {
-    background-color: rgba(50, 50, 50, 0.8);
-    color: white;
-    border: 1px solid white;
     padding: 0.2em 0.6em;
-    border-radius: 3px;
     font-size: 0.85em;
     cursor: pointer;
 }
 
 /* Plot area */
+/* Flex column so the plot takes what the export bar leaves, instead of a
+   fixed 99% that overflowed the panel by the bar's height. */
 .scalar-plot-area {
     width: 100%;
     height: 15vh;
-  }
+    display: flex;
+    flex-direction: column;
+}
 
 .uplot-plot-div {
-    border-top: 1px solid white;
     width: 100%;
-    height: 99%;
+    flex: 1;
+    min-height: 0;
+    margin-top: 6px;
     display: none;
-    background-color: rgba(0, 0, 0, 1);
+    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
+    border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }
 .uplot-plot-div.visible {
@@ -314,16 +690,12 @@ button:active {
     gap: 5px;
 }
 .error-metrics-control-group label {
-    color: #ccc;
+    color: var(--sv-muted);
     font-size: 0.9em;
     white-space: nowrap;
 }
 .error-metrics-control-group select {
-    background-color: rgba(50, 50, 50, 0.8);
-    color: white;
-    border: 1px solid white;
     padding: 0.1em 0.2em;
-    border-radius: 3px;
     font-size: 0.9em;
     max-width: 100px;
 }
@@ -332,7 +704,8 @@ button:active {
 }
 .error-metrics-readout {
     margin-top: 10px;
-    font-family: monospace;
+    font-family: var(--sv-font-mono);
+    font-variant-numeric: tabular-nums;
 }
 .error-metrics-readout div {
     display: flex;
@@ -350,18 +723,19 @@ button:active {
 .error-metrics-stats {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-    font-family: monospace;
+    border-top: 1px solid var(--sv-border);
+    font-family: var(--sv-font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 0.85em;
 }
 .error-metrics-stats div {
     display: flex;
     justify-content: space-between;
     padding: 1px 0;
-    color: #ccc;
+    color: var(--sv-muted);
 }
 .error-metrics-stats div span:last-child {
-    color: white;
+    color: var(--sv-text);
 }
 .error-metrics-export {
     margin-top: 8px;
@@ -369,11 +743,7 @@ button:active {
     justify-content: flex-end;
 }
 .error-metrics-export button {
-    background-color: rgba(50, 50, 50, 0.8);
-    color: white;
-    border: 1px solid white;
     padding: 0.2em 0.6em;
-    border-radius: 3px;
     font-size: 0.85em;
     cursor: pointer;
 }
@@ -382,7 +752,8 @@ button:active {
     height: 15vh;
     margin-top: 10px;
     position: relative;
-    background-color: rgba(0, 0, 0, 1);
+    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
+    border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }
 .error-metrics-plot .uplot,
@@ -403,11 +774,8 @@ button:active {
     position: fixed;
     top: 10px;
     left: 1rem;
-    background-color: rgba(0, 0, 0, 0.75); /* Slightly adjusted alpha */
-    color: white;
-    border-radius: 8px; /* Slightly larger radius */
-    font-family: Arial, sans-serif;
-    z-index: 1000;
+    border-radius: var(--sv-radius-lg);
+    z-index: var(--sv-z-panel);
     display: flex; /* Use flexbox for layout */
     flex-direction: column; /* Stack header and content vertically */
     width: 320px;
@@ -423,12 +791,12 @@ button:active {
     flex-grow: 1; /* Allow content to fill available space */
     padding-top: 0.5rem;
     margin-top: 0.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.5); /* Separator line */
+    border-top: 1px solid var(--sv-border); /* Separator line */
 }
 
 /* Header styles */
 .body-state-window-header {
-    font-weight: bold;
+    font-weight: 600;
     font-size: 1.1em; /* Relative to parent window font size */
     display: flex;
     justify-content: space-between;
@@ -449,19 +817,13 @@ button:active {
 }
 
 .batch-selector {
-    background-color: rgba(50, 50, 50, 0.8);
-    color: white;
-    border: 1px solid white;
     padding: 0.25em 0.5em; /* Relative padding */
     border-radius: 3px;
     font-size: 1em; /* Inherit from container */
 }
-.batch-selector:focus {
-    outline: 1px solid skyblue; /* Add focus indicator */
-}
 
 .body-list-title {
-    font-weight: bold;
+    font-weight: 600;
     margin-bottom: 0.5rem; /* Use rem */
     font-size: 1.0em; /* Slightly larger */
 }
@@ -470,7 +832,7 @@ button:active {
     margin: 0 0 1rem 0; /* Bottom margin */
     padding: 0 0 0 1.25rem; /* ~20px indent */
     list-style-type: "→ "; /* Remove default bullets */
-    font-weight: bold;
+    font-weight: 600;
 }
 
 .body-list-item {
@@ -483,12 +845,12 @@ button:active {
 
 /* Hover effect for non-selected items */
 .body-list-item:not(.selected):hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--sv-hover);
 }
 
 /* Style for selected items */
 .body-list-item.selected {
-    background-color: rgba(100, 150, 255, 0.2); /* Use a selection color */
+    background-color: var(--sv-accent-soft);
 }
 
 /* Details container */
@@ -499,10 +861,10 @@ button:active {
     margin-top: 0.75rem; /* Use rem */
     padding: 0.75rem; /* Use rem */
     padding-top: 1.5rem; /* Extra top padding for close button */
-    background-color: rgba(50, 50, 50, 0.6); /* Slightly more contrast */
+    background-color: var(--sv-raised);
     border-radius: 5px;
     position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border */
+    border: 1px solid var(--sv-hover); /* Subtle border */
 }
 
 /* Close button */
@@ -512,7 +874,7 @@ button:active {
     right: 0.5rem; /* Use rem */
     cursor: pointer;
     font-size: 1.1em; /* Relative size */
-    color: #aaa;
+    color: var(--sv-muted);
     width: 1.5em;   /* Relative size */
     height: 1.5em;  /* Relative size */
     text-align: center;
@@ -522,16 +884,16 @@ button:active {
 }
 
 .body-detail-close-button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    color: white;
+    background-color: var(--sv-pressed);
+    color: var(--sv-text);
 }
 
 /* Header within the detail block */
 .body-detail-header {
-    font-weight: bold;
+    font-weight: 600;
     margin-bottom: 0.75rem; /* Use rem */
     font-size: 1.1em; /* Slightly larger */
-    color: #eee;
+    color: var(--sv-text);
 }
 
 /* Table within the detail block */
@@ -546,14 +908,15 @@ button:active {
 }
 
 .body-detail-table td:first-child { /* Label cell */
-    font-weight: bold;
-    color: #ccc; /* Lighter gray */
+    font-weight: 600;
+    color: var(--sv-muted);
     white-space: nowrap; /* Prevent labels wrapping */
 }
 
 .body-detail-table td:last-child { /* Value cell */
-    font-family: monospace;
-    color: #f0f0f0; /* Brighter value text */
+    font-family: var(--sv-font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--sv-text);
 }
 
 /* Collapsed state */
@@ -568,8 +931,6 @@ button:active {
 .body-state-window-toggle-icon {
     display: inline-block;
     user-select: none;
-    padding-right: 0.4rem;
-    color: #ccc;
 }
 
 /* ==========================================================================
@@ -581,32 +942,25 @@ button:active {
     position: fixed;
     bottom: 1rem;
     right: 1rem;
-    background-color: rgba(0, 0, 0, 0.75);
-    color: white;
-    border-radius: 8px;
-    font-family: Arial, sans-serif;
+    border-radius: var(--sv-radius-lg);
     font-size: 12px;
-    z-index: 1000;
+    z-index: var(--sv-z-panel);
 }
 .batch-legend-header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     padding: 8px 10px;
     cursor: pointer;
-    font-weight: bold;
+    font-weight: 600;
     font-size: 1.1em;
 }
 .batch-legend-header:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-.batch-legend-header-icon {
-    padding-right: 0.4rem;
-    color: #ccc;
+    background-color: var(--sv-hover);
 }
 .batch-legend-content {
     display: none;
     padding: 0 8px 8px 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.5);
+    border-top: 1px solid var(--sv-border);
     max-height: 30vh;
     overflow-y: auto;
 }
@@ -623,21 +977,21 @@ button:active {
     cursor: pointer;
 }
 .batch-legend-row:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--sv-hover);
 }
 .batch-legend-row.active {
-    background-color: rgba(255, 255, 255, 0.18);
-    outline: 1px solid rgba(255, 255, 255, 0.6);
+    background-color: var(--sv-accent-soft);
+    outline: 1px solid var(--sv-accent);
 }
 .batch-legend-swatch {
     width: 12px;
     height: 12px;
     border-radius: 50%;
     flex: none;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid var(--sv-border-strong);
 }
 .batch-legend-index {
-    color: #ccc;
+    color: var(--sv-muted);
     flex: none;
 }
 .batch-legend-name {
@@ -648,19 +1002,19 @@ button:active {
     white-space: nowrap;
     background: transparent;
     border: 1px solid transparent;
-    color: white;
-    font-family: Arial, sans-serif;
+    color: var(--sv-text);
+    font-family: inherit;
     font-size: 1em;
     padding: 1px 3px;
     border-radius: 3px;
 }
 .batch-legend-name:hover {
-    border-color: rgba(255, 255, 255, 0.3);
+    border-color: var(--sv-border-strong);
 }
 .batch-legend-name:focus {
     outline: none;
-    border-color: white;
-    background-color: rgba(255, 255, 255, 0.1);
+    border-color: var(--sv-text);
+    background-color: var(--sv-hover);
     cursor: text;
 }
 
@@ -684,16 +1038,12 @@ button:active {
     gap: 5px;
 }
 .terrain-profile-control-group label {
-    color: #ccc;
+    color: var(--sv-muted);
     font-size: 0.9em;
     white-space: nowrap;
 }
 .terrain-profile-control-group select {
-    background-color: rgba(50, 50, 50, 0.8);
-    color: white;
-    border: 1px solid white;
     padding: 0.1em 0.2em;
-    border-radius: 3px;
     font-size: 0.9em;
     max-width: 160px;
 }
@@ -703,11 +1053,7 @@ button:active {
     margin-top: 8px;
 }
 .terrain-profile-export-bar button {
-    background-color: rgba(50, 50, 50, 0.8);
-    color: white;
-    border: 1px solid white;
     padding: 0.2em 0.6em;
-    border-radius: 3px;
     font-size: 0.85em;
     cursor: pointer;
 }
@@ -716,7 +1062,8 @@ button:active {
     height: 15vh;
     margin-top: 10px;
     position: relative;
-    background-color: rgba(0, 0, 0, 1);
+    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
+    border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }
 .terrain-profile-plot .uplot,

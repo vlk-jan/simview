@@ -1,4 +1,4 @@
-import { FREQ_CONFIG } from "../config.js";
+import { FREQ_CONFIG, THEME } from "../config.js";
 import { pickDefaultBatchPair } from "../utils/batchPresets.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
@@ -14,11 +14,11 @@ import { makeChart } from "../utils/uplot.js";
 // the swatches in front of the readout labels all have to agree, otherwise the
 // readout stops working as a legend for the curve above it.
 const SERIES_COLORS = {
-    pos: "#4c9aff",
-    x: "#ff6b6b",
-    y: "#51cf66",
-    z: "#4c9aff",
-    rot: "#ff9f4c",
+    pos: THEME.blue,
+    x: THEME.red,
+    y: THEME.green,
+    z: THEME.blue,
+    rot: THEME.peach,
 };
 
 // Compares two batches of the same body over the full timeline: Euclidean
@@ -361,7 +361,7 @@ export class ErrorMetrics {
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
         const ctx = u.ctx;
         ctx.save();
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = THEME.text;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, u.bbox.top);
@@ -422,7 +422,9 @@ export class ErrorMetrics {
         this.chart = makeChart(
             this.plotDiv,
             {
-                padding: [8, 8, 0, 0],
+                // Extra right padding: uPlot sizes the right axis for its
+                // tick values, and the rotated "Orientation" label overhangs it.
+                padding: [8, 16, 0, 0],
                 series: seriesConfigs,
                 scales: {
                     x: { time: false },
@@ -439,32 +441,33 @@ export class ErrorMetrics {
                 axes: [
                     {
                         show: true,
-                        stroke: "rgba(255, 255, 255, 0.3)",
+                        stroke: THEME.overlay0,
                         grid: { show: false },
                         ticks: { show: false },
-                        font: "12px Arial",
+                        size: 24, // uPlot's default 50px leaves an empty strip under the labels
+                        font: THEME.chartFont,
                     },
                     {
                         scale: "pos",
                         show: true,
                         side: 3,
                         label: "Position (m)",
-                        labelFont: "12px Arial",
-                        stroke: this.showAxes ? "rgba(255, 255, 255, 0.6)" : SERIES_COLORS.pos,
-                        grid: { stroke: "rgb(53, 53, 53)", width: 1 },
-                        ticks: { stroke: "rgb(73, 73, 73)" },
-                        font: "12px Arial",
+                        labelFont: THEME.chartFont,
+                        stroke: this.showAxes ? THEME.subtext0 : SERIES_COLORS.pos,
+                        grid: { stroke: THEME.surface0, width: 1 },
+                        ticks: { stroke: THEME.surface1 },
+                        font: THEME.chartFont,
                     },
                     {
                         scale: "rot",
                         show: true,
                         side: 1,
-                        label: "Orientation (deg)",
-                        labelFont: "12px Arial",
+                        label: "Orient. (°)", // short enough for the rotated label to fit a short panel
+                        labelFont: THEME.chartFont,
                         stroke: SERIES_COLORS.rot,
                         grid: { show: false },
-                        ticks: { stroke: "rgb(73, 73, 73)" },
-                        font: "12px Arial",
+                        ticks: { stroke: THEME.surface1 },
+                        font: THEME.chartFont,
                     },
                 ],
                 hooks: {
@@ -489,11 +492,7 @@ export class ErrorMetrics {
 
     _createTooltip() {
         const tooltip = document.createElement("div");
-        tooltip.style.cssText =
-            "position:absolute;pointer-events:none;display:none;" +
-            "background:rgba(20,20,20,0.9);border:1px solid rgba(255,255,255,0.3);" +
-            "border-radius:3px;padding:4px 6px;font-family:Arial;font-size:11px;" +
-            "color:white;white-space:nowrap;z-index:10;";
+        tooltip.className = "sv-chart-tooltip";
         this.plotDiv.appendChild(tooltip);
         this._tooltip = tooltip;
     }

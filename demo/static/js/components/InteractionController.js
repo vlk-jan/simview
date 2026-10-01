@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RAYCAST_CONFIG } from "../config.js";
+import { RAYCAST_CONFIG, THEME } from "../config.js";
 
 export class InteractionController {
     constructor(app) {
@@ -14,7 +14,7 @@ export class InteractionController {
 
         // Create the probe sphere
         const sphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
-        const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: false });
+        const sphereMat = new THREE.MeshBasicMaterial({ color: THEME.red, depthTest: false });
         this.probeSphere = new THREE.Mesh(sphereGeo, sphereMat);
         this.probeSphere.renderOrder = 999; // Draw on top
         this.probeSphere.visible = false;
@@ -208,18 +208,6 @@ export class InteractionController {
         if (!tooltip) {
             tooltip = document.createElement("div");
             tooltip.id = "terrain-tooltip";
-            Object.assign(tooltip.style, {
-                position: "absolute",
-                background: "rgba(0, 0, 0, 0.8)",
-                color: "white",
-                padding: "8px",
-                borderRadius: "4px",
-                pointerEvents: "none",
-                zIndex: "1000",
-                fontSize: "12px",
-                fontFamily: "monospace",
-                whiteSpace: "pre"
-            });
             document.body.appendChild(tooltip);
         }
 

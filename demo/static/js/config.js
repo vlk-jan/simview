@@ -1,3 +1,23 @@
+// Catppuccin Mocha (https://catppuccin.com/palette) for everything drawn on a
+// canvas or in WebGL, where the CSS tokens in controls.css can't reach --
+// keep the two in sync.
+export const THEME = {
+    crust: "#11111b",
+    mantle: "#181825",
+    base: "#1e1e2e",
+    surface0: "#313244",
+    surface1: "#45475a",
+    overlay0: "#6c7086",
+    subtext0: "#a6adc8",
+    text: "#cdd6f4",
+    blue: "#89b4fa",
+    red: "#f38ba8",
+    green: "#a6e3a1",
+    yellow: "#f9e2af",
+    peach: "#fab387",
+    chartFont: "12px system-ui, sans-serif",
+};
+
 export const UI_DEFAULT_CONFIG = {
     bodyVisualizationMode: "points",
     // Point-cloud bodies sit outside Body Visualization Mode (a cloud isn't a
@@ -51,7 +71,7 @@ export const RENDERER_CONFIG = {
     antialias: true,
     preserveDrawingBuffer: true,
     pixelRatio: window.devicePixelRatio,
-    clearColor: 0x000000,
+    clearColor: THEME.mantle, // matches --sv-bg in controls.css
     clearAlpha: 1.0,
 };
 
@@ -102,7 +122,7 @@ const SHAPE_CONFIG = {
         },
     },
     wireframe: {
-        color: 0x4080ff,
+        color: THEME.blue,
     },
     points: {
         opacity: 0.7,
@@ -136,22 +156,22 @@ export const TRAIL_CONFIG = {
 export const BODY_VECTOR_CONFIG = {
     // Linear velocity
     velocity: {
-        color: 0x2ca02c,
+        color: THEME.green,
         scale: 1.0,
     },
     // Angular velocity
     angularVelocity: {
-        color: 0xffff00,
+        color: THEME.yellow,
         scale: 1.0,
     },
     // Force
     force: {
-        color: 0xff7f0e,
+        color: THEME.peach,
         scale: 1.0,
     },
     // Torque
     torque: {
-        color: 0xd62728,
+        color: THEME.red,
         scale: 1.0,
     },
 };
@@ -164,10 +184,24 @@ export const RAYCAST_CONFIG = {
     pointsThreshold: 0.15,
 };
 
-export const BATCH_PALETTE_GENERATION_CONFIG = {
-    colors: ["#00429d", "#96ffea", "#ff40e0", "#ffffe0", "#ff005e", "#93003a"],
-    correctLightness: true,
-};
+// Batch colors: the Mocha accents, ordered so neighbouring batches differ in
+// hue. Used as-is up to their count; more batches interpolate between them.
+export const BATCH_PALETTE = [
+    "#89b4fa", // blue
+    "#fab387", // peach
+    "#a6e3a1", // green
+    "#cba6f7", // mauve
+    "#f38ba8", // red
+    "#94e2d5", // teal
+    "#f9e2af", // yellow
+    "#f5c2e7", // pink
+    "#74c7ec", // sapphire
+    "#eba0ac", // maroon
+    "#b4befe", // lavender
+    "#89dceb", // sky
+    "#f2cdcd", // flamingo
+    "#f5e0dc", // rosewater
+];
 
 export const STATIC_OBJECT_CONFIG = {
     ...SHAPE_CONFIG,

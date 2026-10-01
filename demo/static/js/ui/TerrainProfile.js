@@ -1,7 +1,7 @@
-import { FREQ_CONFIG } from "../config.js";
+import { FREQ_CONFIG, THEME } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
-import { makeChart } from "../utils/uplot.js";
+import { makeChart, yIncrements } from "../utils/uplot.js";
 
 const LAYER_LABELS = { height: "Height" };
 
@@ -28,7 +28,7 @@ export class TerrainProfile {
         this.availableLayers = this.app.terrain.getAvailableDiffLayers();
         if (this.availableLayers.length === 0) this.availableLayers = ["height"];
         this.layer = this.availableLayers[0];
-        this.bodyNames = [...this.app.bodies.keys()];
+        this.bodyNames = [...this.app.bodies].filter(([, b]) => b.hasPose).map(([n]) => n);
         this.selectedBody = this.bodyNames[0] ?? null;
         this.pathMode = "own"; // "own", or a batch index (string) to sample every batch along
 
@@ -223,12 +223,6 @@ export class TerrainProfile {
         this._updateMarker(true);
     }
 
-    _chartInterval(min, max) {
-        const diff = max - min;
-        if (diff === 0) return Math.max(Math.abs(max) / 5, 1e-3);
-        return diff / 5;
-    }
-
     _buildChart() {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
@@ -282,19 +276,20 @@ export class TerrainProfile {
                 axes: [
                     {
                         show: true,
-                        stroke: "transparent",
+                        stroke: THEME.overlay0,
                         grid: { show: false },
                         ticks: { show: false },
-                        values: () => [],
+                        size: 24, // uPlot's default 50px leaves an empty strip under the labels
+                        font: THEME.chartFont,
                     },
                     {
                         show: true,
-                        stroke: "white",
-                        grid: { stroke: "rgb(53, 53, 53)", width: 1 },
-                        ticks: { stroke: "rgb(73, 73, 73)" },
-                        font: "12px Arial",
+                        stroke: THEME.subtext0,
+                        grid: { stroke: THEME.surface0, width: 1 },
+                        ticks: { stroke: THEME.surface1 },
+                        font: THEME.chartFont,
                         space: 30,
-                        incrs: [this._chartInterval(min, max)],
+                        incrs: yIncrements(min, max),
                     },
                 ],
                 hooks: {
@@ -320,7 +315,7 @@ export class TerrainProfile {
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
         const ctx = u.ctx;
         ctx.save();
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = THEME.text;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, u.bbox.top);
@@ -331,11 +326,7 @@ export class TerrainProfile {
 
     _createTooltip() {
         const tooltip = document.createElement("div");
-        tooltip.style.cssText =
-            "position:absolute;pointer-events:none;display:none;" +
-            "background:rgba(20,20,20,0.9);border:1px solid rgba(255,255,255,0.3);" +
-            "border-radius:3px;padding:4px 6px;font-family:Arial;font-size:11px;" +
-            "color:white;white-space:nowrap;z-index:10;";
+        tooltip.className = "sv-chart-tooltip";
         this.plotDiv.appendChild(tooltip);
         this._tooltip = tooltip;
     }

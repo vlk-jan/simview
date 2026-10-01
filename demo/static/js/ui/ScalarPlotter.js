@@ -1,4 +1,4 @@
-import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
+import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG, THEME } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
     episodeAggregates,
@@ -6,7 +6,7 @@ import {
     episodeLabel,
     normalizeEpisodes,
 } from "../utils/episodes.js";
-import { makeChart } from "../utils/uplot.js";
+import { makeChart, yIncrements } from "../utils/uplot.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -246,7 +246,7 @@ export class ScalarPlotter {
             if (startTime !== undefined && aggregate.start > 0) {
                 const x = u.valToPos(startTime, "x", true);
                 ctx.setLineDash([3, 3]);
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+                ctx.strokeStyle = THEME.overlay0; // episode boundary
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(x, u.bbox.top);
@@ -258,7 +258,7 @@ export class ScalarPlotter {
             const endTime = this.times[Math.min(aggregate.end - 1, this.times.length - 1)];
             if (startTime === undefined || endTime === undefined) continue;
             ctx.setLineDash([]);
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.strokeStyle = THEME.peach; // episode mean
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             const y = u.valToPos(aggregate.mean, "y", true);
@@ -284,26 +284,6 @@ export class ScalarPlotter {
             `<br>${episodeLabel(aggregate)}: ` +
             `sum ${format(aggregate.sum)}, mean ${format(aggregate.mean)}`
         );
-    }
-
-    // uPlot walks `incrs` and takes the first increment whose ticks fit the
-    // axis's available length. Offering exactly one (range/stepsPerYAxis) meant
-    // that in a short panel -- which is what the Analysis panel gives us -- no
-    // increment fit, and uPlot drew no ticks or labels at all. Coarser
-    // multiples let it degrade instead of giving up.
-    _yIncrements(min, max) {
-        const base = this.getChartInterval(min, max);
-        return [1, 2, 5, 10, 20, 50, 100].map((m) => base * m);
-    }
-
-    getChartInterval(min, max) {
-        const diff = max - min;
-        if (diff === 0)
-            return Math.max(
-                Math.abs(max) / SCALAR_PLOTTER_CONFIG.stepsPerYAxis,
-                1e-3
-            );
-        return diff / SCALAR_PLOTTER_CONFIG.stepsPerYAxis;
     }
 
     // Finds the batch series whose y-value at the clicked x-index is closest
@@ -379,12 +359,12 @@ export class ScalarPlotter {
                         },
                         {
                             show: true,
-                            stroke: "white",
-                            grid: { stroke: "rgb(53, 53, 53)", width: 1 },
-                            ticks: { stroke: "rgb(73, 73, 73)" },
-                            font: "12px Arial",
+                            stroke: THEME.subtext0,
+                            grid: { stroke: THEME.surface0, width: 1 },
+                            ticks: { stroke: THEME.surface1 },
+                            font: THEME.chartFont,
                             space: 30,
-                            incrs: this._yIncrements(min, max),
+                            incrs: yIncrements(min, max, SCALAR_PLOTTER_CONFIG.stepsPerYAxis),
                         },
                     ],
                     hooks: {
@@ -425,11 +405,7 @@ export class ScalarPlotter {
 
     _createTooltip(plotDiv) {
         const tooltip = document.createElement("div");
-        tooltip.style.cssText =
-            "position:absolute;pointer-events:none;display:none;" +
-            "background:rgba(20,20,20,0.9);border:1px solid rgba(255,255,255,0.3);" +
-            "border-radius:3px;padding:4px 6px;font-family:Arial;font-size:11px;" +
-            "color:white;white-space:nowrap;z-index:10;";
+        tooltip.className = "sv-chart-tooltip";
         plotDiv.style.position = "relative";
         plotDiv.appendChild(tooltip);
         plotDiv._tooltip = tooltip;

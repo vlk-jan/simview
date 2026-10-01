@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { TERRAIN_CONFIG } from "../config.js";
+import { TERRAIN_CONFIG, THEME } from "../config.js";
 import { getCallableFromColorMapName as resolveColorMap } from "./colormap.js";
 
 export class Terrain {
@@ -387,7 +387,7 @@ export class Terrain {
                         direction.normalize(),
                         origin,
                         normalLength,
-                        0xff0000
+                        THEME.red
                     );
 
                     normalVectors.add(arrowHelper);

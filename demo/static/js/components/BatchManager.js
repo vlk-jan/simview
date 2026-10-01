@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { BATCH_PALETTE_GENERATION_CONFIG } from "../config.js";
-import { generateDivergingPalette } from "../objects/utils.js";
+import { BATCH_PALETTE } from "../config.js";
+import { categoricalPalette } from "../objects/utils.js";
 import {
     RENDER_ALL,
     RENDER_FOCUSED,
@@ -67,11 +67,7 @@ export class BatchManager {
         }
         this._recomputeVisibleBatches();
 
-        this.batchPalette = generateDivergingPalette(
-            BATCH_PALETTE_GENERATION_CONFIG.colors,
-            this.simBatches + 1,
-            BATCH_PALETTE_GENERATION_CONFIG.correctLightness
-        );
+        this.batchPalette = categoricalPalette(BATCH_PALETTE, this.simBatches);
         console.debug("Batch palette initialized:", this.batchPalette);
 
         const providedNames = Array.isArray(modelData.batchNames)

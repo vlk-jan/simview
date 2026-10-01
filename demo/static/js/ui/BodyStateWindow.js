@@ -32,7 +32,7 @@ export class BodyStateWindow {
 
         const titleGroup = document.createElement("div"); // Group title and toggle
         titleGroup.style.display = "flex";
-        titleGroup.style.alignItems = "center";
+        titleGroup.style.alignItems = "baseline"; // chevron sits on the text baseline
         this.header.appendChild(titleGroup);
 
         this.toggleIcon = document.createElement("span");
@@ -129,11 +129,9 @@ export class BodyStateWindow {
         list.classList.add("body-list"); // Use CSS class
 
         for (const [name, body] of this.app.bodies) {
-            // A point cloud with no per-frame data is a static prop, not a
-            // body with a pose worth reading -- listing it only offers a
-            // permanently-zero Position/Rotation row. One that does move
-            // (validStates > 0) stays listed like any other body.
-            if (body.isPointCloud && !(body.validStates > 0)) continue;
+            // Listing a static point cloud only offers a permanently-zero
+            // Position/Rotation row.
+            if (!body.hasPose) continue;
             const item = document.createElement("li");
             item.classList.add("body-list-item"); // Use CSS class
             item.textContent = name;
