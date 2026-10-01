@@ -768,43 +768,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.add_body_object" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_body_object
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#simview.scene.SimulationScene.add_state" class="md-nav__link">
     <span class="md-ellipsis">
       
         add_state
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.add_static_object_instance" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_static_object_instance
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.add_terrain_object" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_terrain_object
       
     </span>
   </a>
@@ -838,28 +805,6 @@
     <span class="md-ellipsis">
       
         create_pointcloud
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.create_static_object_batched" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_static_object_batched
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.create_static_object_singleton" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_static_object_singleton
       
     </span>
   </a>
@@ -937,8 +882,13 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#simview.scene.ViewerHandle" class="md-nav__link">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#simview.server.ViewerHandle" class="md-nav__link">
     <span class="md-ellipsis">
       
         ViewerHandle
@@ -950,18 +900,13 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simview.scene.ViewerHandle.stop" class="md-nav__link">
+  <a href="#simview.server.ViewerHandle.stop" class="md-nav__link">
     <span class="md-ellipsis">
       
         stop
       
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
         
@@ -1431,43 +1376,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.add_body_object" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_body_object
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#simview.scene.SimulationScene.add_state" class="md-nav__link">
     <span class="md-ellipsis">
       
         add_state
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.add_static_object_instance" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_static_object_instance
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.add_terrain_object" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_terrain_object
       
     </span>
   </a>
@@ -1501,28 +1413,6 @@
     <span class="md-ellipsis">
       
         create_pointcloud
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.create_static_object_batched" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_static_object_batched
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.scene.SimulationScene.create_static_object_singleton" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_static_object_singleton
       
     </span>
   </a>
@@ -1600,8 +1490,13 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#simview.scene.ViewerHandle" class="md-nav__link">
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#simview.server.ViewerHandle" class="md-nav__link">
     <span class="md-ellipsis">
       
         ViewerHandle
@@ -1613,18 +1508,13 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simview.scene.ViewerHandle.stop" class="md-nav__link">
+  <a href="#simview.server.ViewerHandle.stop" class="md-nav__link">
     <span class="md-ellipsis">
       
         stop
       
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
         
@@ -1656,8 +1546,8 @@
 <h1 id="scenes-viewer-handles">Scenes &amp; Viewer Handles</h1>
 <p><code>simview.scene</code> is the main authoring API: <code>SimulationScene</code> builds a model
 incrementally (terrain, bodies, static objects) and accumulates states, then
-saves/loads JSON or launches a viewer. <code>ViewerHandle</code> is the non-blocking handle
-returned by <code>SimulationScene.show()</code>.</p>
+saves/loads JSON or launches a viewer. <code>SimulationScene.show()</code> returns a
+<code>ViewerHandle</code>, the non-blocking background server.</p>
 
 
 <div class="doc doc-object doc-module">
@@ -1754,27 +1644,6 @@ here up front.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="simview.scene.SimulationScene.add_body_object" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">add_body_object</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_body_object</span><span class="p">(</span><span class="n">body</span><span class="p">:</span> <span class="n">SimViewBody</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Adds a pre-configured SimViewBody object to the model. See
-<code>create_body</code> for the meaning of <code>body.parent</code>/<code>body.local_transform</code>.</p>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
 <h4 id="simview.scene.SimulationScene.add_state" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">add_state</span>
 
@@ -1791,48 +1660,6 @@ here up front.</p>
     <div class="doc doc-contents ">
 
         <p>Adds a new state (snapshot in time) to the simulation data.</p>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h4 id="simview.scene.SimulationScene.add_static_object_instance" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">add_static_object_instance</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_static_object_instance</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">static_object</span><span class="p">:</span> <span class="n">SimViewStaticObject</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Adds a pre-configured SimViewStaticObject to the model.</p>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h4 id="simview.scene.SimulationScene.add_terrain_object" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">add_terrain_object</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_terrain_object</span><span class="p">(</span><span class="n">terrain</span><span class="p">:</span> <span class="n">SimViewTerrain</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Adds a pre-configured SimViewTerrain object to the model.</p>
 
 
     </div>
@@ -2090,52 +1917,6 @@ viewer's click-to-similarity color mode.</p>
           </tr>
       </tbody>
     </table>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h4 id="simview.scene.SimulationScene.create_static_object_batched" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">create_static_object_batched</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_static_object_batched</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">shape_type</span><span class="p">:</span> <span class="n">BodyShapeType</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">shapes_kwargs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Creates and adds a batched static object to the simulation model.</p>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h4 id="simview.scene.SimulationScene.create_static_object_singleton" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">create_static_object_singleton</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_static_object_singleton</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">shape_type</span><span class="p">:</span> <span class="n">BodyShapeType</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Creates and adds a singleton static object to the simulation model.</p>
 
 
     </div>
@@ -2568,27 +2349,44 @@ are fine -- each gets its own server thread and port (via
 
 </div>
 
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
 <div class="doc doc-object doc-class">
 
 
 
-<h3 id="simview.scene.ViewerHandle" class="doc doc-heading">
-            <span class="doc doc-object-name doc-class-name">ViewerHandle</span>
+<h2 id="simview.server.ViewerHandle" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">simview.server.ViewerHandle</span>
 
 
-</h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ViewerHandle</span><span class="p">(</span><span class="n">threaded</span><span class="p">)</span>
+</h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ViewerHandle</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">app</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">preferred_port</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5420</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">thread_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;simview-server&quot;</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">log_level</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;info&quot;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span>
 </span></code></pre></div>
 
-    <div class="doc doc-contents ">
+    <div class="doc doc-contents first">
 
 
 
-        <p>A running, non-blocking SimView server for a snapshot of a scene.</p>
-<p>Returned by <code>SimulationScene.show</code>. Holds the background server thread
-started for that snapshot; <code>stop()</code> (also called automatically on
-context-manager exit) shuts it down. <code>_repr_html_</code> lets Jupyter render the
-viewer inline in an iframe just by evaluating the handle in a cell.</p>
+        <p>A SimViewServer's uvicorn app running on a background daemon thread.</p>
+<p>Returned by <code>SimulationScene.show</code>, and the shared non-blocking plumbing
+behind <code>LiveViewer</code> and <code>simview render</code>. <code>__init__</code> blocks until the
+socket is actually bound (or raises if startup fails/times out);
+<code>stop()</code> (also called on context-manager exit) shuts it down.
+<code>_repr_html_</code> lets Jupyter render the viewer inline in an iframe just by
+evaluating the handle in a cell.</p>
 
 
 
@@ -2614,31 +2412,23 @@ viewer inline in an iframe just by evaluating the handle in a cell.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="simview.scene.ViewerHandle.stop" class="doc doc-heading">
+<h3 id="simview.server.ViewerHandle.stop" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">stop</span>
 
 
-</h4>
+</h3>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">stop</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Stop the background server. Idempotent.</p>
+        <p>Signal the server to exit and wait for its thread to finish.</p>
+<p>Idempotent -- safe to call multiple times.</p>
 
 
     </div>
 
 </div>
-
-
-
-  </div>
-
-    </div>
-
-</div>
-
 
 
 

@@ -846,28 +846,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simview.model.SimViewModel.create_static_object_batched" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_static_object_batched
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.model.SimViewModel.create_terrain" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_terrain
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#simview.model.SimViewModel.from_dict" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1449,28 +1427,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#simview.model.SimViewModel.create_static_object_batched" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_static_object_batched
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#simview.model.SimViewModel.create_terrain" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        create_terrain
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#simview.model.SimViewModel.from_dict" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1855,217 +1811,6 @@ per episode. Nothing about playback itself changes.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="simview.model.SimViewModel.create_static_object_batched" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">create_static_object_batched</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_static_object_batched</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">shape_type</span><span class="p">:</span> <span class="n">BodyShapeType</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">shapes_kwargs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Helper method to create and add a batched static object.</p>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h4 id="simview.model.SimViewModel.create_terrain" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">create_terrain</span>
-
-
-</h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_terrain</span><span class="p">(</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">heightmap</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">normals</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">x_lim</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">y_lim</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">grid_res</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">properties</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">property_bounds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">embedding_map</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</span></code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Adds terrain to the internal simulation model.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>heightmap</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>2D or 3D tensor of terrain heights.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>normals</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>3D or 4D tensor of terrain normals. If None,
-normals are automatically computed from the heightmap gradients.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>x_lim</code>
-            </td>
-            <td>
-                  <code><span title="tuple">tuple</span>[<span title="float">float</span>, <span title="float">float</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>(min, max) coordinates for the X axis.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>y_lim</code>
-            </td>
-            <td>
-                  <code><span title="tuple">tuple</span>[<span title="float">float</span>, <span title="float">float</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>(min, max) coordinates for the Y axis.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>grid_res</code>
-            </td>
-            <td>
-                  <code><span title="float">float</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Grid resolution. If x_lim and y_lim are omitted,
-they will be automatically inferred assuming the grid is centered at 0.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>properties</code>
-            </td>
-            <td>
-                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="torch.Tensor">Tensor</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional arbitrary named
-per-cell scalar maps (2D or 3D, like <code>heightmap</code>), e.g.
-<code>{"friction": friction_map, "stiffness": stiffness_map}</code>. Each becomes
-selectable as a terrain color mode in the viewer automatically, with no
-further code changes needed.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>property_bounds</code>
-            </td>
-            <td>
-                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="tuple">tuple</span>[<span title="float">float</span>, <span title="float">float</span>]] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional explicit
-<code>(min, max)</code> color-scale range per property name, e.g.
-<code>{"friction": (0.0, 1.0)}</code>. Each name must also appear in
-<code>properties</code>; names left out keep the default, which is that map's
-own data range. Use this to keep one scale comparable across scenes
--- cells outside the range saturate at the end colors rather than
-being hidden.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>embedding_map</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional per-cell K-wide feature map
-(3D channels-first <code>(K, Dy, Dx)</code> or 4D <code>(B, K, Dy, Dx)</code>, like <code>normals</code>)
-enabling the viewer's click-to-similarity "features" color mode.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
 <h4 id="simview.model.SimViewModel.from_dict" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">from_dict</span>
 
@@ -2347,7 +2092,7 @@ objects are all rebuilt via their own <code>from_dict</code>, keyed by name so
         <p>Reconstruct a SimViewTerrain from the dict produced by <code>to_json</code>.</p>
 <p><code>heightData</code>/<code>normals</code>/each property's <code>data</code> are kept in whatever
 form they were serialized in (plain nested lists or a <code>__b64__</code> blob
-string) -- decode with <code>simview.model._decode_blob</code> if you need the
+string) -- decode with <code>simview.columnar.blob_floats</code> if you need the
 flat float values back out.</p>
 
 
