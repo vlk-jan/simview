@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-10-01
+
+A cleanup release: about 1,200 fewer lines of application code, plus the vendored
+`chroma-js` and the unreachable colormap data. The scene JSON wire format is
+**unchanged**, so scenes load in both directions. It is a major release because some
+redundant Python authoring entry points were removed, listed below.
+
+### Removed
+
+- **The duplicated authoring layer.** `SimulationScene` now holds the authoring
+  logic itself. Removed: `SimViewModel.create_terrain`, `create_body`,
+  `create_static_object_singleton`, `create_static_object_batched` and
+  `add_terrain`, and `SimulationScene.add_terrain_object`, `add_body_object`,
+  `add_static_object_instance`, `create_static_object_singleton` and
+  `create_static_object_batched`. Add static objects with
+  `SimViewModel.add_static_object`.
+- **`SimViewBody.create_sphere` / `create_cylinder`**, which nothing called.
+- **`SimViewServer.run(debug=...)` and `python -m simview.server`.** Use
+  `simview <file>`.
+- **Module re-exports** `simview.terrain.load_scene` / `load_scene_model`,
+  `simview.diff.load_scene` and `simview.remote.human_bytes`. Import them from
+  `simview.utils`.
+- **`simview clear` no longer sweeps `simview_viz_*.json` temp files or
+  `/tmp/.simview_cache`.** The launcher stopped writing them some time ago.
+- **The vendored `chroma-js`.** Batch palettes are interpolated in CIE LCh by a
+  small built-in function whose output is identical.
+- **The 71 matplotlib colormaps the viewer never offered** from `js-colormaps.js`.
+  Every map in the colormap dropdown is unchanged.
+
+### Changed
+
+- **`ViewerHandle` is now the background server itself** (`simview.server.ViewerHandle`).
+  `scene.show()`, `LiveViewer` and `simview render` share it instead of three
+  copies. `from simview import ViewerHandle`, `url`, notebook display and
+  `with`-block use behave as before.
+- **`simview diff` summaries gain `min`, and `simview terrain --along-body`
+  summaries gain `final`**, because both commands now share one stats helper.
+- A body missing `bodyTransform` now fails a merge with a clear `ValueError`
+  instead of a `KeyError`.
+- The **Body states**, **Analysis** and **Batches** panels collapse with native
+  `<details>`. Collapsed, Body states and Analysis now have the same height and
+  centring.
+
+### Fixed
+
+- **Keyboard shortcuts no longer cancel themselves out after a model reload.** The
+  controls' keydown listener was never removed, so each reload added another and
+  every toggle fired twice.
+
+### Internal
+
+- Python: the blob codec, state-field tables, body-name helpers, bind-host logic and
+  port warning each live in one place. uvicorn now chooses uvloop/httptools itself,
+  and the code no longer falls back for a missing `orjson`, which is a hard
+  dependency.
+- Frontend: the three uPlot panels share their resize, tooltip, marker and
+  export-bar code. `InteractionControls.js` is gone. PlaybackControls removes its
+  listeners with a single `AbortController`. View-state hashes are parsed with
+  `URLSearchParams`, and existing share links still work.
+
 ## [5.1.1] - 2026-10-01
 
 ### Fixed
@@ -496,7 +556,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v5.1.1...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/vlk-jan/simview/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/vlk-jan/simview/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/vlk-jan/simview/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/vlk-jan/simview/compare/v4.2.1...v5.0.0
