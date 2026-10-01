@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Controls panel floats like the other panels (inset from the top-right
   corner, rounded, translucent) instead of docking flush to the top edge, and
   every collapsible panel uses its chevron as the expand/collapse indicator.
+- **Catppuccin Mocha colors** throughout: panels, chart axes/grids/series,
+  Error Metrics axis colors, body vector arrows, probe and wireframe accents.
+  Batches are colored with the Mocha accents (blue, peach, green, mauve, …)
+  instead of the old navy-to-cream diverging palette, whose first batch was
+  nearly invisible on the dark background; past 14 batches the colors are
+  interpolated between them.
+- Larger loading-screen text and a 3D-cube favicon.
 
 ### Fixed
 

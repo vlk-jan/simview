@@ -1,25 +1,41 @@
 /* ==========================================================================
-   Design tokens. One cool-tinted gray family, one accent, one danger color;
-   every panel below draws from these instead of hardcoding its own values.
-   Fonts are system stacks on purpose: the viewer must work offline, so no
-   web-font download.
+   Design tokens: Catppuccin Mocha (https://catppuccin.com/palette), blue as
+   the single UI accent, red/green for state. The same palette is mirrored
+   for canvas/WebGL colors in THEME (static/js/config.js) -- keep the two in
+   sync. Fonts are system stacks on purpose: the viewer must work offline,
+   so no web-font download.
    ========================================================================== */
 :root {
-    --sv-bg: #0d0f13;
-    --sv-surface: rgba(17, 20, 26, 0.78);
-    --sv-surface-solid: #11141a;
-    --sv-raised: rgba(255, 255, 255, 0.06);
-    --sv-hover: rgba(255, 255, 255, 0.1);
-    --sv-pressed: rgba(255, 255, 255, 0.16);
-    --sv-border: rgba(196, 210, 235, 0.14);
-    --sv-border-strong: rgba(196, 210, 235, 0.32);
-    --sv-text: #e6e9ef;
-    --sv-muted: #949bab;
-    --sv-accent: #7aa2d6;
-    --sv-accent-soft: rgba(122, 162, 214, 0.2);
-    --sv-danger: #c2463f;
-    --sv-success: #3f8a5e;
-    --sv-shadow: 0 8px 24px rgba(4, 8, 16, 0.45);
+    --ctp-crust: #11111b;
+    --ctp-mantle: #181825;
+    --ctp-base: #1e1e2e;
+    --ctp-surface0: #313244;
+    --ctp-surface1: #45475a;
+    --ctp-surface2: #585b70;
+    --ctp-overlay0: #6c7086;
+    --ctp-subtext0: #a6adc8;
+    --ctp-text: #cdd6f4;
+    --ctp-blue: #89b4fa;
+    --ctp-red: #f38ba8;
+    --ctp-green: #a6e3a1;
+    --ctp-peach: #fab387;
+
+    --sv-bg: var(--ctp-mantle);
+    --sv-surface: color-mix(in srgb, var(--ctp-base) 85%, transparent);
+    --sv-surface-solid: var(--ctp-base);
+    --sv-raised: var(--ctp-surface0);
+    --sv-hover: color-mix(in srgb, var(--ctp-text) 10%, transparent);
+    --sv-pressed: color-mix(in srgb, var(--ctp-text) 16%, transparent);
+    --sv-border: var(--ctp-surface0);
+    --sv-border-strong: var(--ctp-surface1);
+    --sv-text: var(--ctp-text);
+    --sv-muted: var(--ctp-subtext0);
+    --sv-accent: var(--ctp-blue);
+    --sv-accent-soft: color-mix(in srgb, var(--ctp-blue) 20%, transparent);
+    --sv-danger: var(--ctp-red);
+    --sv-success: var(--ctp-green);
+    --sv-on-accent: var(--ctp-crust);
+    --sv-shadow: 0 8px 24px color-mix(in srgb, var(--ctp-crust) 55%, transparent);
 
     --sv-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
         "Helvetica Neue", sans-serif;
@@ -61,7 +77,7 @@ body {
     -webkit-backdrop-filter: blur(10px) saturate(1.2);
     backdrop-filter: blur(10px) saturate(1.2);
     border: 1px solid var(--sv-border);
-    box-shadow: var(--sv-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-shadow: var(--sv-shadow), inset 0 1px 0 color-mix(in srgb, var(--ctp-text) 4%, transparent);
     color: var(--sv-text);
     font-family: var(--sv-font);
 }
@@ -116,11 +132,11 @@ select option {
     --input-font-size: 12px;
     --padding: 8px;
     --width: 260px;
-    --widget-color: #232833;
-    --hover-color: #2c3240;
-    --focus-color: #343b4b;
-    --number-color: var(--sv-accent);
-    --string-color: #9cc5a4;
+    --widget-color: var(--ctp-surface0);
+    --hover-color: var(--ctp-surface1);
+    --focus-color: var(--ctp-surface2);
+    --number-color: var(--ctp-peach);
+    --string-color: var(--ctp-green);
     --text-color: var(--sv-text);
     --title-text-color: var(--sv-text);
     --font-family: var(--sv-font);
@@ -169,7 +185,7 @@ select option {
     position: fixed;
     inset: 0;
     background:
-        radial-gradient(ellipse at 50% 40%, #161a22 0%, var(--sv-bg) 70%);
+        radial-gradient(ellipse at 50% 40%, var(--ctp-base) 0%, var(--sv-bg) 70%);
     color: var(--sv-text);
     display: flex;
     flex-direction: column;
@@ -183,14 +199,14 @@ select option {
 }
 #loading-splash h1 {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 1.35rem;
     font-weight: 500;
     letter-spacing: 0.02em;
     color: var(--sv-muted);
 }
 #loading-splash::after {
     content: "";
-    width: 160px;
+    width: 220px;
     height: 2px;
     border-radius: 1px;
     background: linear-gradient(90deg, transparent, var(--sv-accent), transparent)
@@ -201,13 +217,13 @@ select option {
     margin: 0;
     max-width: 65ch;
     font-family: var(--sv-font-mono);
-    font-size: 0.8rem;
+    font-size: 0.95rem;
     color: var(--sv-muted);
     overflow-wrap: anywhere;
 }
 #loading-splash .sv-splash-error {
     color: var(--sv-danger);
-    font-size: 1.1rem;
+    font-size: 1.5rem;
     font-weight: 600;
 }
 #loading-splash:has(.sv-splash-error)::after {
@@ -223,7 +239,7 @@ select option {
     position: absolute;
     pointer-events: none;
     display: none;
-    background: rgba(13, 15, 19, 0.92);
+    background: color-mix(in srgb, var(--ctp-crust) 92%, transparent);
     border: 1px solid var(--sv-border-strong);
     border-radius: var(--sv-radius-sm);
     padding: 4px 6px;
@@ -238,7 +254,7 @@ select option {
 /* Hover readout over the terrain (InteractionController). */
 #terrain-tooltip {
     position: absolute;
-    background: rgba(13, 15, 19, 0.88);
+    background: color-mix(in srgb, var(--ctp-crust) 88%, transparent);
     border: 1px solid var(--sv-border);
     color: var(--sv-text);
     padding: 8px;
@@ -275,7 +291,7 @@ select option {
     width: 100%;
     margin-bottom: 4px;
     border-radius: 2px;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+    box-shadow: inset 0 0 0 1px var(--sv-border-strong);
 }
 .sv-legend-range {
     display: flex;
@@ -294,9 +310,9 @@ select option {
     gap: 6px;
     padding: 4px 10px;
     border-radius: var(--sv-radius-sm);
-    background-color: rgba(194, 70, 63, 0.18);
-    border: 1px solid rgba(194, 70, 63, 0.6);
-    color: #f0c4c0;
+    background-color: color-mix(in srgb, var(--sv-danger) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sv-danger) 60%, transparent);
+    color: var(--sv-danger);
     font-family: var(--sv-font-mono);
     font-size: 12px;
     font-weight: 600;
@@ -355,15 +371,16 @@ select option {
 }
 .sv-playback .sv-play {
     background-color: var(--sv-accent-soft);
-    border-color: rgba(122, 162, 214, 0.45);
+    border-color: color-mix(in srgb, var(--sv-accent) 45%, transparent);
     font-weight: 600;
 }
 .sv-playback .sv-play:hover {
-    background-color: rgba(122, 162, 214, 0.3);
+    background-color: color-mix(in srgb, var(--sv-accent) 30%, transparent);
 }
 .sv-playback .is-recording {
     background-color: var(--sv-danger);
     border-color: var(--sv-danger);
+    color: var(--sv-on-accent);
 }
 .sv-readout {
     display: flex;
@@ -381,7 +398,7 @@ select option {
     position: relative;
     width: 100%;
     height: 6px;
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--ctp-surface0);
     border-radius: 3px;
     cursor: pointer;
     transition: height var(--sv-ease);
@@ -406,7 +423,7 @@ select option {
     bottom: -2px;
     width: 2px;
     margin-left: -1px;
-    background-color: rgba(255, 255, 255, 0.7);
+    background-color: var(--ctp-peach);
 }
 
 /* Metadata (Scene Info) value cells.
@@ -469,7 +486,7 @@ select option {
 
 /* Brief green flash on successful copy */
 @keyframes simview-copy-flash {
-  0%   { background: var(--sv-success); color: #fff; }
+  0%   { background: var(--sv-success); color: var(--sv-on-accent); }
   100% { background: var(--widget-color); color: var(--text-color); }
 }
 
@@ -635,7 +652,7 @@ select option {
     min-height: 0;
     margin-top: 6px;
     display: none;
-    background-color: rgba(0, 0, 0, 0.25);
+    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
     border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }
@@ -735,7 +752,7 @@ select option {
     height: 15vh;
     margin-top: 10px;
     position: relative;
-    background-color: rgba(0, 0, 0, 0.25);
+    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
     border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }
@@ -867,7 +884,7 @@ select option {
 }
 
 .body-detail-close-button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: var(--sv-pressed);
     color: var(--sv-text);
 }
 
@@ -963,7 +980,7 @@ select option {
     background-color: var(--sv-hover);
 }
 .batch-legend-row.active {
-    background-color: rgba(255, 255, 255, 0.18);
+    background-color: var(--sv-accent-soft);
     outline: 1px solid var(--sv-accent);
 }
 .batch-legend-swatch {
@@ -971,7 +988,7 @@ select option {
     height: 12px;
     border-radius: 50%;
     flex: none;
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid var(--sv-border-strong);
 }
 .batch-legend-index {
     color: var(--sv-muted);
@@ -1045,7 +1062,7 @@ select option {
     height: 15vh;
     margin-top: 10px;
     position: relative;
-    background-color: rgba(0, 0, 0, 0.25);
+    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
     border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }

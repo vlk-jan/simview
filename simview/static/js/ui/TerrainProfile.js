@@ -1,4 +1,4 @@
-import { FREQ_CONFIG } from "../config.js";
+import { FREQ_CONFIG, THEME } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
 import { makeChart } from "../utils/uplot.js";
@@ -289,10 +289,10 @@ export class TerrainProfile {
                     },
                     {
                         show: true,
-                        stroke: "white",
-                        grid: { stroke: "rgb(53, 53, 53)", width: 1 },
-                        ticks: { stroke: "rgb(73, 73, 73)" },
-                        font: "12px Arial",
+                        stroke: THEME.subtext0,
+                        grid: { stroke: THEME.surface0, width: 1 },
+                        ticks: { stroke: THEME.surface1 },
+                        font: THEME.chartFont,
                         space: 30,
                         incrs: [this._chartInterval(min, max)],
                     },
@@ -320,7 +320,7 @@ export class TerrainProfile {
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
         const ctx = u.ctx;
         ctx.save();
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = THEME.text;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, u.bbox.top);

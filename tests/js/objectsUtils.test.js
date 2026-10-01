@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    categoricalPalette,
     createContactPoints,
     createGeometry,
     createPoints,
@@ -124,5 +125,21 @@ describe("createContactPoints", () => {
     it("returns null for empty/missing input", () => {
         expect(createContactPoints(null, {})).toBeNull();
         expect(createContactPoints([], {})).toBeNull();
+    });
+});
+
+describe("categoricalPalette", () => {
+    const hues = ["#89b4fa", "#fab387", "#a6e3a1"];
+
+    it("uses the given colors as-is while they last", () => {
+        expect(categoricalPalette(hues, 2)).toEqual(["#89b4fa", "#fab387"]);
+    });
+
+    it("interpolates past them, one distinct hex color per batch", () => {
+        const palette = categoricalPalette(hues, 7);
+        expect(palette).toHaveLength(7);
+        expect(new Set(palette).size).toBe(7);
+        expect(palette[0]).toBe("#89b4fa");
+        expect(palette[6]).toBe("#a6e3a1");
     });
 });

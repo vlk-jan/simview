@@ -342,29 +342,9 @@ export function createArrow(start, end, arrowConfig = {}) {
     return arrow;
 }
 
-export function generateDivergingPalette(colors, numColors, correctLightness) {
-    // Split colors into left/right gradients
-    const midpointIndex = Math.floor(colors.length / 2);
-    const leftColors = colors.slice(0, midpointIndex + 1);
-    const rightColors = colors.slice(midpointIndex);
-
-    // Create two separate scales
-    const leftScale = chroma
-        .bezier(leftColors)
-        .scale()
-        .correctLightness(correctLightness)
-        .mode("lab");
-
-    const rightScale = chroma
-        .bezier(rightColors)
-        .scale()
-        .correctLightness(correctLightness)
-        .mode("lab");
-
-    // Generate and combine halves
-    const numEach = Math.ceil(numColors / 2);
-    return [
-        ...leftScale.colors(numEach).slice(0, -1),
-        ...rightScale.colors(numEach),
-    ];
+// `numColors` hex colors: the given ones as-is while they last, otherwise an
+// LCH interpolation through them (neighbours then get closer in hue).
+export function categoricalPalette(colors, numColors) {
+    if (numColors <= colors.length) return colors.slice(0, numColors);
+    return chroma.scale(colors).mode("lch").colors(numColors);
 }

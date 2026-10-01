@@ -1,4 +1,4 @@
-import { FREQ_CONFIG } from "../config.js";
+import { FREQ_CONFIG, THEME } from "../config.js";
 import { pickDefaultBatchPair } from "../utils/batchPresets.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
@@ -14,11 +14,11 @@ import { makeChart } from "../utils/uplot.js";
 // the swatches in front of the readout labels all have to agree, otherwise the
 // readout stops working as a legend for the curve above it.
 const SERIES_COLORS = {
-    pos: "#4c9aff",
-    x: "#ff6b6b",
-    y: "#51cf66",
-    z: "#4c9aff",
-    rot: "#ff9f4c",
+    pos: THEME.blue,
+    x: THEME.red,
+    y: THEME.green,
+    z: THEME.blue,
+    rot: THEME.peach,
 };
 
 // Compares two batches of the same body over the full timeline: Euclidean
@@ -361,7 +361,7 @@ export class ErrorMetrics {
         if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
         const ctx = u.ctx;
         ctx.save();
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = THEME.text;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, u.bbox.top);
@@ -439,32 +439,32 @@ export class ErrorMetrics {
                 axes: [
                     {
                         show: true,
-                        stroke: "rgba(255, 255, 255, 0.3)",
+                        stroke: THEME.overlay0,
                         grid: { show: false },
                         ticks: { show: false },
-                        font: "12px Arial",
+                        font: THEME.chartFont,
                     },
                     {
                         scale: "pos",
                         show: true,
                         side: 3,
                         label: "Position (m)",
-                        labelFont: "12px Arial",
-                        stroke: this.showAxes ? "rgba(255, 255, 255, 0.6)" : SERIES_COLORS.pos,
-                        grid: { stroke: "rgb(53, 53, 53)", width: 1 },
-                        ticks: { stroke: "rgb(73, 73, 73)" },
-                        font: "12px Arial",
+                        labelFont: THEME.chartFont,
+                        stroke: this.showAxes ? THEME.subtext0 : SERIES_COLORS.pos,
+                        grid: { stroke: THEME.surface0, width: 1 },
+                        ticks: { stroke: THEME.surface1 },
+                        font: THEME.chartFont,
                     },
                     {
                         scale: "rot",
                         show: true,
                         side: 1,
                         label: "Orientation (deg)",
-                        labelFont: "12px Arial",
+                        labelFont: THEME.chartFont,
                         stroke: SERIES_COLORS.rot,
                         grid: { show: false },
-                        ticks: { stroke: "rgb(73, 73, 73)" },
-                        font: "12px Arial",
+                        ticks: { stroke: THEME.surface1 },
+                        font: THEME.chartFont,
                     },
                 ],
                 hooks: {

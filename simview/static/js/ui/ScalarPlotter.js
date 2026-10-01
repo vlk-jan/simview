@@ -1,4 +1,4 @@
-import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG } from "../config.js";
+import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG, THEME } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
     episodeAggregates,
@@ -246,7 +246,7 @@ export class ScalarPlotter {
             if (startTime !== undefined && aggregate.start > 0) {
                 const x = u.valToPos(startTime, "x", true);
                 ctx.setLineDash([3, 3]);
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+                ctx.strokeStyle = THEME.overlay0; // episode boundary
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(x, u.bbox.top);
@@ -258,7 +258,7 @@ export class ScalarPlotter {
             const endTime = this.times[Math.min(aggregate.end - 1, this.times.length - 1)];
             if (startTime === undefined || endTime === undefined) continue;
             ctx.setLineDash([]);
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.strokeStyle = THEME.peach; // episode mean
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             const y = u.valToPos(aggregate.mean, "y", true);
@@ -379,10 +379,10 @@ export class ScalarPlotter {
                         },
                         {
                             show: true,
-                            stroke: "white",
-                            grid: { stroke: "rgb(53, 53, 53)", width: 1 },
-                            ticks: { stroke: "rgb(73, 73, 73)" },
-                            font: "12px Arial",
+                            stroke: THEME.subtext0,
+                            grid: { stroke: THEME.surface0, width: 1 },
+                            ticks: { stroke: THEME.surface1 },
+                            font: THEME.chartFont,
                             space: 30,
                             incrs: this._yIncrements(min, max),
                         },
