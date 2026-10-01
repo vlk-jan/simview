@@ -32,7 +32,7 @@ export class BodyStateWindow {
 
         const titleGroup = document.createElement("div"); // Group title and toggle
         titleGroup.style.display = "flex";
-        titleGroup.style.alignItems = "center";
+        titleGroup.style.alignItems = "baseline"; // chevron sits on the text baseline
         this.header.appendChild(titleGroup);
 
         this.toggleIcon = document.createElement("span");

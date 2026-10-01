@@ -55,7 +55,8 @@ body {
 .body-state-window,
 .batch-legend-container,
 .sv-legend,
-.sv-playback {
+.sv-playback,
+.lil-gui.root {
     background-color: var(--sv-surface);
     -webkit-backdrop-filter: blur(10px) saturate(1.2);
     backdrop-filter: blur(10px) saturate(1.2);
@@ -105,10 +106,16 @@ select option {
 }
 
 /* lil-gui theme. lil-gui defines these on every `.lil-gui` element in a
-   <style> injected after this sheet, so the doubled class is needed to win. */
+   <style> injected after this sheet, so the doubled class is needed to win.
+   Backgrounds are transparent so the root panel gets the shared surface above
+   and nested folders don't stack opaque fills on top of it. */
 .lil-gui.lil-gui {
-    --background-color: var(--sv-surface-solid);
-    --title-background-color: #181c24;
+    --background-color: transparent;
+    --title-background-color: transparent;
+    --font-size: 12px;
+    --input-font-size: 12px;
+    --padding: 8px;
+    --width: 260px;
     --widget-color: #232833;
     --hover-color: #2c3240;
     --focus-color: #343b4b;
@@ -119,6 +126,41 @@ select option {
     --font-family: var(--sv-font);
     --font-family-mono: var(--sv-font-mono);
     --widget-border-radius: var(--sv-radius-sm);
+}
+
+/* Float the Controls panel like the other panels instead of docking it
+   flush to the top edge (lil-gui's .autoPlace rule). */
+.lil-gui.root.autoPlace {
+    top: 10px;
+    right: 1rem;
+    max-height: calc(100% - 20px);
+    border-radius: var(--sv-radius-lg);
+    overflow: hidden;
+}
+.lil-gui.lil-gui.root > .title {
+    font-size: 1.1em;
+}
+.lil-gui.lil-gui.root > .title:hover {
+    background-color: var(--sv-hover);
+}
+.lil-gui.lil-gui.root > .children > .lil-gui > .title {
+    border-color: var(--sv-border);
+}
+.lil-gui.lil-gui.root > .children > .lil-gui.closed > .title {
+    border-bottom-color: transparent;
+}
+
+/* Collapse indicators. The panels write the same ▾/▸ characters lil-gui
+   does; drawing them in lil-gui's bundled icon font (registered by its
+   injected <style>) turns them into the Controls panel's chevrons. Their
+   headers align to the baseline, as lil-gui's inline chevron does. */
+.analysis-header-icon,
+.body-state-window-toggle-icon,
+.batch-legend-header-icon {
+    font-family: lil-gui, var(--sv-font);
+    font-weight: 600;
+    color: var(--sv-text);
+    padding-right: 3px;
 }
 
 /* Loading splash. Its <h1> is rewritten by SimView.loadData as each phase
@@ -454,7 +496,7 @@ select option {
     display: flex;
     justify-content: flex-start;
     background-color: transparent;
-    align-items: center;
+    align-items: baseline;
     width: 100%;
     padding: 7px 10px;
     color: var(--sv-text);
@@ -473,8 +515,6 @@ select option {
 .analysis-header-icon {
     display: inline-block;
     user-select: none;
-    padding-right: 0.4rem;
-    color: var(--sv-muted);
 }
 
 .analysis-content {
@@ -874,8 +914,6 @@ select option {
 .body-state-window-toggle-icon {
     display: inline-block;
     user-select: none;
-    padding-right: 0.4rem;
-    color: var(--sv-muted);
 }
 
 /* ==========================================================================
@@ -893,7 +931,7 @@ select option {
 }
 .batch-legend-header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     padding: 8px 10px;
     cursor: pointer;
     font-weight: 600;
@@ -901,10 +939,6 @@ select option {
 }
 .batch-legend-header:hover {
     background-color: var(--sv-hover);
-}
-.batch-legend-header-icon {
-    padding-right: 0.4rem;
-    color: var(--sv-muted);
 }
 .batch-legend-content {
     display: none;

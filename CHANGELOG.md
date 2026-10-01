@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contacts (contacts keep the key when present); the label reads "Show Point
   Clouds (C)" when the key applies.
 
+### Changed
+
+- **Viewer UI restyled around shared design tokens.** One off-black background
+  (also the 3D scene's clear color, so screenshots and recordings change too), one
+  gray family and a single accent color across every panel, the lil-gui controls,
+  buttons, tabs, tooltips, legends and the loading screen; system fonts with
+  tabular figures for numeric readouts; visible keyboard focus rings; a favicon.
+  The playback time readout now reads `0.00 / 4.90 s`.
+- The Controls panel floats like the other panels (inset from the top-right
+  corner, rounded, translucent) instead of docking flush to the top edge, and
+  every collapsible panel uses its chevron as the expand/collapse indicator.
+
 ### Fixed
 
 - **Stateless point clouds no longer show up as trackable bodies.** A point cloud
@@ -25,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Analysis scalar tabs size to their label instead of splitting the bar evenly, so
   with many scalars the names stay readable rather than truncating to "wh…"; the
   bar wraps as before.
+- The Analysis panel's scalar chart no longer overflows the panel by the height of
+  the Export CSV bar.
 
 ## [5.0.0] - 2026-09-21
 
