@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-01
+
 ### Added
 
 - **`C` toggles Show Point Clouds** in scenes that have point clouds but no
@@ -15,22 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Viewer UI restyled around shared design tokens.** One off-black background
-  (also the 3D scene's clear color, so screenshots and recordings change too), one
-  gray family and a single accent color across every panel, the lil-gui controls,
-  buttons, tabs, tooltips, legends and the loading screen; system fonts with
-  tabular figures for numeric readouts; visible keyboard focus rings; a favicon.
-  The playback time readout now reads `0.00 / 4.90 s`.
-- The Controls panel floats like the other panels (inset from the top-right
-  corner, rounded, translucent) instead of docking flush to the top edge, and
-  every collapsible panel uses its chevron as the expand/collapse indicator.
-- **Catppuccin Mocha colors** throughout: panels, chart axes/grids/series,
-  Error Metrics axis colors, body vector arrows, probe and wireframe accents.
-  Batches are colored with the Mocha accents (blue, peach, green, mauve, …)
-  instead of the old navy-to-cream diverging palette, whose first batch was
-  nearly invisible on the dark background; past 14 batches the colors are
-  interpolated between them.
-- Larger loading-screen text and a 3D-cube favicon.
+- **Viewer UI restyled in Catppuccin Mocha.** Every panel (Analysis, Body states,
+  Batches, legends, playback bar, and now the lil-gui Controls panel, which floats
+  inset from the corner instead of docking to the top edge) shares one
+  translucent surface, with Mocha blue as the accent and the same chevron as
+  each panel's collapse indicator. Chart axes, grids and series, body vector
+  arrows, probe and wireframe use the palette too; the 3D background is Mocha
+  mantle, so screenshots and recordings change as well. System fonts with
+  tabular figures for numeric readouts, visible keyboard focus rings, a larger
+  loading screen and a 3D-cube favicon. The playback time readout now reads
+  `0.00 / 4.90 s`.
+- **Batch colors** are the Mocha accents (blue, peach, green, mauve, …) instead
+  of the old navy-to-cream diverging palette, whose first batch was nearly
+  invisible on the dark background; past 14 batches the colors are interpolated
+  between them.
+- The live demo shows a new scene: GT vs prediction on helhest sample 774.
 
 ### Fixed
 
@@ -483,7 +484,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v5.0.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v5.1.0...HEAD
+[5.1.0]: https://github.com/vlk-jan/simview/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/vlk-jan/simview/compare/v4.2.1...v5.0.0
 [4.2.1]: https://github.com/vlk-jan/simview/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/vlk-jan/simview/compare/v4.1.0...v4.2.0
