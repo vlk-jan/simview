@@ -18,39 +18,24 @@ per file.
 """
 
 import bisect
-import json
 import logging
 import re
 from pathlib import Path
 from typing import Sequence
 
-try:
-    import orjson
-except ImportError:
-    orjson = None
+import orjson
 
 from .columnar import (
+    STATE_FIELD_WIDTHS,
     blob_floats,
     encode_floats,
     expand_columnar_states,
     is_blob,
     is_columnar,
 )
-from .utils import read_maybe_gzipped_bytes
+from .utils import bodies_by_name, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.merge")
-
-_OPTIONAL_VECTOR_ATTRS = ["velocity", "angularVelocity", "force", "torque"]
-
-# Trailing width of each binary per-body state field, used to reshape a decoded
-# flat float32 buffer back into per-batch rows.
-_STATE_FIELD_WIDTHS = {
-    "bodyTransform": 7,
-    "velocity": 3,
-    "angularVelocity": 3,
-    "force": 3,
-    "torque": 3,
-}
 
 
 # Separates a file from the batches to take out of it in a CLI input spec
@@ -248,7 +233,7 @@ def _decode_per_batch(
 
 def _load_json(path: Path) -> dict:
     raw = read_maybe_gzipped_bytes(path)
-    doc = orjson.loads(raw) if orjson else json.loads(raw)
+    doc = orjson.loads(raw)
     # Merging works frame by frame (resampling onto the first file's timeline),
     # so a columnar file is expanded to the per-frame layout up front rather
     # than teaching every step below a second shape. expand_columnar_states is
@@ -568,17 +553,11 @@ def _merge_terrain(
     # present in every file is kept (concatenated + bounds merged); one present
     # in only some is dropped with a warning, same all-or-nothing rule as
     # heightData/normals require unconditionally.
-    property_names: list[str] = []
-    for model in models:
-        for name in model["terrain"].get("properties") or {}:
-            if name not in property_names:
-                property_names.append(name)
+    terrains = [model["terrain"] for model in models]
+    per_file_props = [terrain.get("properties") or {} for terrain in terrains]
     kept_properties = []
-    for name in property_names:
-        present_in_all = all(
-            name in (model["terrain"].get("properties") or {}) for model in models
-        )
-        if present_in_all:
+    for name in dict.fromkeys(n for props in per_file_props for n in props):
+        if all(name in props for props in per_file_props):
             kept_properties.append(name)
         else:
             logger.warning(
@@ -589,15 +568,11 @@ def _merge_terrain(
 
     resolution = int(dims["resolutionX"]) * int(dims["resolutionY"])
 
-    def _concat_lists_or_b64(
-        items: list[tuple], vector_width: int | None = None
-    ) -> list | None:
+    def _concat_lists_or_b64(items: list[tuple], vector_width: int | None = None):
         # Each item is decoded independently, keyed by its own batch_size (not
         # branched on items[0]'s encoding), so a mix of binary and plain-list
         # inputs merges correctly instead of crashing -- or silently
         # corrupting shapes -- on a differently-encoded item.
-        if not items:
-            return None
         merged = []
         for value, batch_size, selection in items:
             merged.extend(
@@ -610,77 +585,43 @@ def _merge_terrain(
 
     height_data, normals = [], []
     property_data: dict[str, list] = {name: [] for name in kept_properties}
-    min_z = max_z = None
-    property_min_max: dict[str, tuple[float | None, float | None]] = {
-        name: (None, None) for name in kept_properties
-    }
-    for model, batch_size, label, selection in zip(
-        models, batch_sizes, labels, selections
+    for terrain, batch_size, label, selection in zip(
+        terrains, batch_sizes, labels, selections
     ):
-        terrain = model["terrain"]
         singleton = terrain.get("isSingleton", False)
-        height_data.append(
-            (
-                _expand_batched(
-                    terrain["heightData"], singleton, batch_size, "heightData", label
-                ),
-                batch_size,
-                selection,
-            )
-        )
-        normals.append(
-            (
-                _expand_batched(
-                    terrain["normals"], singleton, batch_size, "normals", label
-                ),
-                batch_size,
-                selection,
-            )
-        )
 
-        bounds = terrain["bounds"]
-        min_z = bounds["minZ"] if min_z is None else min(min_z, bounds["minZ"])
-        max_z = bounds["maxZ"] if max_z is None else max(max_z, bounds["maxZ"])
+        def expand(value, field):
+            return (
+                _expand_batched(value, singleton, batch_size, field, label),
+                batch_size,
+                selection,
+            )
+
+        height_data.append(expand(terrain["heightData"], "heightData"))
+        normals.append(expand(terrain["normals"], "normals"))
         for name in kept_properties:
-            prop = terrain["properties"][name]
             property_data[name].append(
-                (
-                    _expand_batched(prop["data"], singleton, batch_size, name, label),
-                    batch_size,
-                    selection,
-                )
+                expand(terrain["properties"][name]["data"], name)
             )
-            cur_min, cur_max = property_min_max[name]
-            property_min_max[name] = (
-                prop["min"] if cur_min is None else min(cur_min, prop["min"]),
-                prop["max"] if cur_max is None else max(cur_max, prop["max"]),
-            )
-
-    merged_bounds = {
-        "minX": first_terrain["bounds"]["minX"],
-        "maxX": first_terrain["bounds"]["maxX"],
-        "minY": first_terrain["bounds"]["minY"],
-        "maxY": first_terrain["bounds"]["maxY"],
-        "minZ": min_z,
-        "maxZ": max_z,
-    }
-
-    merged_properties = {
-        name: {
-            "data": _concat_lists_or_b64(property_data[name]),
-            "min": property_min_max[name][0],
-            "max": property_min_max[name][1],
-        }
-        for name in kept_properties
-    }
 
     merged = {
         "dimensions": dims,
-        "bounds": merged_bounds,
+        "bounds": {
+            **first_xy,
+            "minZ": min(t["bounds"]["minZ"] for t in terrains),
+            "maxZ": max(t["bounds"]["maxZ"] for t in terrains),
+        },
         "isSingleton": False,
         "heightData": _concat_lists_or_b64(height_data),
         "normals": _concat_lists_or_b64(normals, vector_width=3),
-        "properties": merged_properties,
+        "properties": {
+            name: {
+                "data": _concat_lists_or_b64(property_data[name]),
+                "min": min(t["properties"][name]["min"] for t in terrains),
+                "max": max(t["properties"][name]["max"] for t in terrains),
+            }
+            for name in kept_properties
+        },
     }
     embedding = _merge_embedding(models, batch_sizes, labels, resolution, selections)
     if embedding is not None:
@@ -702,18 +643,9 @@ def _state_body_lookup(
     states: list[dict], file_idx: int, state_idx: int, cache: dict
 ) -> dict[str, dict]:
     key = (file_idx, state_idx)
-    lookup = cache.get(key)
-    if lookup is None:
-        lookup = {}
-        for b in states[state_idx].get("bodies", []):
-            name = b["name"]
-            # `name` may be a list of body names sharing one transform (see
-            # SimulationScene.add_state/add_trajectory); index each under its
-            # own key so per-body lookups below don't need to know about it.
-            for n in name if isinstance(name, list) else [name]:
-                lookup[n] = b
-        cache[key] = lookup
-    return lookup
+    if key not in cache:
+        cache[key] = bodies_by_name(states[state_idx].get("bodies"))
+    return cache[key]
 
 
 def _merge_states(
@@ -746,9 +678,12 @@ def _merge_states(
                 # merged output just as compact by skipping it here too.
                 continue
             available = set(body.get("availableAttributes") or [])
-            transform = []
-            attr_values = {
-                attr: [] for attr in _OPTIONAL_VECTOR_ATTRS if attr in available
+            # bodyTransform is always present; the other numeric fields only
+            # when declared available.
+            field_values = {
+                field: []
+                for field in STATE_FIELD_WIDTHS
+                if field == "bodyTransform" or field in available
             }
             contacts = [] if "contacts" in available else None
 
@@ -763,29 +698,17 @@ def _merge_states(
                         f"'{labels[file_idx]}' is missing body '{name}' at "
                         f"t={states[state_idx]['time']}."
                     )
-                transform.extend(
-                    _select(
-                        _normalize_per_batch(
-                            _decode_state_field(
-                                body_state["bodyTransform"],
-                                _STATE_FIELD_WIDTHS["bodyTransform"],
-                            ),
-                            batch_size,
-                        ),
-                        selection,
-                    )
-                )
-                for attr in attr_values:
-                    if attr not in body_state:
+                for field, values in field_values.items():
+                    if field not in body_state:
                         raise ValueError(
-                            f"'{labels[file_idx]}' body '{name}' declares '{attr}' as "
-                            f"available but is missing it at t={states[state_idx]['time']}."
+                            f"'{labels[file_idx]}' body '{name}' is missing '{field}' "
+                            f"at t={states[state_idx]['time']}."
                         )
-                    attr_values[attr].extend(
+                    values.extend(
                         _select(
                             _normalize_per_batch(
                                 _decode_state_field(
-                                    body_state[attr], _STATE_FIELD_WIDTHS[attr]
+                                    body_state[field], STATE_FIELD_WIDTHS[field]
                                 ),
                                 batch_size,
                             ),
@@ -800,6 +723,7 @@ def _merge_states(
                         )
                     contacts.extend(_select(body_state["contacts"], selection))
 
+            transform = field_values["bodyTransform"]
             if len(transform) != total_batches:
                 raise ValueError(
                     f"Merged 'bodyTransform' for body '{name}' has {len(transform)} "
@@ -808,7 +732,7 @@ def _merge_states(
                     "Check that each file's per-body state rows match its "
                     "declared simBatches."
                 )
-            merged_body = {"name": name, "bodyTransform": transform, **attr_values}
+            merged_body = {"name": name, **field_values}
             if contacts is not None:
                 merged_body["contacts"] = contacts
             merged_bodies.append(merged_body)

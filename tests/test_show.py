@@ -58,7 +58,7 @@ def test_repr_html_contains_url():
 def test_stop_is_idempotent_and_frees_thread():
     scene = build_scene(batch_size=1)
     handle = scene.show(preferred_port=6012)
-    thread = handle._threaded._thread
+    thread = handle._thread
 
     handle.stop()
     assert not thread.is_alive()
@@ -77,7 +77,7 @@ def test_context_manager_stops_server_and_frees_port():
     scene = build_scene(batch_size=1)
     host = "127.0.0.1"
     with scene.show(host=host, preferred_port=6013) as handle:
-        port = handle._threaded.port
+        port = handle.port
         # Port must be bound (in use) while the viewer is up.
         assert not _port_is_free(host, port)
 

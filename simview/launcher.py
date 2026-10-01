@@ -25,14 +25,10 @@ class SimViewLauncher:
         self._sim_file_path: Path | None = None
 
         if isinstance(source, SimulationScene):
-            if (
-                source.model is None
-                or not source.model.is_complete
-                or source.states is None
-            ):
+            if not source.model.is_complete:
                 raise ValueError(
                     "Cannot initialize visualizer: The provided SimulationScene "
-                    "is incomplete, has no states, or has already been cleared."
+                    "is incomplete (e.g. terrain might be missing)."
                 )
             self._scene = source
         elif isinstance(source, (str, Path)):
@@ -64,14 +60,7 @@ class SimViewLauncher:
                     "states": self._scene.states,
                 }
                 server = SimViewServer(data=data)
-                port = find_free_port(host, preferred_port)
-                if port != preferred_port:
-                    logger.warning(
-                        "Preferred port %s is not available. Using port %s instead.",
-                        preferred_port,
-                        port,
-                    )
-                server.run(host=host, port=port)
+                server.run(host=host, port=find_free_port(host, preferred_port))
             else:
                 # __init__ guarantees exactly one of self._scene / self._sim_file_path
                 # is set (it raises otherwise), so if self._scene is None here,

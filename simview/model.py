@@ -1,25 +1,19 @@
-import base64
 import logging
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any
 
-import numpy as np
 import torch
+
+from simview.columnar import inline_blob
 
 logger = logging.getLogger("simview.model")
 
-BLOB_PREFIX = "__b64__"
-
 
 def _encode_blob(array) -> str:
-    """Encode a numpy array as a little-endian float32 base64 blob string.
-
-    The `__b64__` prefix marks the value so the server (and merge) can round-trip
-    it as an opaque binary blob instead of verbose JSON.
-    """
-    return BLOB_PREFIX + base64.b64encode(array.astype("<f4").tobytes()).decode("utf-8")
+    """Encode a numpy array as an inline little-endian float32 `__b64__` blob."""
+    return inline_blob(array.astype("<f4").tobytes())
 
 
 def _validated_property_bounds(name: str, bounds: Any) -> tuple[float, float]:
@@ -53,17 +47,6 @@ def _validated_property_bounds(name: str, bounds: Any) -> tuple[float, float]:
             f"got ({low}, {high})."
         )
     return low, high
-
-
-def _decode_blob(value):
-    """Decode a `__b64__`-prefixed base64 blob string back into a flat list of
-    little-endian float32 values. Values that aren't blob strings (already plain
-    JSON lists, or None) pass through unchanged, so callers can use this
-    unconditionally on fields that may or may not be binary-encoded."""
-    if not (isinstance(value, str) and value.startswith(BLOB_PREFIX)):
-        return value
-    raw = base64.b64decode(value[len(BLOB_PREFIX) :])
-    return np.frombuffer(raw, dtype="<f4").tolist()
 
 
 class BodyShapeType(StrEnum):
@@ -168,7 +151,7 @@ class SimViewTerrain:
 
         `heightData`/`normals`/each property's `data` are kept in whatever
         form they were serialized in (plain nested lists or a `__b64__` blob
-        string) -- decode with `simview.model._decode_blob` if you need the
+        string) -- decode with `simview.columnar.blob_floats` if you need the
         flat float values back out.
         """
         try:
@@ -383,18 +366,6 @@ class SimViewBody:
         )
 
     @staticmethod
-    def create_sphere(name: str, radius: float, **kwargs) -> "SimViewBody":
-        return SimViewBody.create(name, BodyShapeType.SPHERE, radius=radius, **kwargs)
-
-    @staticmethod
-    def create_cylinder(
-        name: str, radius: float, height: float, **kwargs
-    ) -> "SimViewBody":
-        return SimViewBody.create(
-            name, BodyShapeType.CYLINDER, radius=radius, height=height, **kwargs
-        )
-
-    @staticmethod
     def create_pointcloud(
         name: str,
         points: torch.Tensor,
@@ -478,15 +449,14 @@ class SimViewStaticObject:
     shapes: list[dict] | None = None  # Used if is_singleton is False
 
     def __post_init__(self):
-        if self.is_singleton and self.shape is None:
-            raise ValueError("Singleton static object requires 'shape'.")
-        if not self.is_singleton and self.shapes is None:
-            raise ValueError("Batched static object requires 'shapes'.")
-        if self.is_singleton and self.shapes is not None:
-            raise ValueError("Singleton static object cannot have 'shapes'.")
-        if not self.is_singleton and self.shape is not None:
-            raise ValueError("Batched static object cannot have 'shape'.")
-        # Basic validation for batched shapes length could be added if batch_size is known here
+        if (self.shape is not None) != self.is_singleton:
+            raise ValueError(
+                "A singleton static object needs 'shape'; a batched one must not."
+            )
+        if (self.shapes is not None) == self.is_singleton:
+            raise ValueError(
+                "A batched static object needs 'shapes'; a singleton one must not."
+            )
 
     @staticmethod
     def create_singleton(
@@ -650,11 +620,6 @@ class SimViewModel:
             )
         _validate_episodes(self.episodes)
 
-    def add_terrain(self, terrain: SimViewTerrain) -> None:
-        if self.terrain is not None:
-            raise ValueError("Terrain already exists")
-        self.terrain = terrain
-
     def add_body(self, body: SimViewBody) -> None:
         if body.name in self.bodies:
             raise ValueError(f"Dynamic body {body.name} already exists")
@@ -675,170 +640,6 @@ class SimViewModel:
                     f"({self.batch_size})."
                 )
         self.static_objects[static_object.name] = static_object
-
-    def create_terrain(
-        self,
-        heightmap: torch.Tensor,
-        normals: torch.Tensor | None = None,
-        x_lim: tuple[float, float] | None = None,
-        y_lim: tuple[float, float] | None = None,
-        grid_res: float | None = None,
-        properties: dict[str, torch.Tensor] | None = None,
-        property_bounds: dict[str, tuple[float, float]] | None = None,
-        embedding_map: torch.Tensor | None = None,
-    ) -> None:
-        """Adds terrain to the internal simulation model.
-
-        Args:
-            heightmap (torch.Tensor): 2D or 3D tensor of terrain heights.
-            normals (torch.Tensor | None): 3D or 4D tensor of terrain normals. If None,
-                normals are automatically computed from the heightmap gradients.
-            x_lim (tuple[float, float] | None): (min, max) coordinates for the X axis.
-            y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
-            grid_res (float | None): Grid resolution. If x_lim and y_lim are omitted,
-                they will be automatically inferred assuming the grid is centered at 0.
-            properties (dict[str, torch.Tensor] | None): Optional arbitrary named
-                per-cell scalar maps (2D or 3D, like `heightmap`), e.g.
-                `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
-                selectable as a terrain color mode in the viewer automatically, with no
-                further code changes needed.
-            property_bounds (dict[str, tuple[float, float]] | None): Optional explicit
-                `(min, max)` color-scale range per property name, e.g.
-                `{"friction": (0.0, 1.0)}`. Each name must also appear in
-                `properties`; names left out keep the default, which is that map's
-                own data range. Use this to keep one scale comparable across scenes
-                -- cells outside the range saturate at the end colors rather than
-                being hidden.
-            embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
-                (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
-                enabling the viewer's click-to-similarity "features" color mode.
-        """
-        if heightmap.ndim == 2:
-            heightmap = heightmap.unsqueeze(0)  # add batch dim
-
-        if x_lim is None or y_lim is None:
-            if grid_res is None:
-                raise ValueError("Must provide either (x_lim, y_lim) or grid_res")
-            H_dim, W_dim = heightmap.shape[-2:]
-            x_lim = x_lim or (-W_dim * grid_res / 2.0, W_dim * grid_res / 2.0)
-            y_lim = y_lim or (-H_dim * grid_res / 2.0, H_dim * grid_res / 2.0)
-
-        if normals is None:
-            H_dim, W_dim = heightmap.shape[-2:]
-            res_x = (x_lim[1] - x_lim[0]) / W_dim
-            res_y = (y_lim[1] - y_lim[0]) / H_dim
-            dzdy, dzdx = torch.gradient(heightmap, spacing=(res_y, res_x), dim=(-2, -1))
-            nx = -dzdx
-            ny = -dzdy
-            nz = torch.ones_like(nx)
-            computed_normals = torch.stack([nx, ny, nz], dim=-3)
-            computed_normals = computed_normals / torch.linalg.norm(
-                computed_normals, dim=-3, keepdim=True
-            )
-            normals = cast(torch.Tensor, computed_normals.to(dtype=heightmap.dtype))
-
-        if normals.ndim == 3:  # channels first
-            normals = normals.unsqueeze(0)  # add batch dim
-        properties = {
-            name: (prop.unsqueeze(0) if prop.ndim == 2 else prop)
-            for name, prop in (properties or {}).items()
-        }
-        if embedding_map is not None and embedding_map.ndim == 3:  # channels first
-            embedding_map = embedding_map.unsqueeze(0)
-
-        # Each field's batch dim must be either 1 (shared across all batches) or
-        # exactly batch_size (per-batch). Anything else is a mistake, and the old
-        # code silently mishandled the mixed case (e.g. shared height + per-batch
-        # normals), producing an inconsistent isSingleton flag.
-        provided = {
-            "heightmap": heightmap,
-            "normals": normals,
-            "embedding_map": embedding_map,
-            **properties,
-        }
-        for name, tensor in provided.items():
-            if tensor is not None and tensor.shape[0] not in (1, self.batch_size):
-                raise ValueError(
-                    f"Terrain '{name}' batch dim ({tensor.shape[0]}) must be 1 "
-                    f"(shared) or {self.batch_size} (per-batch)."
-                )
-
-        # Singleton only when every provided field is shared and there is more than
-        # one batch to share it across.
-        is_singleton = self.batch_size > 1 and all(
-            tensor.shape[0] == 1 for tensor in provided.values() if tensor is not None
-        )
-
-        # A fully-shared (singleton) terrain ships exactly one copy of every
-        # field -- the viewer, merge, and `simview terrain` all detect the
-        # shared row by its length (resolution-sized instead of
-        # batch_size * resolution). Only the mixed case (some fields shared,
-        # some per-batch) broadcasts the shared ones, since a non-singleton
-        # terrain's fields must all be batch_size rows.
-        if self.batch_size > 1 and not is_singleton:
-            if heightmap.shape[0] == 1:
-                heightmap = heightmap.repeat(self.batch_size, 1, 1)
-            if normals.shape[0] == 1:
-                normals = normals.repeat(self.batch_size, 1, 1, 1)
-            properties = {
-                name: (
-                    prop.repeat(self.batch_size, 1, 1) if prop.shape[0] == 1 else prop
-                )
-                for name, prop in properties.items()
-            }
-            if embedding_map is not None and embedding_map.shape[0] == 1:
-                embedding_map = embedding_map.repeat(self.batch_size, 1, 1, 1)
-
-        self.terrain = SimViewTerrain.create(
-            heightmap=heightmap,
-            normals=normals,
-            x_lim=x_lim,
-            y_lim=y_lim,
-            is_singleton=is_singleton,
-            properties=properties,
-            property_bounds=property_bounds,
-            embedding_map=embedding_map,
-        )
-
-    def create_body(
-        self,
-        body_name: str,
-        shape_type: BodyShapeType,
-        available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
-        parent: str | None = None,
-        local_transform: Any | None = None,
-        **kwargs,
-    ) -> None:
-        if body_name in self.bodies:
-            raise ValueError(f"Dynamic body {body_name} already exists")
-        body = SimViewBody.create(
-            body_name,
-            shape_type,
-            available_attributes=available_attributes,
-            parent=parent,
-            local_transform=local_transform,
-            **kwargs,
-        )
-        self.add_body(body)
-
-    def create_static_object_singleton(
-        self, name: str, shape_type: BodyShapeType, **kwargs
-    ) -> None:
-        static_obj = SimViewStaticObject.create_singleton(name, shape_type, **kwargs)
-        self.add_static_object(static_obj)
-
-    def create_static_object_batched(
-        self, name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]
-    ) -> None:
-        """Helper method to create and add a batched static object."""
-        if len(shapes_kwargs) != self.batch_size:
-            raise ValueError(
-                f"Length of shapes_kwargs ({len(shapes_kwargs)}) must match batch size ({self.batch_size}) for '{name}'."
-            )
-        static_obj = SimViewStaticObject.create_batched(name, shape_type, shapes_kwargs)
-        self.add_static_object(
-            static_obj
-        )  # add_static_object already performs the length check
 
     def to_json(self) -> dict:
         if not self.bodies:

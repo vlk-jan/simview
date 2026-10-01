@@ -25,12 +25,12 @@ import torch
 from conftest import build_scene
 from fastapi.testclient import TestClient
 
-from simview.diff import load_scene as diff_load_scene
 from simview.info import summarize_scene
 from simview.merge import merge_simulation_files
 from simview.scene import BodyShapeType, SimulationScene
 from simview.server import SimViewServer
 from simview.state import BodyTrajectory, SimViewBodyState
+from simview.utils import load_scene as diff_load_scene
 
 
 def _read(path):

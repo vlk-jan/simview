@@ -1,8 +1,13 @@
+import csv
 import gzip
+import io
 import json
+import logging
 import socket
 from pathlib import Path
 from typing import Any
+
+from simview.columnar import body_key, expand_columnar_states, is_columnar
 
 # gzip magic bytes (RFC 1952): every gzip member starts with these two bytes,
 # regardless of the file extension used on disk.
@@ -11,22 +16,36 @@ _GZIP_MAGIC = b"\x1f\x8b"
 
 _MAX_PORT = 65535
 
+logger = logging.getLogger("simview.utils")
+
 
 def find_free_port(host: str, base_port: int) -> int:
     """Return the first free TCP port on `host` starting at `base_port`.
 
-    Raises OSError if no port is free up to the maximum valid port number
-    (65535), rather than looping forever.
+    Logs a warning when `base_port` itself is taken. Raises OSError if no
+    port is free up to the maximum valid port number (65535), rather than
+    looping forever.
     """
-    port = base_port
-    while port <= _MAX_PORT:
+    for port in range(base_port, _MAX_PORT + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.bind((host, port))
-                return port
             except OSError:
-                port += 1
+                continue
+        if port != base_port:
+            logger.warning(
+                "Preferred port %s is not available. Using port %s instead.",
+                base_port,
+                port,
+            )
+        return port
     raise OSError(f"No free port found on {host} in range [{base_port}, {_MAX_PORT}].")
+
+
+def dialable_host(host: str) -> str:
+    """Host to put in URLs -- 0.0.0.0/:: aren't dialable, so localhost stands
+    in for them."""
+    return "127.0.0.1" if host in ("0.0.0.0", "::") else host
 
 
 def read_maybe_gzipped_bytes(path: str | Path) -> bytes:
@@ -64,6 +83,29 @@ def iter_names(name: Any):
     yield from name if isinstance(name, list) else (name,)
 
 
+def bodies_by_name(raw_bodies: list | None) -> dict:
+    """`name -> entry` for one state's `bodies`, expanding grouped (list) name
+    entries so each individual body name maps to the shared entry."""
+    return {
+        single: entry
+        for entry in raw_bodies or []
+        if entry.get("name") is not None
+        for single in iter_names(entry["name"])
+    }
+
+
+def collect_body_names(states_data: list) -> list:
+    """All distinct body names/name-groups seen across `states_data`, in
+    first-seen order -- the candidate pool `resolve_body` matches against."""
+    seen: dict = {}
+    for state in states_data:
+        for entry in state.get("bodies") or []:
+            name = entry.get("name")
+            if name is not None:
+                seen.setdefault(body_key(name), name)
+    return list(seen.values())
+
+
 def resolve_body(all_names: list, body: str | None) -> list:
     """Narrow `all_names` to the single body `body` refers to (by full label or
     by any one name inside a rigidly-grouped body), or return them all when
@@ -84,23 +126,50 @@ def resolve_body(all_names: list, body: str | None) -> list:
     return matches
 
 
+def write_csv(header: list[str], rows) -> str:
+    """`header` plus `rows` rendered as one CSV string."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+def series_stats(values: list[float]) -> dict:
+    """`{"mean", "min", "max", "final"}` of a numeric series (all None when
+    empty)."""
+    if not values:
+        return {"mean": None, "min": None, "max": None, "final": None}
+    return {
+        "mean": sum(values) / len(values),
+        "min": min(values),
+        "max": max(values),
+        "final": values[-1],
+    }
+
+
 def cap(items: list, n: int) -> tuple[list, bool]:
     """`(first n items, whether anything was dropped)` -- for capped terminal
     renderings of otherwise-untruncated result dicts."""
     return items[:n], len(items) > n
 
 
+def _load_doc(path: str | Path) -> dict:
+    """Read the scene JSON at `path` (transparently gunzipped), requiring a
+    top-level object with a `model` section."""
+    data = json.loads(read_maybe_gzipped_bytes(path))
+    if not isinstance(data, dict):
+        raise ValueError("scene file must contain a JSON object with a 'model' key")
+    if data.get("model") is None:
+        raise ValueError("scene file has no 'model' section")
+    return data
+
+
 def load_scene_model(path: str | Path) -> dict:
     """Read the scene JSON at `path` (transparently gunzipped) and return its
     `model` section. Raises `ValueError`/`json.JSONDecodeError` on malformed
     input -- callers decide how to report that."""
-    data = json.loads(read_maybe_gzipped_bytes(path))
-    if not isinstance(data, dict):
-        raise ValueError("scene file must contain a JSON object with a 'model' key")
-    model = data.get("model")
-    if model is None:
-        raise ValueError("scene file has no 'model' section")
-    return model
+    return _load_doc(path)["model"]
 
 
 def load_scene(path: str | Path) -> tuple[dict, list]:
@@ -108,17 +177,8 @@ def load_scene(path: str | Path) -> tuple[dict, list]:
     `(model, states)` sections, expanding a columnar `states` document into the
     per-frame layout the stdlib-only readers walk. Raises
     `ValueError`/`json.JSONDecodeError` on malformed input."""
-    from simview.columnar import expand_columnar_states, is_columnar
-
-    data = json.loads(read_maybe_gzipped_bytes(path))
-    if not isinstance(data, dict):
-        raise ValueError(
-            "scene file must contain a JSON object with 'model'/'states' keys"
-        )
-    model = data.get("model")
-    states = data.get("states")
-    if model is None:
-        raise ValueError("scene file has no 'model' section")
+    data = _load_doc(path)
+    model, states = data["model"], data.get("states")
     if states is None:
         raise ValueError("scene file has no 'states' section")
     if is_columnar(states):

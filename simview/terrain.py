@@ -16,15 +16,18 @@ agents to consume directly, with `format_point_text`/`format_area_text`
 providing a skimmable terminal rendering of the same data.
 """
 
-import csv
-import io
 import math
-from typing import Any
+from typing import Any, NamedTuple
 
 from simview.columnar import blob_floats, body_key, decode_transform_row
-from simview.utils import body_label, cap, resolve_body
-from simview.utils import load_scene as load_scene  # re-exported for __main__.py
-from simview.utils import load_scene_model as load_scene_model  # re-exported
+from simview.utils import (
+    body_label,
+    cap,
+    collect_body_names,
+    resolve_body,
+    series_stats,
+    write_csv,
+)
 
 _MAX_SERIES_ROWS = 10
 
@@ -39,13 +42,35 @@ def _layer_data(terrain: dict, layer: str) -> Any:
     return (terrain.get("properties") or {})[layer]["data"]
 
 
-def _require_terrain(model_data: dict) -> dict:
+class _Grid(NamedTuple):
+    """Terrain grid geometry: resolution and world-space x/y extent."""
+
+    shape_x: int
+    shape_y: int
+    min_x: float
+    max_x: float
+    min_y: float
+    max_y: float
+
+
+def _grid_info(model_data: dict) -> tuple[dict, _Grid, int]:
+    """`(terrain, grid geometry, batch_size)` for `model_data`, raising
+    ValueError if it has no terrain."""
     if not isinstance(model_data, dict):
         raise ValueError("model data is missing or invalid")
     terrain = model_data.get("terrain")
     if terrain is None:
         raise ValueError("model has no terrain")
-    return terrain
+    dims, b = terrain["dimensions"], terrain["bounds"]
+    grid = _Grid(
+        dims["resolutionX"],
+        dims["resolutionY"],
+        b["minX"],
+        b["maxX"],
+        b["minY"],
+        b["maxY"],
+    )
+    return terrain, grid, int(model_data.get("simBatches") or 1)
 
 
 def _resolve_layers(terrain: dict, layers: str | list[str]) -> list[str]:
@@ -95,20 +120,14 @@ def _decode_grid(
 
 
 def _bilinear_sample(
-    grid: list[list[float]],
-    shape_x: int,
-    shape_y: int,
-    min_x: float,
-    max_x: float,
-    min_y: float,
-    max_y: float,
-    x: float,
-    y: float,
+    values: list[list[float]], g: _Grid, x: float, y: float
 ) -> tuple[float, bool]:
-    """Bilinearly interpolate `grid` (row=y, col=x, per `model.py`'s "column
-    index is x" convention) at world point `(x, y)`. Out-of-extent points are
-    clamped to the nearest edge, with `clamped=True` returned so callers can
-    warn."""
+    """Bilinearly interpolate `values` (row=y, col=x, per `model.py`'s "column
+    index is x" convention) on grid `g` at world point `(x, y)`. Out-of-extent
+    points are clamped to the nearest edge, with `clamped=True` returned so
+    callers can warn."""
+    shape_x, shape_y = g.shape_x, g.shape_y
+    min_x, max_x, min_y, max_y = g.min_x, g.max_x, g.min_y, g.max_y
     fx = (x - min_x) / (max_x - min_x) * (shape_x - 1) if max_x != min_x else 0.0
     fy = (y - min_y) / (max_y - min_y) * (shape_y - 1) if max_y != min_y else 0.0
 
@@ -129,8 +148,8 @@ def _bilinear_sample(
     tx = fx - x0
     ty = fy - y0
 
-    v00, v10 = grid[y0][x0], grid[y0][x1]
-    v01, v11 = grid[y1][x0], grid[y1][x1]
+    v00, v10 = values[y0][x0], values[y0][x1]
+    v01, v11 = values[y1][x0], values[y1][x1]
     value = (
         v00 * (1 - tx) * (1 - ty)
         + v10 * tx * (1 - ty)
@@ -158,24 +177,6 @@ def _grid_coord(index: int, min_b: float, max_b: float, shape: int) -> float:
     return min_b + index / (shape - 1) * (max_b - min_b) if shape > 1 else min_b
 
 
-def _collect_body_names(states_data: list) -> list:
-    """All distinct body names/name-groups seen across `states_data`, in
-    first-seen order -- the candidate pool `resolve_body` matches `body`
-    against."""
-    all_names: list = []
-    seen_keys = set()
-    for state in states_data:
-        for entry in state.get("bodies") or []:
-            name = entry.get("name")
-            if name is None:
-                continue
-            key = body_key(name)
-            if key not in seen_keys:
-                seen_keys.add(key)
-                all_names.append(name)
-    return all_names
-
-
 def query_point(
     model_data: dict,
     x: float,
@@ -190,23 +191,15 @@ def query_point(
     {"value", "clamped"}}}`. Raises `ValueError` if the model has no
     terrain, `batch` is out of range, or a requested layer isn't present.
     """
-    terrain = _require_terrain(model_data)
-    dims = terrain["dimensions"]
-    bounds = terrain["bounds"]
-    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
-    min_x, max_x = bounds["minX"], bounds["maxX"]
-    min_y, max_y = bounds["minY"], bounds["maxY"]
-    batch_size = int(model_data.get("simBatches") or 1)
+    terrain, g, batch_size = _grid_info(model_data)
     resolved_layers = _resolve_layers(terrain, layers)
 
     layers_out = {}
     for layer in resolved_layers:
         grid = _decode_grid(
-            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch
+            _layer_data(terrain, layer), g.shape_x, g.shape_y, batch_size, batch
         )
-        value, clamped = _bilinear_sample(
-            grid, shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-        )
+        value, clamped = _bilinear_sample(grid, g, x, y)
         layers_out[layer] = {"value": value, "clamped": clamped}
 
     return {
@@ -234,13 +227,9 @@ def query_area(
     conditions as `query_point`, plus a non-overlapping area or a
     non-positive `stride`.
     """
-    terrain = _require_terrain(model_data)
-    dims = terrain["dimensions"]
-    b = terrain["bounds"]
-    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
-    min_x, max_x = b["minX"], b["maxX"]
-    min_y, max_y = b["minY"], b["maxY"]
-    batch_size = int(model_data.get("simBatches") or 1)
+    terrain, g, batch_size = _grid_info(model_data)
+    shape_x, shape_y = g.shape_x, g.shape_y
+    min_x, max_x, min_y, max_y = g.min_x, g.max_x, g.min_y, g.max_y
     resolved_layers = _resolve_layers(terrain, layers)
 
     if stride < 1:
@@ -375,12 +364,6 @@ def query_area_diff(
     }
 
 
-def _along_stats(values: list[float]) -> dict:
-    if not values:
-        return {"mean": None, "min": None, "max": None}
-    return {"mean": sum(values) / len(values), "min": min(values), "max": max(values)}
-
-
 def query_along_body(
     model_data: dict,
     states_data: list,
@@ -407,26 +390,18 @@ def query_along_body(
     range, a requested layer isn't present, `every < 1`, or `body` is
     unmatched/ambiguous.
     """
-    terrain = _require_terrain(model_data)
-    dims = terrain["dimensions"]
-    bounds = terrain["bounds"]
-    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
-    min_x, max_x = bounds["minX"], bounds["maxX"]
-    min_y, max_y = bounds["minY"], bounds["maxY"]
-    batch_size = int(model_data.get("simBatches") or 1)
-    if not (0 <= batch < batch_size):
-        raise ValueError(f"batch index {batch} out of range [0, {batch_size - 1}]")
+    terrain, g, batch_size = _grid_info(model_data)
     resolved_layers = _resolve_layers(terrain, layers)
     if every < 1:
         raise ValueError(f"every must be >= 1; got {every}")
 
-    all_names = _collect_body_names(states_data)
+    all_names = collect_body_names(states_data)
     target_name = resolve_body(all_names, body)[0]
     key = body_key(target_name)
 
     grids = {
         layer: _decode_grid(
-            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch
+            _layer_data(terrain, layer), g.shape_x, g.shape_y, batch_size, batch
         )
         for layer in resolved_layers
     }
@@ -455,16 +430,14 @@ def query_along_body(
         xs.append(x)
         ys.append(y)
         for layer in resolved_layers:
-            value, clamped = _bilinear_sample(
-                grids[layer], shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-            )
+            value, clamped = _bilinear_sample(grids[layer], g, x, y)
             layer_values[layer].append(value)
             layer_clamped[layer].append(clamped)
 
     layers_out = {}
     for layer in resolved_layers:
         values, clamped = layer_values[layer], layer_clamped[layer]
-        summary = _along_stats(values)
+        summary = series_stats(values)
         summary["clamped_count"] = sum(clamped)
         layers_out[layer] = {"values": values, "clamped": clamped, "summary": summary}
 
@@ -509,27 +482,18 @@ def query_along_body_diff(
     if batch_a == batch_b:
         raise ValueError("batch_a and batch_b must differ")
 
-    terrain = _require_terrain(model_data)
-    batch_size = int(model_data.get("simBatches") or 1)
-    for label, b in (("batch_a", batch_a), ("batch_b", batch_b)):
-        if not (0 <= b < batch_size):
-            raise ValueError(f"{label}={b} out of range [0, {batch_size - 1}]")
+    terrain, g, batch_size = _grid_info(model_data)
 
     # Positions and batch_a's own values come straight from the single-batch
     # query -- batch_a is the reference path both terrains get sampled along.
     result_a = query_along_body(model_data, states_data, body, layers, batch_a, every)
 
-    dims = terrain["dimensions"]
-    bounds = terrain["bounds"]
-    shape_x, shape_y = dims["resolutionX"], dims["resolutionY"]
-    min_x, max_x = bounds["minX"], bounds["maxX"]
-    min_y, max_y = bounds["minY"], bounds["maxY"]
     resolved_layers = list(result_a["layers"])
     xs, ys = result_a["x"], result_a["y"]
 
     grids_b = {
         layer: _decode_grid(
-            _layer_data(terrain, layer), shape_x, shape_y, batch_size, batch_b
+            _layer_data(terrain, layer), g.shape_x, g.shape_y, batch_size, batch_b
         )
         for layer in resolved_layers
     }
@@ -541,9 +505,7 @@ def query_along_body_diff(
         value_b: list[float] = []
         clamped_b: list[bool] = []
         for x, y in zip(xs, ys):
-            v, c = _bilinear_sample(
-                grids_b[layer], shape_x, shape_y, min_x, max_x, min_y, max_y, x, y
-            )
+            v, c = _bilinear_sample(grids_b[layer], g, x, y)
             value_b.append(v)
             clamped_b.append(c)
         delta = [vb - va for va, vb in zip(value_a, value_b)]
@@ -574,15 +536,6 @@ def query_along_body_diff(
         "y": ys,
         "layers": layers_out,
     }
-
-
-def _write_csv(header: list[str], rows) -> str:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(header)
-    for row in rows:
-        writer.writerow(row)
-    return buf.getvalue()
 
 
 def _singleton_note(result: dict) -> list[str]:
@@ -630,7 +583,7 @@ def format_area_text(result: dict) -> str:
 
 
 def format_point_csv(result: dict) -> str:
-    return _write_csv(
+    return write_csv(
         ["layer", "value", "clamped"],
         (
             [layer, info["value"], info["clamped"]]
@@ -641,7 +594,7 @@ def format_point_csv(result: dict) -> str:
 
 def format_area_csv(result: dict) -> str:
     layers = list(result["layers"])
-    return _write_csv(
+    return write_csv(
         ["x", "y", *layers],
         (
             [x, y, *(result["layers"][layer][row_idx][col_idx] for layer in layers)]
@@ -691,7 +644,7 @@ def format_area_diff_text(result: dict) -> str:
 
 
 def format_point_diff_csv(result: dict) -> str:
-    return _write_csv(
+    return write_csv(
         ["layer", "value_a", "value_b", "delta", "clamped"],
         (
             [layer, info["value_a"], info["value_b"], info["delta"], info["clamped"]]
@@ -719,7 +672,7 @@ def format_area_diff_csv(result: dict) -> str:
                     ]
                 yield row
 
-    return _write_csv(header, _rows())
+    return write_csv(header, _rows())
 
 
 def format_along_text(result: dict) -> str:
@@ -822,19 +775,9 @@ def format_along_csv(result: dict) -> str:
     the numbers, in full" philosophy `--json` already uses everywhere in
     this CLI."""
     layers = list(result["layers"])
-
-    def _rows():
-        for i in range(len(result["frame_indices"])):
-            row = [
-                result["frame_indices"][i],
-                result["times"][i],
-                result["x"][i],
-                result["y"][i],
-            ]
-            row += [result["layers"][layer]["values"][i] for layer in layers]
-            yield row
-
-    return _write_csv(["frame", "time", "x", "y", *layers], _rows())
+    columns = [result[k] for k in ("frame_indices", "times", "x", "y")]
+    columns += [result["layers"][layer]["values"] for layer in layers]
+    return write_csv(["frame", "time", "x", "y", *layers], zip(*columns))
 
 
 def format_along_diff_csv(result: dict) -> str:
@@ -842,20 +785,9 @@ def format_along_diff_csv(result: dict) -> str:
     truncation)."""
     layers = list(result["layers"])
     header = ["frame", "time", "x", "y"]
+    columns = [result[k] for k in ("frame_indices", "times", "x", "y")]
     for layer in layers:
+        info = result["layers"][layer]
         header += [f"{layer}_a", f"{layer}_b", f"{layer}_delta"]
-
-    def _rows():
-        for i in range(len(result["frame_indices"])):
-            row = [
-                result["frame_indices"][i],
-                result["times"][i],
-                result["x"][i],
-                result["y"][i],
-            ]
-            for layer in layers:
-                info = result["layers"][layer]
-                row += [info["value_a"][i], info["value_b"][i], info["delta"][i]]
-            yield row
-
-    return _write_csv(header, _rows())
+        columns += [info["value_a"], info["value_b"], info["delta"]]
+    return write_csv(header, zip(*columns))

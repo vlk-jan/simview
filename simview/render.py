@@ -17,70 +17,23 @@ isn't part of the base install -- lazily imported by `render_screenshot` so
 `import simview` and the rest of the CLI stay usable without it, matching
 the `authoring` extra's lazy-import rationale in CLAUDE.md.
 
-Deliberately doesn't reuse `simview.live`'s `_ThreadedServer`: `live.py`
-imports `simview.scene`, which needs torch/numpy, but `simview render`
-targets the same "just needs a scene JSON, no authoring deps" contract as
-the rest of the viewing CLI (`info`/`terrain`/`diff`) -- see CLAUDE.md's
-`HAS_TORCH` guidance. `_BackgroundServer` below is a small, intentionally
-separate copy of the same non-blocking-uvicorn-on-a-thread pattern.
+Runs the server via `simview.server.ViewerHandle`, the same non-blocking
+background-thread server `SimulationScene.show`/`LiveViewer` use; it lives
+in `server.py` (no torch/numpy), so `simview render` keeps the viewing
+CLI's "just needs a scene JSON, no authoring deps" contract.
 """
 
 import logging
-import threading
-import time
 from pathlib import Path
 
-import uvicorn
-
-from simview.server import SimViewServer
-from simview.utils import find_free_port
+from simview.server import SimViewServer, ViewerHandle
 
 logger = logging.getLogger("simview.cli")
 
-_START_TIMEOUT = 10.0
-_START_POLL_INTERVAL = 0.02
 _LOAD_TIMEOUT_MS = 20_000
 # Extra settle time after #loading-splash detaches, for materials/camera
 # controls to finish their first render pass before the screenshot is taken.
 _SETTLE_DELAY_MS = 500
-
-
-class _BackgroundServer:
-    """Runs a SimViewServer's uvicorn app on a background daemon thread,
-    blocking __init__ until the socket is bound. Offers an idempotent
-    stop()."""
-
-    def __init__(self, app, host: str = "127.0.0.1", preferred_port: int = 5420):
-        self.host = host
-        self.port = find_free_port(host, preferred_port)
-        config = uvicorn.Config(app, host=host, port=self.port, log_level="warning")
-        self._server = uvicorn.Server(config)
-        self._thread = threading.Thread(
-            target=self._server.run, name="simview-render", daemon=True
-        )
-        self._thread.start()
-
-        deadline = time.monotonic() + _START_TIMEOUT
-        while not self._server.started:
-            if not self._thread.is_alive():
-                raise RuntimeError("SimView server thread died during startup.")
-            if time.monotonic() > deadline:
-                raise TimeoutError(
-                    f"SimView server did not start within {_START_TIMEOUT}s."
-                )
-            time.sleep(_START_POLL_INTERVAL)
-
-    @property
-    def bind_host(self) -> str:
-        """Host to put in URLs -- 0.0.0.0/:: aren't dialable, so localhost
-        stands in for them."""
-        return "127.0.0.1" if self.host in ("0.0.0.0", "::") else self.host
-
-    def stop(self) -> None:
-        if not self._thread.is_alive():
-            return
-        self._server.should_exit = True
-        self._thread.join(timeout=5.0)
 
 
 def render_screenshot(
@@ -117,10 +70,16 @@ def render_screenshot(
 
     output_path = Path(output_path)
     server = SimViewServer(sim_path=Path(sim_path))
-    background = _BackgroundServer(server.app, host=host, preferred_port=port)
+    background = ViewerHandle(
+        server.app,
+        host=host,
+        preferred_port=port,
+        thread_name="simview-render",
+        log_level="warning",
+    )
     try:
         fragment = f"#{view.lstrip('#')}" if view else ""
-        url = f"http://{background.bind_host}:{background.port}/{fragment}"
+        url = f"{background.url}/{fragment}"
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch()

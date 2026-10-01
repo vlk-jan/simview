@@ -3,12 +3,13 @@ import json
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
 
 from .columnar import (
+    body_key,
     columnarize_states,
     expand_columnar_states,
     inline_blob,
@@ -25,53 +26,16 @@ from .model import (
     _encode_blob,
     _validate_episodes,
 )
-from .server import SimViewServer
+from .server import SimViewServer, ViewerHandle
 from .state import (
     TRAJECTORY_VECTOR_FIELDS,
     BodyTrajectory,
     LocalTransformLike,
     SimViewBodyState,
 )
-from .utils import read_maybe_gzipped_bytes
+from .utils import iter_names, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.scene")
-
-
-class ViewerHandle:
-    """A running, non-blocking SimView server for a snapshot of a scene.
-
-    Returned by `SimulationScene.show`. Holds the background server thread
-    started for that snapshot; `stop()` (also called automatically on
-    context-manager exit) shuts it down. `_repr_html_` lets Jupyter render the
-    viewer inline in an iframe just by evaluating the handle in a cell.
-    """
-
-    def __init__(self, threaded) -> None:
-        self._threaded = threaded
-
-    @property
-    def url(self) -> str:
-        return f"http://{self._threaded.bind_host}:{self._threaded.port}"
-
-    def stop(self) -> None:
-        """Stop the background server. Idempotent."""
-        self._threaded.stop()
-
-    def _repr_html_(self) -> str:
-        """Jupyter calls this automatically when the handle is the result of
-        a cell, embedding the viewer inline without the user having to open a
-        separate browser tab."""
-        url = self.url
-        return (
-            f'<iframe src="{url}" width="100%" height="600" '
-            f'style="border:none;" allow="fullscreen"></iframe>'
-        )
-
-    def __enter__(self) -> "ViewerHandle":
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.stop()
 
 
 def _to_f4(value) -> np.ndarray:
@@ -79,12 +43,6 @@ def _to_f4(value) -> np.ndarray:
     if isinstance(value, torch.Tensor):
         value = value.detach().cpu().numpy()
     return np.ascontiguousarray(np.asarray(value, dtype="<f4"))
-
-
-def _iter_names(name: str | list[str]):
-    """Yield each individual body name, whether `name` is a single string or
-    a list of names sharing one transform."""
-    return name if isinstance(name, list) else [name]
 
 
 def _name_label(name: str | list[str]) -> str:
@@ -97,7 +55,7 @@ def _validate_body_name(name: str | list[str], model: SimViewModel) -> None:
     body defined in `model`."""
     if isinstance(name, list) and not name:
         raise ValueError("Body name list must not be empty.")
-    for n in _iter_names(name):
+    for n in iter_names(name):
         if n not in model.bodies:
             valid = sorted(model.bodies)
             raise ValueError(
@@ -113,7 +71,7 @@ def _validate_not_rigid(name: str | list[str], model: SimViewModel) -> None:
     their parent's current pose plus the fixed offset -- so passing state data
     for them here would be silently ignored on the wire, which is almost
     certainly a mistake."""
-    for n in _iter_names(name):
+    for n in iter_names(name):
         body = model.bodies.get(n)
         if body is not None and body.local_transform is not None:
             raise ValueError(
@@ -433,12 +391,8 @@ class SimulationScene:
         def encode(slice_: np.ndarray):
             return _encode_blob(slice_) if binary else slice_.tolist()
 
-        # dict keys must be hashable, so group names (lists) are keyed by tuple.
-        def _name_key(name):
-            return tuple(name) if isinstance(name, list) else name
-
         contacts_by_name = {
-            _name_key(name): contacts for name, contacts in prepared_contacts
+            body_key(name): contacts for name, contacts in prepared_contacts
         }
         for t in range(T):
             bodies = [
@@ -446,8 +400,8 @@ class SimulationScene:
                     "name": name,
                     **{key: encode(arr[t]) for key, arr in fields.items()},
                     **(
-                        {"contacts": contacts_by_name[_name_key(name)][t]}
-                        if _name_key(name) in contacts_by_name
+                        {"contacts": contacts_by_name[body_key(name)][t]}
+                        if body_key(name) in contacts_by_name
                         else {}
                     ),
                 }
@@ -504,7 +458,7 @@ class SimulationScene:
                     if name:
                         # Everything in the body's dict other than name and bodyTransform is an optional attribute
                         provided = set(body_data.keys()) - {"name", "bodyTransform"}
-                        for n in _iter_names(name):
+                        for n in iter_names(name):
                             provided_attrs_by_body.setdefault(n, set()).update(provided)
 
             for name, body in self.model.bodies.items():
@@ -535,35 +489,28 @@ class SimulationScene:
                     "to fall back to the legacy per-frame layout automatically."
                 )
 
-        try:
-            logger.info("Saving simulation data to %s...", output_path)
-            open_fn = (
-                (lambda p: gzip.open(p, "wt")) if compress else (lambda p: open(p, "w"))
-            )
-            with open_fn(output_path) as f:
-                f.write("{\n")
-                f.write('  "model": ')
-                json.dump(model_json, f, indent=2)
-                f.write(",\n")
-                if columnar_states is not None:
-                    f.write('  "states": ')
-                    json.dump(columnar_states, f)
-                    f.write("\n}")
-                else:
-                    # Streamed frame by frame: the per-frame layout is only
-                    # reached for scenes too irregular to columnarize, which are
-                    # exactly the large ones worth not materializing at once.
-                    f.write('  "states": [\n')
-                    for i, state in enumerate(self.states):
-                        if i > 0:
-                            f.write(",\n")
-                        f.write("    ")
-                        json.dump(state, f)
-                    f.write("\n  ]\n}")
-            logger.info("Simulation data successfully saved to %s", output_path)
-        except Exception:
-            logger.exception("Error saving simulation data to %s", output_path)
-            raise
+        logger.info("Saving simulation data to %s...", output_path)
+        with (gzip.open if compress else open)(output_path, "wt") as f:
+            f.write("{\n")
+            f.write('  "model": ')
+            json.dump(model_json, f, indent=2)
+            f.write(",\n")
+            if columnar_states is not None:
+                f.write('  "states": ')
+                json.dump(columnar_states, f)
+                f.write("\n}")
+            else:
+                # Streamed frame by frame: the per-frame layout is only
+                # reached for scenes too irregular to columnarize, which are
+                # exactly the large ones worth not materializing at once.
+                f.write('  "states": [\n')
+                for i, state in enumerate(self.states):
+                    if i > 0:
+                        f.write(",\n")
+                    f.write("    ")
+                    json.dump(state, f)
+                f.write("\n  ]\n}")
+        logger.info("Simulation data successfully saved to %s", output_path)
 
     def show(
         self,
@@ -592,21 +539,13 @@ class SimulationScene:
                 "(e.g. terrain might be missing)."
             )
 
-        # Local import: simview.live pulls in uvicorn, which authoring-only
-        # (torch-free-viewer) installs may not need until a viewer is
-        # actually started.
-        from .live import _ThreadedServer
-
         data = {"model": self.model.to_json(), "states": self.states}
-        server = SimViewServer(data=data)
-
-        threaded = _ThreadedServer(
-            server.app,
+        handle = ViewerHandle(
+            SimViewServer(data=data).app,
             host=host,
             preferred_port=preferred_port,
             thread_name="simview-show-server",
         )
-        handle = ViewerHandle(threaded)
 
         logger.info("SimView viewer running on %s", handle.url)
         if open_browser:
@@ -653,20 +592,91 @@ class SimulationScene:
                 (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
                 enabling the viewer's click-to-similarity "features" color mode.
         """
-        self.model.create_terrain(
-            heightmap,
+        batch_size = self.model.batch_size
+        if heightmap.ndim == 2:
+            heightmap = heightmap.unsqueeze(0)  # add batch dim
+
+        if x_lim is None or y_lim is None:
+            if grid_res is None:
+                raise ValueError("Must provide either (x_lim, y_lim) or grid_res")
+            H_dim, W_dim = heightmap.shape[-2:]
+            x_lim = x_lim or (-W_dim * grid_res / 2.0, W_dim * grid_res / 2.0)
+            y_lim = y_lim or (-H_dim * grid_res / 2.0, H_dim * grid_res / 2.0)
+
+        if normals is None:
+            H_dim, W_dim = heightmap.shape[-2:]
+            res_x = (x_lim[1] - x_lim[0]) / W_dim
+            res_y = (y_lim[1] - y_lim[0]) / H_dim
+            dzdy, dzdx = torch.gradient(heightmap, spacing=(res_y, res_x), dim=(-2, -1))
+            nx = -dzdx
+            ny = -dzdy
+            nz = torch.ones_like(nx)
+            computed_normals = torch.stack([nx, ny, nz], dim=-3)
+            computed_normals = computed_normals / torch.linalg.norm(
+                computed_normals, dim=-3, keepdim=True
+            )
+            normals = cast(torch.Tensor, computed_normals.to(dtype=heightmap.dtype))
+
+        if normals.ndim == 3:  # channels first
+            normals = normals.unsqueeze(0)  # add batch dim
+        properties = {
+            name: (prop.unsqueeze(0) if prop.ndim == 2 else prop)
+            for name, prop in (properties or {}).items()
+        }
+        if embedding_map is not None and embedding_map.ndim == 3:  # channels first
+            embedding_map = embedding_map.unsqueeze(0)
+
+        # Each field's batch dim must be either 1 (shared across all batches) or
+        # exactly batch_size (per-batch). Anything else is a mistake, and the old
+        # code silently mishandled the mixed case (e.g. shared height + per-batch
+        # normals), producing an inconsistent isSingleton flag.
+        provided = {
+            "heightmap": heightmap,
+            "normals": normals,
+            "embedding_map": embedding_map,
+            **properties,
+        }
+        for name, tensor in provided.items():
+            if tensor is not None and tensor.shape[0] not in (1, batch_size):
+                raise ValueError(
+                    f"Terrain '{name}' batch dim ({tensor.shape[0]}) must be 1 "
+                    f"(shared) or {batch_size} (per-batch)."
+                )
+
+        # Singleton only when every provided field is shared and there is more than
+        # one batch to share it across.
+        is_singleton = batch_size > 1 and all(
+            tensor.shape[0] == 1 for tensor in provided.values() if tensor is not None
+        )
+
+        # A fully-shared (singleton) terrain ships exactly one copy of every
+        # field -- the viewer, merge, and `simview terrain` all detect the
+        # shared row by its length (resolution-sized instead of
+        # batch_size * resolution). Only the mixed case (some fields shared,
+        # some per-batch) broadcasts the shared ones, since a non-singleton
+        # terrain's fields must all be batch_size rows.
+        if batch_size > 1 and not is_singleton:
+            if heightmap.shape[0] == 1:
+                heightmap = heightmap.repeat(batch_size, 1, 1)
+            if normals.shape[0] == 1:
+                normals = normals.repeat(batch_size, 1, 1, 1)
+            properties = {
+                name: (prop.repeat(batch_size, 1, 1) if prop.shape[0] == 1 else prop)
+                for name, prop in properties.items()
+            }
+            if embedding_map is not None and embedding_map.shape[0] == 1:
+                embedding_map = embedding_map.repeat(batch_size, 1, 1, 1)
+
+        self.model.terrain = SimViewTerrain.create(
+            heightmap=heightmap,
             normals=normals,
             x_lim=x_lim,
             y_lim=y_lim,
-            grid_res=grid_res,
+            is_singleton=is_singleton,
             properties=properties,
             property_bounds=property_bounds,
             embedding_map=embedding_map,
         )
-
-    def add_terrain_object(self, terrain: SimViewTerrain) -> None:
-        """Adds a pre-configured SimViewTerrain object to the model."""
-        self.model.add_terrain(terrain)
 
     def create_pointcloud(
         self,
@@ -687,8 +697,6 @@ class SimulationScene:
                 vector (e.g. a reduced-dim PCA projection) enabling the
                 viewer's click-to-similarity color mode.
         """
-        if body_name in self.model.bodies:
-            raise ValueError(f"Dynamic body {body_name} already exists")
         self.model.add_body(
             SimViewBody.create_pointcloud(
                 body_name, points, color=color, embedding=embedding, **kwargs
@@ -719,35 +727,16 @@ class SimulationScene:
           ``add_trajectory`` as usual -- it's just interpreted as local to the
           parent's current-frame pose instead of world space.
         """
-        self.model.create_body(
-            body_name,
-            shape_type,
-            available_attributes=available_attributes,
-            parent=parent,
-            local_transform=local_transform,
-            **kwargs,
+        self.model.add_body(
+            SimViewBody.create(
+                body_name,
+                shape_type,
+                available_attributes=available_attributes,
+                parent=parent,
+                local_transform=local_transform,
+                **kwargs,
+            )
         )
-
-    def add_body_object(self, body: SimViewBody) -> None:
-        """Adds a pre-configured SimViewBody object to the model. See
-        `create_body` for the meaning of `body.parent`/`body.local_transform`."""
-        self.model.add_body(body)
-
-    def create_static_object_singleton(
-        self, name: str, shape_type: BodyShapeType, **kwargs
-    ) -> None:
-        """Creates and adds a singleton static object to the simulation model."""
-        self.model.create_static_object_singleton(name, shape_type, **kwargs)
-
-    def create_static_object_batched(
-        self, name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]
-    ) -> None:
-        """Creates and adds a batched static object to the simulation model."""
-        self.model.create_static_object_batched(name, shape_type, shapes_kwargs)
-
-    def add_static_object_instance(self, static_object: SimViewStaticObject) -> None:
-        """Adds a pre-configured SimViewStaticObject to the model."""
-        self.model.add_static_object(static_object)
 
     def _clear_internal_data(self) -> None:
         """

@@ -4,11 +4,11 @@ import json
 import logging
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 from simview import CACHE_DIR, __version__, remote
 from simview.server import SimViewServer
+from simview.utils import human_bytes, load_scene, load_scene_model
 
 logger = logging.getLogger("simview.cli")
 
@@ -48,46 +48,25 @@ def _package_version() -> str:
 
 
 def _dir_size(path: Path) -> int:
-    total = 0
-    for entry in path.rglob("*"):
-        try:
-            if entry.is_file():
-                total += entry.stat().st_size
-        except OSError:
-            pass
-    return total
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
 def clear_cache():
-    """Remove simview's on-disk cache: scene files fetched from remote hosts
-    (see `simview.remote`), plus locations left behind by older installs."""
+    """Remove simview's on-disk cache of scene files fetched from remote hosts
+    (see `simview.remote`), including the default location when
+    $XDG_CACHE_HOME points elsewhere."""
     freed = 0
-    seen: set[Path] = set()
-    for cache_dir in (
-        remote.cache_dir(),
-        Path("/tmp") / CACHE_DIR,
-        Path.home() / ".cache" / CACHE_DIR,
+    for cache_dir in dict.fromkeys(
+        (remote.cache_dir(), Path.home() / ".cache" / CACHE_DIR)
     ):
-        if cache_dir in seen or not cache_dir.is_dir():
+        if not cache_dir.is_dir():
             continue
-        seen.add(cache_dir)
         freed += _dir_size(cache_dir)
         logger.info("Removing %s", cache_dir)
         shutil.rmtree(cache_dir, ignore_errors=True)
 
-    # Temp scenes written by SimViewLauncher (tempfile.mkstemp with this prefix);
-    # these leak if a launched viewer is killed before cleanup runs.
-    removed = 0
-    for leftover in Path(tempfile.gettempdir()).glob("simview_viz_*.json"):
-        try:
-            leftover.unlink()
-            removed += 1
-        except OSError as e:
-            logger.warning("Could not remove %s: %s", leftover, e)
-    if removed:
-        logger.info("Removed %d leftover temporary scene file(s).", removed)
     if freed:
-        logger.info("Freed %s.", remote.human_bytes(freed))
+        logger.info("Freed %s.", human_bytes(freed))
 
     logger.info("Cache cleared.")
 
@@ -128,7 +107,7 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
 
     try:
         if args.along_body is not None:
-            model_data, states_data = terrain_mod.load_scene(path)
+            model_data, states_data = load_scene(path)
             if diff_mode:
                 batch_a, batch_b = args.batches
                 result = terrain_mod.query_along_body_diff(
@@ -154,7 +133,7 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                 text_fn = terrain_mod.format_along_text
                 csv_fn = terrain_mod.format_along_csv
         else:
-            model_data = terrain_mod.load_scene_model(path)
+            model_data = load_scene_model(path)
             if diff_mode:
                 batch_a, batch_b = args.batches
                 if args.point is not None:
@@ -226,7 +205,7 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        model_data, states_data = diff_mod.load_scene(path)
+        model_data, states_data = load_scene(path)
         result = diff_mod.compute_trajectory_diff(
             model_data,
             states_data,
@@ -366,6 +345,24 @@ def _add_json_csv_flags(sp: argparse.ArgumentParser) -> None:
     fmt.add_argument("--csv", action="store_true", help="Print CSV instead of text.")
 
 
+def _add_host_port_flags(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host/interface for the server to bind to (default: 127.0.0.1).",
+    )
+    sp.add_argument(
+        "--port",
+        type=int,
+        default=5420,
+        help=(
+            "Port for the server to use (default: 5420). If it's already taken, "
+            "the next free port is used instead."
+        ),
+    )
+
+
 def _add_file_arg(sp: argparse.ArgumentParser) -> None:
     sp.add_argument(
         "file",
@@ -406,21 +403,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="Path(s) to simulation JSON file(s) to visualize.",
     )
-    view.add_argument(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="Host/interface for the server to bind to (default: 127.0.0.1).",
-    )
-    view.add_argument(
-        "--port",
-        type=int,
-        default=5420,
-        help=(
-            "Port for the server to use (default: 5420). If it's already taken, "
-            "the next free port is used instead."
-        ),
-    )
+    _add_host_port_flags(view)
     view.add_argument(
         "--no-browser",
         action="store_true",
@@ -606,21 +589,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="PNG file path to save the screenshot to. Required.",
     )
-    render.add_argument(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="Host/interface for the server to bind to (default: 127.0.0.1).",
-    )
-    render.add_argument(
-        "--port",
-        type=int,
-        default=5420,
-        help=(
-            "Port for the server to use (default: 5420). If it's already taken, "
-            "the next free port is used instead."
-        ),
-    )
+    _add_host_port_flags(render)
     render.add_argument(
         "--view",
         type=str,
@@ -696,24 +665,14 @@ def main():
         clear_cache()
         return
 
-    if args.command == "info":
-        path = _resolve_input(args.file, args)
-        run_info(path, as_json=args.json)
-        return
-
-    if args.command == "terrain":
-        path = _resolve_input(args.file, args)
-        run_terrain(path, args)
-        return
-
-    if args.command == "diff":
-        path = _resolve_input(args.file, args)
-        run_diff(path, args)
-        return
-
-    if args.command == "render":
-        path = _resolve_input(args.file, args)
-        run_render(path, args)
+    single_file_commands = {
+        "info": lambda path, args: run_info(path, as_json=args.json),
+        "terrain": run_terrain,
+        "diff": run_diff,
+        "render": run_render,
+    }
+    if args.command in single_file_commands:
+        single_file_commands[args.command](_resolve_input(args.file, args), args)
         return
 
     # view mode: launch the viewer (or --save-merged) over one or more inputs.

@@ -12,14 +12,14 @@ inspection tool. Shares its blob-decoding/body-label helpers with
 which are stdlib-only on this read path.
 """
 
-import base64
 import json
 from pathlib import Path
 from typing import Any
 
 from simview.columnar import (
-    BLOB_PREFIX,
     STATE_FIELD_WIDTHS,
+    blob_bytes,
+    body_key,
     expand_columnar_states,
     is_blob,
     is_columnar,
@@ -33,7 +33,7 @@ _LARGE_FILE_BYTES = 100_000_000
 def _blob_byte_length(value: Any) -> int | None:
     """Decoded byte length if `value` is a `__b64__` blob string, else None."""
     if is_blob(value):
-        return len(base64.b64decode(value[len(BLOB_PREFIX) :]))
+        return len(blob_bytes(value))
     return None
 
 
@@ -230,7 +230,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
                 reasons.append(f"state {idx} has a body entry missing 'name'")
                 continue
             name = body["name"]
-            key = tuple(name) if isinstance(name, list) else name
+            key = body_key(name)
             if key in seen_keys:
                 reasons.append(f"state {idx} lists body '{name}' more than once")
             seen_keys.add(key)

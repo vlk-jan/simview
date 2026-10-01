@@ -81,13 +81,18 @@ def inline_blob(raw: bytes) -> str:
     return BLOB_PREFIX + base64.b64encode(raw).decode()
 
 
+def blob_bytes(value: str) -> bytes:
+    """Raw bytes of one inline ``__b64__`` blob string."""
+    return base64.b64decode(value[len(BLOB_PREFIX) :])
+
+
 def blob_floats(value: Any) -> list[float]:
     """Decode one ``__b64__`` blob (or pass through an already-plain nested
     list, flattened) into a flat list of floats, without numpy."""
     if isinstance(value, str):
         if not value.startswith(BLOB_PREFIX):
             raise ValueError(f"expected a {BLOB_PREFIX} blob, got {value[:32]!r}")
-        raw = base64.b64decode(value[len(BLOB_PREFIX) :])
+        raw = blob_bytes(value)
         return list(struct.unpack(f"<{len(raw) // 4}f", raw))
 
     flat: list[float] = []
@@ -147,7 +152,7 @@ def _decode_state_field_rows(value, width: int, batch_size: int):
     if isinstance(value, str):
         if not value.startswith(BLOB_PREFIX):
             raise StatesShapeMismatch(f"unexpected string value for field: {value!r}")
-        flat = np.frombuffer(base64.b64decode(value[len(BLOB_PREFIX) :]), dtype="<f4")
+        flat = np.frombuffer(blob_bytes(value), dtype="<f4")
     else:
         arr = np.asarray(value, dtype="<f4")
         if arr.ndim == 1:
@@ -233,7 +238,7 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
 
                 fields = sorted(k for k in body if k in STATE_FIELD_WIDTHS)
                 if key not in body_fields:
-                    if state_idx != 0 and body_rows.get(key) is None:
+                    if state_idx != 0:
                         # A body appearing for the first time after frame 0
                         # would leave earlier frames' rows undefined -- bail
                         # rather than guess a fill value.
@@ -396,7 +401,7 @@ def expand_columnar_states(states_doc: Any, batch_size: int) -> list[dict]:
             for field, (flat, width) in fields.items():
                 start = t * B * width
                 chunk = flat[start : start + B * width]
-                entry[field] = inline_blob(struct.pack(f"<{len(chunk)}f", *chunk))
+                entry[field] = encode_floats(chunk)
             if contacts is not None:
                 value = contacts[t] if t < len(contacts) else None
                 if value is not None:
