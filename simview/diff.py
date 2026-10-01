@@ -21,8 +21,14 @@ import io
 import math
 
 from simview.columnar import body_key, decode_transform_row
-from simview.utils import body_label, cap, iter_names, resolve_body
-from simview.utils import load_scene as load_scene  # re-exported for __main__.py
+from simview.utils import (
+    bodies_by_name,
+    body_label,
+    cap,
+    collect_body_names,
+    iter_names,
+    resolve_body,
+)
 
 _MAX_SERIES_ROWS = 10
 
@@ -113,19 +119,6 @@ def _compose(parent_row: list[float], local_row: list[float]) -> list[float]:
         world_pos[2] + parent_row[2],
         *_quat_mul(parent_quat, local_quat),
     ]
-
-
-def _expand_raw_bodies(raw_bodies: list | None) -> dict:
-    """`name -> entry` for one state's `bodies`, expanding grouped (list) name
-    entries so each individual body name maps to the shared entry."""
-    expanded: dict = {}
-    for entry in raw_bodies or []:
-        name = entry.get("name")
-        if name is None:
-            continue
-        for single in iter_names(name):
-            expanded[single] = entry
-    return expanded
 
 
 def _resolve_frame(
@@ -250,18 +243,8 @@ def compute_trajectory_diff(
     if every < 1:
         raise ValueError(f"every must be >= 1; got {every}")
 
-    all_names: list = []
-    seen_keys = set()
-    for state in states_data:
-        for entry in state.get("bodies") or []:
-            name = entry.get("name")
-            if name is None:
-                continue
-            key = body_key(name)
-            if key not in seen_keys:
-                seen_keys.add(key)
-                all_names.append(name)
-
+    all_names = collect_body_names(states_data)
+    seen_keys = {body_key(name) for name in all_names}
     if not all_names:
         raise ValueError("no bodies found in the scene's states to diff")
 
@@ -296,7 +279,7 @@ def compute_trajectory_diff(
     for idx, state in enumerate(states_data):
         if idx % every != 0:
             continue
-        raw_by_name = _expand_raw_bodies(state.get("bodies"))
+        raw_by_name = bodies_by_name(state.get("bodies"))
         # Resolved once per frame for the whole scene rather than per body:
         # a child's world pose needs its ancestors' poses anyway.
         rows_a = _resolve_frame(meta, topo_order, raw_by_name, batch_size, batch_a)

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from simview import CACHE_DIR, __version__, remote
 from simview.server import SimViewServer
+from simview.utils import human_bytes, load_scene, load_scene_model
 
 logger = logging.getLogger("simview.cli")
 
@@ -87,7 +88,7 @@ def clear_cache():
     if removed:
         logger.info("Removed %d leftover temporary scene file(s).", removed)
     if freed:
-        logger.info("Freed %s.", remote.human_bytes(freed))
+        logger.info("Freed %s.", human_bytes(freed))
 
     logger.info("Cache cleared.")
 
@@ -128,7 +129,7 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
 
     try:
         if args.along_body is not None:
-            model_data, states_data = terrain_mod.load_scene(path)
+            model_data, states_data = load_scene(path)
             if diff_mode:
                 batch_a, batch_b = args.batches
                 result = terrain_mod.query_along_body_diff(
@@ -154,7 +155,7 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                 text_fn = terrain_mod.format_along_text
                 csv_fn = terrain_mod.format_along_csv
         else:
-            model_data = terrain_mod.load_scene_model(path)
+            model_data = load_scene_model(path)
             if diff_mode:
                 batch_a, batch_b = args.batches
                 if args.point is not None:
@@ -226,7 +227,7 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        model_data, states_data = diff_mod.load_scene(path)
+        model_data, states_data = load_scene(path)
         result = diff_mod.compute_trajectory_diff(
             model_data,
             states_data,

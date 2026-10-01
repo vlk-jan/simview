@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import copy
 import gzip
 import hashlib
@@ -23,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.types import Scope
 
-from simview.columnar import BLOB_PREFIX, columnarize_states, is_columnar
+from simview.columnar import blob_bytes, columnarize_states, is_blob, is_columnar
 from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.server")
@@ -291,33 +290,25 @@ class SimViewServer:
         # stale cached response for blob id N from a previous load.
         self._blob_token = secrets.token_hex(4)
 
+        def register_blob(raw: bytes) -> str:
+            blob_id = len(self.blobs)
+            self.blobs.append(raw)
+            return f"/blob/{self._blob_token}/{blob_id}"
+
         def extract_blobs(obj):
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    if isinstance(v, str) and v.startswith(BLOB_PREFIX):
-                        blob_id = len(self.blobs)
-                        self.blobs.append(base64.b64decode(v[len(BLOB_PREFIX) :]))
-                        obj[k] = f"/blob/{self._blob_token}/{blob_id}"
-                    else:
-                        extract_blobs(v)
-            elif isinstance(obj, list):
-                for i, v in enumerate(obj):
-                    if isinstance(v, str) and v.startswith(BLOB_PREFIX):
-                        blob_id = len(self.blobs)
-                        self.blobs.append(base64.b64decode(v[len(BLOB_PREFIX) :]))
-                        obj[i] = f"/blob/{self._blob_token}/{blob_id}"
-                    else:
-                        extract_blobs(v)
+            """Rewrite every inline `__b64__` blob in `obj` into a /blob/ URL."""
+            if not isinstance(obj, (dict, list)):
+                return
+            for k, v in obj.items() if isinstance(obj, dict) else enumerate(obj):
+                if is_blob(v):
+                    obj[k] = register_blob(blob_bytes(v))
+                else:
+                    extract_blobs(v)
 
         self.model_data = model_data
 
         if self.model_data is not None:
             extract_blobs(self.model_data)
-
-        def register_blob(raw: bytes) -> str:
-            blob_id = len(self.blobs)
-            self.blobs.append(raw)
-            return f"/blob/{self._blob_token}/{blob_id}"
 
         if is_columnar(states_data):
             # The file is already columnar (SimulationScene.save's default) --

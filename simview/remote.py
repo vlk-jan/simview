@@ -39,9 +39,7 @@ import zlib
 from pathlib import Path
 
 from simview import CACHE_DIR
-
-# Re-exported: __main__.clear_cache and tests reach it as remote.human_bytes.
-from simview.utils import human_bytes as human_bytes
+from simview.utils import human_bytes
 
 logger = logging.getLogger("simview.remote")
 

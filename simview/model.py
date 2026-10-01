@@ -1,25 +1,19 @@
-import base64
 import logging
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-import numpy as np
 import torch
+
+from simview.columnar import inline_blob
 
 logger = logging.getLogger("simview.model")
 
-BLOB_PREFIX = "__b64__"
-
 
 def _encode_blob(array) -> str:
-    """Encode a numpy array as a little-endian float32 base64 blob string.
-
-    The `__b64__` prefix marks the value so the server (and merge) can round-trip
-    it as an opaque binary blob instead of verbose JSON.
-    """
-    return BLOB_PREFIX + base64.b64encode(array.astype("<f4").tobytes()).decode("utf-8")
+    """Encode a numpy array as an inline little-endian float32 `__b64__` blob."""
+    return inline_blob(array.astype("<f4").tobytes())
 
 
 def _validated_property_bounds(name: str, bounds: Any) -> tuple[float, float]:
@@ -53,17 +47,6 @@ def _validated_property_bounds(name: str, bounds: Any) -> tuple[float, float]:
             f"got ({low}, {high})."
         )
     return low, high
-
-
-def _decode_blob(value):
-    """Decode a `__b64__`-prefixed base64 blob string back into a flat list of
-    little-endian float32 values. Values that aren't blob strings (already plain
-    JSON lists, or None) pass through unchanged, so callers can use this
-    unconditionally on fields that may or may not be binary-encoded."""
-    if not (isinstance(value, str) and value.startswith(BLOB_PREFIX)):
-        return value
-    raw = base64.b64decode(value[len(BLOB_PREFIX) :])
-    return np.frombuffer(raw, dtype="<f4").tolist()
 
 
 class BodyShapeType(StrEnum):
@@ -168,7 +151,7 @@ class SimViewTerrain:
 
         `heightData`/`normals`/each property's `data` are kept in whatever
         form they were serialized in (plain nested lists or a `__b64__` blob
-        string) -- decode with `simview.model._decode_blob` if you need the
+        string) -- decode with `simview.columnar.blob_floats` if you need the
         flat float values back out.
         """
         try:

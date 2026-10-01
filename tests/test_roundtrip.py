@@ -7,6 +7,7 @@ torch = pytest.importorskip("torch")
 
 from conftest import build_scene
 
+from simview.columnar import blob_floats
 from simview.model import (
     BodyShapeType,
     OptionalBodyStateAttribute,
@@ -15,7 +16,6 @@ from simview.model import (
     SimViewStaticObject,
     SimViewTerrain,
     TerrainProperty,
-    _decode_blob,
     _encode_blob,
 )
 from simview.scene import SimulationScene
@@ -93,8 +93,8 @@ def test_states_shape(tmp_path):
     box = first["bodies"][0]
     # bodyTransform is [x, y, z, w, qx, qy, qz] per batch, binary-encoded by
     # default (see SimViewBodyState(binary=...)).
-    assert len(_decode_blob(box["bodyTransform"])) == 2 * 7
-    assert len(_decode_blob(box["velocity"])) == 2 * 3
+    assert len(blob_floats(box["bodyTransform"])) == 2 * 7
+    assert len(blob_floats(box["velocity"])) == 2 * 3
 
 
 def test_decode_blob_reverses_encode_blob():
@@ -103,12 +103,7 @@ def test_decode_blob_reverses_encode_blob():
     array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype="<f4")
     blob = _encode_blob(array)
     assert blob.startswith("__b64__")
-    assert _decode_blob(blob) == pytest.approx(array.flatten().tolist())
-
-
-def test_decode_blob_passes_through_non_blob_values():
-    assert _decode_blob([1, 2, 3]) == [1, 2, 3]
-    assert _decode_blob(None) is None
+    assert blob_floats(blob) == pytest.approx(array.flatten().tolist())
 
 
 def test_terrain_to_json_from_dict_roundtrip():

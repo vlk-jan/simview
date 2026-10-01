@@ -22,9 +22,7 @@ import math
 from typing import Any
 
 from simview.columnar import blob_floats, body_key, decode_transform_row
-from simview.utils import body_label, cap, resolve_body
-from simview.utils import load_scene as load_scene  # re-exported for __main__.py
-from simview.utils import load_scene_model as load_scene_model  # re-exported
+from simview.utils import body_label, cap, collect_body_names, resolve_body
 
 _MAX_SERIES_ROWS = 10
 
@@ -156,24 +154,6 @@ def _grid_index_range(
 
 def _grid_coord(index: int, min_b: float, max_b: float, shape: int) -> float:
     return min_b + index / (shape - 1) * (max_b - min_b) if shape > 1 else min_b
-
-
-def _collect_body_names(states_data: list) -> list:
-    """All distinct body names/name-groups seen across `states_data`, in
-    first-seen order -- the candidate pool `resolve_body` matches `body`
-    against."""
-    all_names: list = []
-    seen_keys = set()
-    for state in states_data:
-        for entry in state.get("bodies") or []:
-            name = entry.get("name")
-            if name is None:
-                continue
-            key = body_key(name)
-            if key not in seen_keys:
-                seen_keys.add(key)
-                all_names.append(name)
-    return all_names
 
 
 def query_point(
@@ -420,7 +400,7 @@ def query_along_body(
     if every < 1:
         raise ValueError(f"every must be >= 1; got {every}")
 
-    all_names = _collect_body_names(states_data)
+    all_names = collect_body_names(states_data)
     target_name = resolve_body(all_names, body)[0]
     key = body_key(target_name)
 

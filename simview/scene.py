@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from .columnar import (
+    body_key,
     columnarize_states,
     expand_columnar_states,
     inline_blob,
@@ -32,7 +33,7 @@ from .state import (
     LocalTransformLike,
     SimViewBodyState,
 )
-from .utils import read_maybe_gzipped_bytes
+from .utils import iter_names, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.scene")
 
@@ -42,12 +43,6 @@ def _to_f4(value) -> np.ndarray:
     if isinstance(value, torch.Tensor):
         value = value.detach().cpu().numpy()
     return np.ascontiguousarray(np.asarray(value, dtype="<f4"))
-
-
-def _iter_names(name: str | list[str]):
-    """Yield each individual body name, whether `name` is a single string or
-    a list of names sharing one transform."""
-    return name if isinstance(name, list) else [name]
 
 
 def _name_label(name: str | list[str]) -> str:
@@ -60,7 +55,7 @@ def _validate_body_name(name: str | list[str], model: SimViewModel) -> None:
     body defined in `model`."""
     if isinstance(name, list) and not name:
         raise ValueError("Body name list must not be empty.")
-    for n in _iter_names(name):
+    for n in iter_names(name):
         if n not in model.bodies:
             valid = sorted(model.bodies)
             raise ValueError(
@@ -76,7 +71,7 @@ def _validate_not_rigid(name: str | list[str], model: SimViewModel) -> None:
     their parent's current pose plus the fixed offset -- so passing state data
     for them here would be silently ignored on the wire, which is almost
     certainly a mistake."""
-    for n in _iter_names(name):
+    for n in iter_names(name):
         body = model.bodies.get(n)
         if body is not None and body.local_transform is not None:
             raise ValueError(
@@ -396,12 +391,8 @@ class SimulationScene:
         def encode(slice_: np.ndarray):
             return _encode_blob(slice_) if binary else slice_.tolist()
 
-        # dict keys must be hashable, so group names (lists) are keyed by tuple.
-        def _name_key(name):
-            return tuple(name) if isinstance(name, list) else name
-
         contacts_by_name = {
-            _name_key(name): contacts for name, contacts in prepared_contacts
+            body_key(name): contacts for name, contacts in prepared_contacts
         }
         for t in range(T):
             bodies = [
@@ -409,8 +400,8 @@ class SimulationScene:
                     "name": name,
                     **{key: encode(arr[t]) for key, arr in fields.items()},
                     **(
-                        {"contacts": contacts_by_name[_name_key(name)][t]}
-                        if _name_key(name) in contacts_by_name
+                        {"contacts": contacts_by_name[body_key(name)][t]}
+                        if body_key(name) in contacts_by_name
                         else {}
                     ),
                 }
@@ -467,7 +458,7 @@ class SimulationScene:
                     if name:
                         # Everything in the body's dict other than name and bodyTransform is an optional attribute
                         provided = set(body_data.keys()) - {"name", "bodyTransform"}
-                        for n in _iter_names(name):
+                        for n in iter_names(name):
                             provided_attrs_by_body.setdefault(n, set()).update(provided)
 
             for name, body in self.model.bodies.items():
