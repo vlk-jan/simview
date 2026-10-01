@@ -110,10 +110,6 @@ export class BatchManager {
         }
     }
 
-    getSimBatches() {
-        return this.simBatches;
-    }
-
     getColorForBatch(batchIndex) {
         if (batchIndex < 0 || batchIndex >= this.simBatches) {
             return new THREE.Color(0x000000); // Default to black for invalid index
