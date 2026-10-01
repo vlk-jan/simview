@@ -655,31 +655,6 @@ export class Body {
         }
     }
 
-    setPosition(positionData, batchIndex = 0) {
-        if (
-            !positionData ||
-            positionData.length < 3 ||
-            batchIndex >= this.simBatches
-        )
-            return;
-        const [x, y, z] = positionData;
-        this.positions[batchIndex].set(x, y, z);
-        this.updateInstanceMatrix(batchIndex);
-    }
-
-    setOrientation(orientationData, batchIndex = 0) {
-        if (
-            !orientationData ||
-            orientationData.length < 4 ||
-            batchIndex >= this.simBatches
-        )
-            return;
-        const [qw, qx, qy, qz] = orientationData;
-        this.quaternions[batchIndex].set(qx, qy, qz, qw);
-        this.rotations[batchIndex].setFromQuaternion(this.quaternions[batchIndex]);
-        this.updateInstanceMatrix(batchIndex);
-    }
-
     initializeBodyVectors(batchGroup, vectorConfigs, batchIndex) {
         if (!this.bodyVectors[batchIndex]) {
             this.bodyVectors[batchIndex] = new Map();

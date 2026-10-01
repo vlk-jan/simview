@@ -17,12 +17,7 @@ import { AnalysisPanel } from "./ui/AnalysisPanel.js";
 import { InteractionController } from "./components/InteractionController.js";
 import { buildBodyMeta, resolveStateBodies, topoSortBodies } from "./utils/bodyTransforms.js";
 import { hasBodyTrajectory } from "./utils/terrainSample.js";
-import {
-    decodeFloat32Blob,
-    decodeStateField,
-    decodeStatesChunk,
-    STATE_FIELD_WIDTHS,
-} from "./utils/blobCodec.js";
+import { decodeStatesChunk, STATE_FIELD_WIDTHS } from "./utils/blobCodec.js";
 import { StateStore } from "./components/StateStore.js";
 import { WindowedField } from "./components/WindowedField.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
@@ -115,7 +110,7 @@ export class SimView {
                 // Legacy wire shape: a plain per-frame array, possibly with
                 // inline __b64__ fields to expand.
                 console.debug(`Received ${statesPayload.length} states (legacy)`);
-                this.processStates(statesPayload);
+                this.processStatesChunk(statesPayload);
             } else if (statesPayload && statesPayload.live === true) {
                 // Live streaming mode (see simview.live.LiveViewer): no states
                 // yet, they arrive incrementally over /ws/states instead.
@@ -237,8 +232,8 @@ export class SimView {
                 if (!res.ok) {
                     throw new Error(`Failed to fetch blob ${url}: ${res.status} ${res.statusText}`);
                 }
-                const arrayBuffer = await res.arrayBuffer();
-                container[key] = SimView.decodeFloat32Blob(arrayBuffer);
+                // Little-endian float32 by contract (Python "<f4").
+                container[key] = new Float32Array(await res.arrayBuffer());
             })
         );
     }
@@ -306,23 +301,6 @@ export class SimView {
         }
     }
 
-    // Thin delegates to utils/blobCodec.js -- kept as methods since other code
-    // calls through `this`/`SimView.*` and the pure decoding logic lives there
-    // so it can be unit-tested without a SimView instance.
-    static decodeFloat32Blob(arrayBuffer) {
-        return decodeFloat32Blob(arrayBuffer);
-    }
-
-    static STATE_FIELD_WIDTHS = STATE_FIELD_WIDTHS;
-
-    decodeStateField(str, width) {
-        return decodeStateField(str, width);
-    }
-
-    decodeStatesChunk(chunk) {
-        decodeStatesChunk(chunk);
-    }
-
     // Legacy wire shape entry point: decodes any inline __b64__ fields, wraps
     // the array in a LegacyStateStore, and (dis)patches it exactly like the
     // columnar path below via onStoreReady.
@@ -334,7 +312,7 @@ export class SimView {
     // (loadAnimation/initFromStore) rather than being treated as an append to
     // an already-running animation.
     processStatesChunk(chunk) {
-        this.decodeStatesChunk(chunk);
+        decodeStatesChunk(chunk);
         const firstLoad = !this.animationController || !this.animationController.store;
         if (!this.store) {
             this.store = StateStore.fromLegacy(chunk);
@@ -421,23 +399,10 @@ export class SimView {
                 bodyStates
             );
             resolved.forEach((resolvedBodyState, name) => {
-                const body = this.bodies.get(name);
-                if (body) {
-                    if (body.appendHistoryPointAt) {
-                        body.appendHistoryPointAt(s, resolvedBodyState);
-                    } else if (body.setHistoryPointAt) {
-                        body.setHistoryPointAt(s, resolvedBodyState);
-                    }
-                }
+                this.bodies.get(name)?.appendHistoryPointAt(s, resolvedBodyState);
             });
         }
-        this.bodies.forEach((body) => {
-            if (body.finalizeTrails) body.finalizeTrails();
-        });
-    }
-
-    processStates(statesData) {
-        this.processStatesChunk(statesData);
+        this.bodies.forEach((body) => body.finalizeTrails());
     }
 
     initFromModel(model) {
@@ -538,7 +503,7 @@ export class SimView {
             console.error("Error during initFromModel:", error);
             const splash = document.getElementById("loading-splash");
             if (splash) {
-                splash.innerHTML = `<h1 style="color: red;">Error during initialization</h1><p>${error.message}</p>`;
+                splash.innerHTML = `<h1 class="sv-splash-error">Error during initialization</h1><p>${error.message}</p>`;
             }
             throw error;
         }

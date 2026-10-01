@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-    decodeFloat32Blob,
     decodeStateField,
     decodeStatesChunk,
     STATE_FIELD_WIDTHS,
@@ -10,18 +9,6 @@ import {
 // generated with Python's struct.pack("<7f", ...) to match the server's encoding.
 const KNOWN_VALUES = [1.5, -2.25, 3.0, 0.5, -0.5, 0.25, 100.125];
 const KNOWN_B64 = "AADAPwAAEMAAAEBAAAAAPwAAAL8AAIA+AEDIQg==";
-
-describe("decodeFloat32Blob", () => {
-    it("round-trips known little-endian float32 bytes", () => {
-        const bin = atob(KNOWN_B64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        const floats = decodeFloat32Blob(bytes.buffer);
-        expect(Array.from(floats)).toEqual(
-            KNOWN_VALUES.map((v) => Math.fround(v))
-        );
-    });
-});
 
 describe("decodeStateField", () => {
     it("decodes a __b64__-prefixed string into rows of the given width", () => {
