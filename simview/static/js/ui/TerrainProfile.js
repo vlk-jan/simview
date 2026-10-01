@@ -1,7 +1,8 @@
 import { FREQ_CONFIG, THEME } from "../config.js";
-import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
+import { downloadCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
+import { batchColumnsCsv, closestSeries, exportBar, selectGroup } from "./chartControls.js";
 
 const LAYER_LABELS = { height: "Height" };
 
@@ -36,8 +37,7 @@ export class TerrainProfile {
         this.fullSeries = []; // per batch: {x: time, y: value}[], the complete precomputed series
         this.markerTime = null;
         this.chart = null;
-        this.resizeObserver = null;
-        this.minRenderDelay = 1000 / (FREQ_CONFIG.terrainProfile || FREQ_CONFIG.scalarPlotter);
+        this.minRenderDelay = 1000 / FREQ_CONFIG.terrainProfile;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
 
         this._setupHTML();
@@ -52,7 +52,8 @@ export class TerrainProfile {
         this.controlsContainer.className = "terrain-profile-controls";
         this.content.appendChild(this.controlsContainer);
 
-        this.layerSelect = this._addSelectGroup(
+        this.layerSelect = selectGroup(
+            this.controlsContainer,
             "Layer:",
             this.availableLayers.map((l) => ({ value: l, label: LAYER_LABELS[l] || l })),
             this.layer
@@ -62,7 +63,8 @@ export class TerrainProfile {
         // scene has nothing to pick.
         this.bodySelect = null;
         if (this.bodyNames.length > 1) {
-            this.bodySelect = this._addSelectGroup(
+            this.bodySelect = selectGroup(
+                this.controlsContainer,
                 "Body:",
                 this.bodyNames.map((n) => ({ value: n, label: n })),
                 this.selectedBody
@@ -79,37 +81,13 @@ export class TerrainProfile {
                 });
             }
         }
-        this.pathSelect = this._addSelectGroup("Path:", pathOptions, this.pathMode);
+        this.pathSelect = selectGroup(this.controlsContainer, "Path:", pathOptions, this.pathMode);
 
-        this.exportContainer = document.createElement("div");
-        this.exportContainer.className = "terrain-profile-export-bar";
-        this.exportButton = document.createElement("button");
-        this.exportButton.textContent = "Export CSV";
-        this.exportContainer.appendChild(this.exportButton);
-        this.content.appendChild(this.exportContainer);
+        this.content.appendChild(exportBar(() => this._exportCsv()));
 
         this.plotDiv = document.createElement("div");
-        this.plotDiv.className = "terrain-profile-plot";
+        this.plotDiv.className = "sv-chart";
         this.content.appendChild(this.plotDiv);
-    }
-
-    _addSelectGroup(labelText, options, selectedValue) {
-        const group = document.createElement("div");
-        group.className = "terrain-profile-control-group";
-        const label = document.createElement("label");
-        label.textContent = labelText;
-        const select = document.createElement("select");
-        options.forEach(({ value, label: optLabel }) => {
-            const option = document.createElement("option");
-            option.value = value;
-            option.textContent = optLabel;
-            if (value === selectedValue) option.selected = true;
-            select.appendChild(option);
-        });
-        group.appendChild(label);
-        group.appendChild(select);
-        this.controlsContainer.appendChild(group);
-        return select;
     }
 
     _setupEventListeners() {
@@ -127,7 +105,6 @@ export class TerrainProfile {
             this.pathMode = e.target.value;
             this._onControlChange();
         });
-        this.exportButton.addEventListener("click", () => this._exportCsv());
     }
 
     _onControlChange() {
@@ -155,7 +132,6 @@ export class TerrainProfile {
         if (this.dirty) {
             this._recompute();
         } else {
-            this._resizeChart();
             this._updateMarker(true);
         }
     }
@@ -224,15 +200,10 @@ export class TerrainProfile {
     }
 
     _buildChart() {
-        if (this.resizeObserver) {
-            this.resizeObserver.disconnect();
-            this.resizeObserver = null;
-        }
         if (this.chart) {
             this.chart.destroy();
             this.chart = null;
         }
-        this.plotDiv.innerHTML = "";
         if (this.fullSeries.length === 0 || this.times.length === 0) return;
 
         const numBatches = this.app.batchManager.simBatches;
@@ -292,96 +263,23 @@ export class TerrainProfile {
                         incrs: yIncrements(min, max),
                     },
                 ],
-                hooks: {
-                    draw: [(u) => this._drawMarker(u)],
-                    setCursor: [(u) => this._updateTooltip(u)],
-                },
+                tooltip: (u, idx) => this._tooltipHtml(u, idx),
+                markerTime: () => this.markerTime,
             },
             dataArrays,
             this.app
         );
-
-        this._createTooltip();
-
-        this.resizeObserver = new ResizeObserver(() => this._resizeChart());
-        this.resizeObserver.observe(this.plotDiv);
     }
 
-    // Draws the current playback time as a vertical marker line over the
-    // finished plot, mirroring ErrorMetrics._drawMarker.
-    _drawMarker(u) {
-        if (this.markerTime === null) return;
-        const x = u.valToPos(this.markerTime, "x", true);
-        if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
-        const ctx = u.ctx;
-        ctx.save();
-        ctx.strokeStyle = THEME.text;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, u.bbox.top);
-        ctx.lineTo(x, u.bbox.top + u.bbox.height);
-        ctx.stroke();
-        ctx.restore();
-    }
-
-    _createTooltip() {
-        const tooltip = document.createElement("div");
-        tooltip.className = "sv-chart-tooltip";
-        this.plotDiv.appendChild(tooltip);
-        this._tooltip = tooltip;
-    }
-
-    // Finds the batch series whose y-value at the hovered x-index is closest
-    // to the hovered y-pixel, same approach as ScalarPlotter.
-    _closestSeriesAtIndex(u, dataIdx, yVal) {
-        let bestBatch = -1;
-        let bestDist = Infinity;
-        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-            const y = u.data[i + 1][dataIdx];
-            if (y === null || y === undefined) continue;
-            const dist = Math.abs(y - yVal);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestBatch = i;
-            }
-        }
-        return bestBatch;
-    }
-
-    _updateTooltip(u) {
-        if (!this._tooltip) return;
-        const idx = u.cursor.idx;
-        if (idx === null || idx === undefined || u.cursor.left < 0) {
-            this._tooltip.style.display = "none";
-            return;
-        }
-        const yVal = u.posToVal(u.cursor.top, "y");
-        const batchIndex = this._closestSeriesAtIndex(u, idx, yVal);
-        if (batchIndex < 0) {
-            this._tooltip.style.display = "none";
-            return;
-        }
+    _tooltipHtml(u, idx) {
+        const batchIndex = closestSeries(u, idx, u.posToVal(u.cursor.top, "y"));
+        if (batchIndex < 0) return null;
         const time = u.data[0][idx];
         const value = u.data[batchIndex + 1][idx];
-        if (value === null || value === undefined) {
-            this._tooltip.style.display = "none";
-            return;
-        }
-        const batchLabel = this.app.batchManager.getBatchName(batchIndex);
         const color = this.app.batchManager.getColorForBatch(batchIndex);
-
-        this._tooltip.style.color = color;
-        this._tooltip.innerHTML = `Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>${LAYER_LABELS[this.layer] || this.layer}: ${value.toFixed(3)}`;
-        this._tooltip.style.display = "block";
-        this._tooltip.style.left = `${u.cursor.left + 12}px`;
-        this._tooltip.style.top = `${u.cursor.top + 12}px`;
-    }
-
-    _resizeChart() {
-        if (!this.chart || !this.plotDiv) return;
-        const rect = this.plotDiv.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        this.chart.setSize({ width: rect.width, height: rect.height });
+        const batchLabel = this.app.batchManager.getBatchName(batchIndex);
+        const layerLabel = LAYER_LABELS[this.layer] || this.layer;
+        return `<span style="color:${color};">Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>${layerLabel}: ${value.toFixed(3)}</span>`;
     }
 
     // Moves the current-time marker line to match playback, redrawing only
@@ -401,20 +299,7 @@ export class TerrainProfile {
     // column per batch (named after the batch's current display name).
     _exportCsv() {
         if (this.fullSeries.length === 0 || this.times.length === 0) return;
-        const batchCount = this.app.batchManager.simBatches;
-        const header = ["time"];
-        for (let i = 0; i < batchCount; i++) {
-            header.push(this.app.batchManager.getBatchName(i) || `batch_${i}`);
-        }
-        const rows = this.times.map((t, idx) => {
-            const row = [t];
-            for (let i = 0; i < batchCount; i++) {
-                const point = this.fullSeries[i] && this.fullSeries[i][idx];
-                row.push(point ? point.y : "");
-            }
-            return row;
-        });
-        const csv = rowsToCsv(header, rows);
+        const csv = batchColumnsCsv(this.app.batchManager, this.times, this.fullSeries);
         const layerPart = sanitizeForFilename(this.layer);
         const bodyPart = sanitizeForFilename(this.selectedBody || "");
         const pathPart =
@@ -434,10 +319,6 @@ export class TerrainProfile {
     }
 
     dispose() {
-        if (this.resizeObserver) {
-            this.resizeObserver.disconnect();
-            this.resizeObserver = null;
-        }
         if (this.chart) {
             this.chart.destroy();
             this.chart = null;

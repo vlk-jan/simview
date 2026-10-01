@@ -1,5 +1,5 @@
 import { FREQ_CONFIG, SCALAR_PLOTTER_CONFIG, THEME } from "../config.js";
-import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
+import { downloadCsv, sanitizeForFilename } from "../utils/csv.js";
 import {
     episodeAggregates,
     episodeIndexAt,
@@ -7,6 +7,7 @@ import {
     normalizeEpisodes,
 } from "../utils/episodes.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
+import { batchColumnsCsv, closestSeries, exportBar } from "./chartControls.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -23,12 +24,9 @@ export class ScalarPlotter {
         this.plotElements = {};
         this.tabElements = {};
         this.charts = new Map();
-        this.resizeObservers = new Map();
         this.scalarSeries = new Map();
         this.scalarBounds = new Map();
-        this.fullDataPoints = new Map();
         this.times = [];
-        this.indices = [];
         // Episode boundaries (see utils/episodes.js), drawn over each chart
         // with the focused batch's per-episode aggregate. Empty for an
         // ordinary non-episodic scene, in which case nothing extra is drawn.
@@ -41,7 +39,6 @@ export class ScalarPlotter {
         this.opacityRenderCallback = null;
         this.minRenderDelay = 1000 / FREQ_CONFIG.scalarPlotter;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
-        this.renderTimeout = null; // To manage delayed rendering
 
         this._setupHTML();
         this._setupEventListeners();
@@ -54,12 +51,7 @@ export class ScalarPlotter {
         this.plotArea = document.createElement("div");
         this.plotArea.className = "scalar-plot-area";
 
-        this.exportBar = document.createElement("div");
-        this.exportBar.className = "scalar-export-bar";
-        this.exportButton = document.createElement("button");
-        this.exportButton.textContent = "Export CSV";
-        this.exportBar.appendChild(this.exportButton);
-        this.plotArea.appendChild(this.exportBar);
+        this.plotArea.appendChild(exportBar(() => this._exportCsv()));
 
         this.scalarNames.forEach((name, index) => {
             const tabButton = document.createElement("button");
@@ -72,9 +64,9 @@ export class ScalarPlotter {
 
             const plotDiv = document.createElement("div");
             plotDiv.id = `plot-${name}`;
-            plotDiv.className = "uplot-plot-div";
+            plotDiv.className = "sv-chart";
             plotDiv.dataset.scalarName = name;
-            if (index === 0) plotDiv.classList.add("visible");
+            plotDiv.hidden = index !== 0;
             this.plotArea.appendChild(plotDiv);
             this.plotElements[name] = plotDiv;
         });
@@ -91,7 +83,6 @@ export class ScalarPlotter {
             }
             event.target.blur();
         });
-        this.exportButton.addEventListener("click", () => this._exportCsv());
     }
 
     // Downloads the active scalar tab's full series as CSV: time, then one
@@ -100,22 +91,7 @@ export class ScalarPlotter {
         const series = this.scalarSeries.get(this.activeScalar);
         if (!series || this.times.length === 0) return;
 
-        const batchCount = this.app.batchManager.simBatches;
-        const header = ["time"];
-        for (let i = 0; i < batchCount; i++) {
-            header.push(this.app.batchManager.getBatchName(i) || `batch_${i}`);
-        }
-
-        const rows = this.times.map((t, idx) => {
-            const row = [t];
-            for (let i = 0; i < batchCount; i++) {
-                const point = series[i][idx];
-                row.push(point ? point.y : "");
-            }
-            return row;
-        });
-
-        const csv = rowsToCsv(header, rows);
+        const csv = batchColumnsCsv(this.app.batchManager, this.times, series);
         const scalarPart = sanitizeForFilename(this.activeScalar);
         downloadCsv(`scalar_${scalarPart}.csv`, csv);
     }
@@ -126,7 +102,6 @@ export class ScalarPlotter {
         this.isExpanded = visible;
 
         if (this.isExpanded && this.activeScalar) {
-            this._resizeChart(this.activeScalar);
             this.setEndIndex(this.currentEndIndex, true);
             this.setFocusedBatch(this.currentFocusedBatch, true);
         }
@@ -143,15 +118,14 @@ export class ScalarPlotter {
         const oldTab = this.tabElements[this.activeScalar];
         const oldPlot = this.plotElements[this.activeScalar];
         if (oldTab) oldTab.classList.remove("active");
-        if (oldPlot) oldPlot.classList.remove("visible");
+        if (oldPlot) oldPlot.hidden = true;
 
         const newTab = this.tabElements[newScalarName];
         const newPlot = this.plotElements[newScalarName];
         if (newTab) newTab.classList.add("active");
-        if (newPlot) newPlot.classList.add("visible");
+        if (newPlot) newPlot.hidden = false;
 
         this.activeScalar = newScalarName;
-        this._resizeChart(this.activeScalar);
         this.setEndIndex(this.currentEndIndex, true);
         this.setFocusedBatch(this.currentFocusedBatch, true);
     }
@@ -159,7 +133,6 @@ export class ScalarPlotter {
     initFromStore(store) {
         const batchSize = this.app.batchManager.simBatches;
         this.times = store.times;
-        this.indices = [...Array(batchSize).keys()];
         for (const scalarName of this.scalarNames) {
             // Per-batch series as plain {x, y} points (sliced into uPlot's
             // columnar format on render), pulled from the store rather than
@@ -177,15 +150,6 @@ export class ScalarPlotter {
                 }
             }
             this.scalarBounds.set(scalarName, [min, max]);
-        }
-
-        for (const scalarName of this.scalarNames) {
-            console.log(
-                "Scalar",
-                scalarName,
-                " has bounds",
-                this.scalarBounds.get(scalarName)
-            );
         }
 
         this._initializePlots();
@@ -286,24 +250,6 @@ export class ScalarPlotter {
         );
     }
 
-    // Finds the batch series whose y-value at the clicked x-index is closest
-    // to the clicked y-pixel, so a click near a particular line focuses that
-    // batch.
-    _closestSeriesAtIndex(u, dataIdx, yVal) {
-        let bestBatch = -1;
-        let bestDist = Infinity;
-        for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-            const y = u.data[i + 1][dataIdx];
-            if (y === null || y === undefined) continue;
-            const dist = Math.abs(y - yVal);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestBatch = i;
-            }
-        }
-        return bestBatch;
-    }
-
     // The x extent every chart's scale is pinned to: the whole timeline. Falls
     // back to a unit span when there are no times, so uPlot is never handed
     // NaN/undefined bounds.
@@ -367,12 +313,8 @@ export class ScalarPlotter {
                             incrs: yIncrements(min, max, SCALAR_PLOTTER_CONFIG.stepsPerYAxis),
                         },
                     ],
+                    tooltip: (u, idx) => this._tooltipHtml(u, idx, name),
                     hooks: {
-                        setCursor: [
-                            (u) => {
-                                this._updateTooltip(u, name);
-                            },
-                        ],
                         draw: [
                             (u) => {
                                 this._drawEpisodeOverlay(u, name);
@@ -383,7 +325,7 @@ export class ScalarPlotter {
                     // whichever batch's series passed closest to it.
                     onClick: (chart, idx, e) => {
                         const yVal = chart.posToVal(e.offsetY, "y");
-                        const batchIndex = this._closestSeriesAtIndex(chart, idx, yVal);
+                        const batchIndex = closestSeries(chart, idx, yVal);
                         if (batchIndex >= 0) {
                             this.app.batchManager.setActiveBatch(batchIndex);
                         }
@@ -393,70 +335,22 @@ export class ScalarPlotter {
                 this.app
             );
 
-            this._createTooltip(plotDiv);
-
             this.charts.set(name, chart);
-
-            const resizeObserver = new ResizeObserver(() => this._resizeChart(name));
-            resizeObserver.observe(plotDiv);
-            this.resizeObservers.set(name, resizeObserver);
         });
     }
 
-    _createTooltip(plotDiv) {
-        const tooltip = document.createElement("div");
-        tooltip.className = "sv-chart-tooltip";
-        plotDiv.style.position = "relative";
-        plotDiv.appendChild(tooltip);
-        plotDiv._tooltip = tooltip;
-    }
-
-    _updateTooltip(u, name) {
-        const plotDiv = this.plotElements[name];
-        const tooltip = plotDiv && plotDiv._tooltip;
-        if (!tooltip) return;
-
-        const idx = u.cursor.idx;
-        if (idx === null || idx === undefined || u.cursor.left < 0) {
-            tooltip.style.display = "none";
-            return;
-        }
-
-        const yVal = u.posToVal(u.cursor.top, "y");
-        const batchIndex = this._closestSeriesAtIndex(u, idx, yVal);
-        if (batchIndex < 0) {
-            tooltip.style.display = "none";
-            return;
-        }
-
+    _tooltipHtml(u, idx, name) {
+        const batchIndex = closestSeries(u, idx, u.posToVal(u.cursor.top, "y"));
+        if (batchIndex < 0) return null;
         const time = u.data[0][idx];
         const value = u.data[batchIndex + 1][idx];
-        if (value === null || value === undefined) {
-            tooltip.style.display = "none";
-            return;
-        }
-        const batchLabel = this.app.batchManager.getBatchName(batchIndex);
         const color = this.app.batchManager.getColorForBatch(batchIndex);
-
-        tooltip.style.color = color;
-        tooltip.innerHTML =
-            `Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}` +
-            this._episodeTooltipText(name, idx);
-        tooltip.style.display = "block";
-
-        const left = u.cursor.left + 12;
-        const top = u.cursor.top + 12;
-        tooltip.style.left = `${left}px`;
-        tooltip.style.top = `${top}px`;
-    }
-
-    _resizeChart(name) {
-        const chart = this.charts.get(name);
-        const plotDiv = this.plotElements[name];
-        if (!chart || !plotDiv) return;
-        const rect = plotDiv.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        chart.setSize({ width: rect.width, height: rect.height });
+        const batchLabel = this.app.batchManager.getBatchName(batchIndex);
+        return (
+            `<span style="color:${color};">Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}` +
+            this._episodeTooltipText(name, idx) +
+            "</span>"
+        );
     }
 
     setEndIndex(newEndIndex, force = false) {
@@ -537,7 +431,7 @@ export class ScalarPlotter {
         if (!activeChart) return;
 
         const plotDiv = this.plotElements[this.activeScalar];
-        if (!this.isExpanded || !plotDiv.classList.contains("visible")) {
+        if (!this.isExpanded || plotDiv.hidden) {
             return;
         }
 
@@ -570,11 +464,7 @@ export class ScalarPlotter {
         for (const chart of this.charts.values()) {
             chart.destroy();
         }
-        for (const observer of this.resizeObservers.values()) {
-            observer.disconnect();
-        }
         this.charts.clear();
-        this.resizeObservers.clear();
         this.scalarSeries.clear();
         this.scalarBounds.clear();
     }
