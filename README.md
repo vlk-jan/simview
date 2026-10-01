@@ -97,8 +97,8 @@ source .venv/bin/activate
 ## License
 
 SimView is distributed under the [BSD 3-Clause License](LICENSE). The web interface
-vendors [uPlot](https://github.com/leeoniya/uPlot), [three.js](https://github.com/mrdoob/three.js),
-and [chroma-js](https://github.com/gka/chroma.js) (all MIT licensed) under
+vendors [uPlot](https://github.com/leeoniya/uPlot) and [three.js](https://github.com/mrdoob/three.js)
+(both MIT licensed) under
 `simview/static/lib/` so the viewer works fully offline — see the
 [documentation](https://vlk-jan.github.io/simview/dev/architecture/#vendored-third-party-libraries)
 for details. All third-party libraries used by SimView are permissively licensed

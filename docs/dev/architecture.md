@@ -97,8 +97,7 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
 - **`objects/`** — THREE.js object wrappers: `Body`, `StaticObject`, `Terrain` (heightfield
   mesh + friction/stiffness/click-to-similarity "features" color modes), plus shared
   helpers in `utils.js`. `colormap.js`/`similarity.js` factor the colormap resolver and
-  cosine-similarity math out of `utils.js` (which pulls in the browser-only `chroma`
-  package) into small, dependency-light modules used by both `Body`'s
+  cosine-similarity math out of `utils.js` into small, dependency-light modules used by both `Body`'s
   click-to-similarity point coloring and `Terrain`'s "features" mode.
 - **`ui/`** — DOM-based UI panels: `Controls` (main options panel), `PlaybackControls`,
   `BodyStateWindow`, `Legend`/`BatchLegend`, and `ScalarPlotter`/`ErrorMetrics`/
@@ -121,8 +120,8 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
 ### Vendored third-party libraries
 
 [**uPlot**](https://github.com/leeoniya/uPlot) (MIT), [**three.js**](https://github.com/mrdoob/three.js)
-(MIT), [**chroma-js**](https://github.com/gka/chroma.js) (MIT) and `js-colormaps.js`
-(the matplotlib color-map tables) are vendored under
+(MIT) and `js-colormaps.js` (the matplotlib color-map tables, trimmed to the ones the
+viewer offers) are vendored under
 `simview/static/lib/` (version-stamped directories, e.g. `lib/three-0.174.0/`) rather
 than loaded from a CDN, so the viewer works fully offline. All third-party libraries
 used by SimView are permissively licensed (MIT/BSD), so there are no licensing
@@ -166,7 +165,7 @@ simview/
 │       │   ├── objects/
 │       │   ├── ui/
 │       │   └── utils/
-│       ├── lib/                       # vendored three.js, chroma-js, uPlot, ...
+│       ├── lib/                       # vendored three.js, uPlot, js-colormaps
 │       └── textures/
 ├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
 ├── example.py                 # authoring example (see Quick Start)
