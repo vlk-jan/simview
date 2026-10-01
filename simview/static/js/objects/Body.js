@@ -326,7 +326,7 @@ export class Body {
                 this.representations["mesh"] = this.createInstancedRepresentation(
                     "mesh",
                     geometry,
-                    BODY_CONFIG.mesh,
+                    {},
                     bodyData
                 );
                 this.representations["wireframe"] = this.createInstancedRepresentation(
@@ -653,31 +653,6 @@ export class Body {
         if (this.trails.length > 0 && this.app.animationController) {
             this.updateTrails(this.app.animationController.getCurrentStateIndex());
         }
-    }
-
-    setPosition(positionData, batchIndex = 0) {
-        if (
-            !positionData ||
-            positionData.length < 3 ||
-            batchIndex >= this.simBatches
-        )
-            return;
-        const [x, y, z] = positionData;
-        this.positions[batchIndex].set(x, y, z);
-        this.updateInstanceMatrix(batchIndex);
-    }
-
-    setOrientation(orientationData, batchIndex = 0) {
-        if (
-            !orientationData ||
-            orientationData.length < 4 ||
-            batchIndex >= this.simBatches
-        )
-            return;
-        const [qw, qx, qy, qz] = orientationData;
-        this.quaternions[batchIndex].set(qx, qy, qz, qw);
-        this.rotations[batchIndex].setFromQuaternion(this.quaternions[batchIndex]);
-        this.updateInstanceMatrix(batchIndex);
     }
 
     initializeBodyVectors(batchGroup, vectorConfigs, batchIndex) {

@@ -40,17 +40,6 @@ function getPath(obj, path) {
     return path.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
 }
 
-function setPath(obj, path, value) {
-    const keys = path.split(".");
-    let node = obj;
-    for (let i = 0; i < keys.length - 1; i++) {
-        const k = keys[i];
-        if (typeof node[k] !== "object" || node[k] === null) node[k] = {};
-        node = node[k];
-    }
-    node[keys[keys.length - 1]] = value;
-}
-
 function fmtNum(n) {
     // Trim to a sane precision so the hash stays compact/human-tolerable,
     // while still round-tripping to full float precision for practical
@@ -135,81 +124,42 @@ export function serializeViewState(state) {
 // returns null (nothing to apply) or an object missing some keys (whatever
 // could be salvaged). A bad hash must never break page load.
 export function parseViewState(hash) {
-    try {
-        if (typeof hash !== "string") return null;
-        const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
-        if (!trimmed) return null;
+    if (typeof hash !== "string") return null;
+    // URLSearchParams never throws, even on malformed percent-encoding.
+    const params = new URLSearchParams(hash.replace(/^#/, ""));
+    if (parseInt(params.get("v"), 10) !== VIEW_STATE_VERSION) return null;
+    const num = (key) => (params.get(key) ? Number(params.get(key)) : NaN);
 
-        const raw = {};
-        for (const pair of trimmed.split("&")) {
-            if (!pair) continue;
-            const eq = pair.indexOf("=");
-            if (eq === -1) continue;
-            const key = pair.slice(0, eq);
-            const value = pair.slice(eq + 1);
-            if (key) raw[key] = value;
-        }
+    const state = {};
+    const t = num("t");
+    if (Number.isFinite(t)) state.time = t;
 
-        if (!("v" in raw)) return null;
-        const version = parseInt(raw.v, 10);
-        if (version !== VIEW_STATE_VERSION) return null; // unknown/unsupported version
-
-        const state = {};
-
-        if ("t" in raw) {
-            const t = Number(raw.t);
-            if (Number.isFinite(t)) state.time = t;
-        }
-
-        const camPos = "cam" in raw ? parseVec3(raw.cam) : null;
-        const camTgt = "tgt" in raw ? parseVec3(raw.tgt) : null;
-        const fov = "fov" in raw ? Number(raw.fov) : null;
-        if (camPos || camTgt || (fov !== null && Number.isFinite(fov))) {
-            state.camera = {};
-            if (camPos) state.camera.position = camPos;
-            if (camTgt) state.camera.target = camTgt;
-            if (fov !== null && Number.isFinite(fov)) state.camera.fov = fov;
-        }
-
-        if ("b" in raw) {
-            const b = parseInt(raw.b, 10);
-            if (Number.isInteger(b) && b >= 0) state.batchIndex = b;
-        }
-
-        if ("bvm" in raw) {
-            try {
-                const bvm = decodeURIComponent(raw.bvm);
-                if (bvm) state.bodyVisualizationMode = bvm;
-            } catch {
-                /* malformed percent-encoding: ignore this field */
-            }
-        }
-
-        if ("tcm" in raw) {
-            try {
-                const tcm = decodeURIComponent(raw.tcm);
-                if (tcm) state.terrainColorMode = tcm;
-            } catch {
-                /* malformed percent-encoding: ignore this field */
-            }
-        }
-
-        if ("flags" in raw) {
-            const mask = parseInt(raw.flags, 10);
-            if (Number.isInteger(mask)) {
-                state.toggles = decodeFlags(mask);
-            }
-        }
-
-        return state;
-    } catch {
-        // Never let a malformed hash break page load.
-        return null;
+    const camPos = parseVec3(params.get("cam"));
+    const camTgt = parseVec3(params.get("tgt"));
+    const fov = num("fov");
+    if (camPos || camTgt || Number.isFinite(fov)) {
+        state.camera = {};
+        if (camPos) state.camera.position = camPos;
+        if (camTgt) state.camera.target = camTgt;
+        if (Number.isFinite(fov)) state.camera.fov = fov;
     }
+
+    const b = parseInt(params.get("b"), 10);
+    if (b >= 0) state.batchIndex = b;
+
+    const bvm = params.get("bvm");
+    if (bvm) state.bodyVisualizationMode = bvm;
+    const tcm = params.get("tcm");
+    if (tcm) state.terrainColorMode = tcm;
+
+    const mask = parseInt(params.get("flags"), 10);
+    if (Number.isInteger(mask)) state.toggles = decodeFlags(mask);
+
+    return state;
 }
 
 // Helper for callers building the `toggles` map from a live uiState object
-// (see ui/Controls.js) -- flat-keyed via getPath/setPath so nested paths
+// (see ui/Controls.js) -- flat-keyed via getPath so nested paths
 // like "attributeVisible.contacts" work without callers reimplementing the
 // dotted-path walk.
 export function toggleMapFromUiState(uiState) {
@@ -219,14 +169,3 @@ export function toggleMapFromUiState(uiState) {
     });
     return toggles;
 }
-
-// Applies a decoded `toggles` map (as produced by decodeFlags/parseViewState)
-// onto a target uiState-shaped object in place.
-export function applyToggleMapToUiState(uiState, toggles) {
-    if (!toggles) return;
-    BOOLEAN_FLAG_KEYS.forEach((key) => {
-        if (key in toggles) setPath(uiState, key, !!toggles[key]);
-    });
-}
-
-export { BOOLEAN_FLAG_KEYS };

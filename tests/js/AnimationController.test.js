@@ -96,6 +96,12 @@ describe("AnimationController.getBracketingIndices", () => {
         expect(hi).toBe(lo + 1);
         expect(Number.isNaN(alpha)).toBe(false);
     });
+
+    it("getStateIndexForTime picks the nearest frame, ties going to the earlier one", () => {
+        expect([-1, 0.4, 0.5, 0.6, 1.9, 3].map((t) => ac.getStateIndexForTime(t))).toEqual([
+            0, 0, 0, 1, 2, 2,
+        ]);
+    });
 });
 
 describe("AnimationController interpolated updateScene", () => {
@@ -172,7 +178,7 @@ describe("AnimationController discrete stepping stays index-snapped under interp
         const app = makeApp({ smoothInterpolation: true });
         const ac = new AnimationController(app);
         app.bodyStateWindow = { forceRedraw() {} };
-        ac.playbackControls = { forceRedraw() {} };
+        ac.playbackControls = { updateElements() {} };
         ac.store = fakeStore([
             { time: 0, bodies: [{ name: "a", bodyTransform: transformRow(0) }] },
             { time: 1, bodies: [{ name: "a", bodyTransform: transformRow(10) }] },

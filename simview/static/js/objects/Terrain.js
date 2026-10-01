@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { TERRAIN_CONFIG, THEME } from "../config.js";
-import { getCallableFromColorMapName as resolveColorMap } from "./colormap.js";
+import { getCallableFromColorMapName } from "./colormap.js";
 
 export class Terrain {
     constructor(terrainData, app) {
@@ -307,7 +307,7 @@ export class Terrain {
 
         // Apply height data to geometry
         // NOTE: THREE.js PlaneGeometry vertices are arranged in rows from bottom to top (Y increases)
-        const callableColormap = this.getCallableFromColorMapName(
+        const callableColormap = getCallableFromColorMapName(
             this.app.uiState.terrainColorMap
         );
 
@@ -328,14 +328,6 @@ export class Terrain {
         // Make sure changes are applied
         position.needsUpdate = true;
         return geometry;
-    }
-
-    // Delegates to utils.js so non-terrain consumers (Body.js's point-cloud
-    // similarity recoloring) can resolve colormaps without a Terrain
-    // instance. Kept as an instance method since Legend.js calls it via
-    // `this.app.terrain.getCallableFromColorMapName(...)`.
-    getCallableFromColorMapName(cmapName) {
-        return resolveColorMap(cmapName);
     }
 
     /**
@@ -448,7 +440,7 @@ export class Terrain {
             // (centered on zero), independent of the sequential "Color Map"
             // picker used by height/named properties -- see Legend.js's
             // matching "diff" branch.
-            callableColormap = this.getCallableFromColorMapName("coolwarm");
+            callableColormap = getCallableFromColorMapName("coolwarm");
             diffLayer =
                 this.app.uiState.terrainDiffLayer || this.getAvailableDiffLayers()[0];
             diffBatchA = this.app.uiState.terrainDiffBatchA ?? 0;
@@ -467,7 +459,7 @@ export class Terrain {
         // a signed [-1, 1] quantity.
         let featureQueryVec, featureQueryNorm;
         if (mode === "features") {
-            callableColormap = this.getCallableFromColorMapName("coolwarm");
+            callableColormap = getCallableFromColorMapName("coolwarm");
             const K = this.embeddingDim;
             const queryIndex = this.app.uiState.terrainFeatureQueryIndex;
             const queryBatch = this.app.uiState.terrainFeatureQueryBatch ?? 0;
@@ -563,7 +555,7 @@ export class Terrain {
     // Update terrain colors with current colormap
     setColorMap(colormapName) {
         // Update the main terrain surface
-        const callableColormap = this.getCallableFromColorMapName(colormapName);
+        const callableColormap = getCallableFromColorMapName(colormapName);
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
 
         for (let i = 0; i < batchesToUpdate; i++) {
@@ -576,7 +568,7 @@ export class Terrain {
 
     // Update terrain colors with current mode
     setColorMode(mode) {
-        const callableColormap = this.getCallableFromColorMapName(this.app.uiState.terrainColorMap);
+        const callableColormap = getCallableFromColorMapName(this.app.uiState.terrainColorMap);
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
 
         for (let i = 0; i < batchesToUpdate; i++) {

@@ -26,8 +26,11 @@ export class PlaybackControls {
         this.controlsRow = document.createElement("div");
         this.controlsRow.className = "sv-playback-row";
 
-        // **Cache listener functions**
-        this.recordButtonClick = () => {
+        // One signal tears down every listener in dispose().
+        this.abortController = new AbortController();
+        const { signal } = this.abortController;
+
+        const recordButtonClick = () => {
             if (this.animationController.isRecording) {
                 this.animationController.stopRecording();
                 this.recordButton.textContent = "⚫ REC";
@@ -39,15 +42,15 @@ export class PlaybackControls {
             }
         };
 
-        this.formatSelectChange = (e) => {
+        const formatSelectChange = (e) => {
             this.animationController.setRecordingFormat(e.target.value);
         };
 
-        this.screenshotButtonClick = () => {
+        const screenshotButtonClick = () => {
             this.animationController.captureScreenshot();
         };
 
-        this.playButtonClick = () => {
+        const playButtonClick = () => {
             if (this.animationController.isPlaying) {
                 this.animationController.pause();
                 this.playButton.textContent = "Play";
@@ -57,24 +60,24 @@ export class PlaybackControls {
             }
         };
 
-        this.stepBackButtonClick = () => {
+        const stepBackButtonClick = () => {
             this.animationController.pause();
             this.animationController.stepBackward();
             this.playButton.textContent = "Play";
         };
 
-        this.stepForwardButtonClick = () => {
+        const stepForwardButtonClick = () => {
             this.animationController.pause();
             this.animationController.stepForward();
             this.playButton.textContent = "Play";
         };
 
-        this.speedSelectChange = (e) => {
+        const speedSelectChange = (e) => {
             console.debug("Speed changed to", e.target.value);
             this.animationController.setSpeed(parseFloat(e.target.value));
         };
 
-        this.prevEpisodeButtonClick = () => {
+        const prevEpisodeButtonClick = () => {
             this.#jumpToFrame(
                 previousEpisodeStart(
                     this.episodes,
@@ -83,7 +86,7 @@ export class PlaybackControls {
             );
         };
 
-        this.nextEpisodeButtonClick = () => {
+        const nextEpisodeButtonClick = () => {
             this.#jumpToFrame(
                 nextEpisodeStart(
                     this.episodes,
@@ -92,7 +95,7 @@ export class PlaybackControls {
             );
         };
 
-        this.progressBarContainerClick = (event) => {
+        const progressBarContainerClick = (event) => {
             const rect = this.progressBarContainer.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const progress = x / rect.width;
@@ -105,7 +108,7 @@ export class PlaybackControls {
             this.animationController.goToTime(targetTime);
         };
 
-        this.keydownListener = (event) => {
+        const keydownListener = (event) => {
             const key = event.key;
 
             // Handle arrow keys with Alt modifier for timeline stepping
@@ -148,16 +151,15 @@ export class PlaybackControls {
             }
         };
 
-        // **Create elements and attach cached listeners**
         this.recordButton = this.#createButton(
             "⚫ REC",
-            this.recordButtonClick,
+            recordButtonClick,
             "100px"
         );
 
         this.screenshotButton = this.#createButton(
             "📷",
-            this.screenshotButtonClick,
+            screenshotButtonClick,
             "40px"
         );
         this.screenshotButton.title = "Screenshot (S)";
@@ -176,20 +178,20 @@ export class PlaybackControls {
             this.formatSelect.appendChild(option);
         });
         this.formatSelect.style.width = "80px";
-        this.formatSelect.addEventListener("change", this.formatSelectChange);
+        this.formatSelect.addEventListener("change", formatSelectChange, { signal });
 
-        this.playButton = this.#createButton("Play", this.playButtonClick, "70px");
+        this.playButton = this.#createButton("Play", playButtonClick, "70px");
         this.playButton.classList.add("sv-play");
 
         this.stepBackButton = this.#createButton(
             "←",
-            this.stepBackButtonClick,
+            stepBackButtonClick,
             "40px"
         );
 
         this.stepForwardButton = this.#createButton(
             "→",
-            this.stepForwardButtonClick,
+            stepForwardButtonClick,
             "40px"
         );
 
@@ -197,13 +199,13 @@ export class PlaybackControls {
         // common case) rather than shown disabled -- see #refreshEpisodeUI.
         this.prevEpisodeButton = this.#createButton(
             "|◀",
-            this.prevEpisodeButtonClick,
+            prevEpisodeButtonClick,
             "40px"
         );
         this.prevEpisodeButton.title = "Previous episode ([)";
         this.nextEpisodeButton = this.#createButton(
             "▶|",
-            this.nextEpisodeButtonClick,
+            nextEpisodeButtonClick,
             "40px"
         );
         this.nextEpisodeButton.title = "Next episode (])";
@@ -219,7 +221,7 @@ export class PlaybackControls {
             this.speedSelect.appendChild(option);
         });
         this.speedSelect.style.width = "70px";
-        this.speedSelect.addEventListener("change", this.speedSelectChange);
+        this.speedSelect.addEventListener("change", speedSelectChange, { signal });
 
         this.frameCounter = document.createElement("span");
         this.frameCounter.className = "sv-readout";
@@ -237,7 +239,8 @@ export class PlaybackControls {
         this.progressBarContainer.appendChild(this.episodeTicks);
         this.progressBarContainer.addEventListener(
             "click",
-            this.progressBarContainerClick
+            progressBarContainerClick,
+            { signal }
         );
 
         // Assemble controls row
@@ -259,8 +262,7 @@ export class PlaybackControls {
         this.container.appendChild(this.progressBarContainer);
         document.body.appendChild(this.container);
 
-        // Attach document-level listener
-        document.addEventListener("keydown", this.keydownListener);
+        document.addEventListener("keydown", keydownListener, { signal });
 
         this.#refreshEpisodeUI();
         this.updateElements();
@@ -291,7 +293,6 @@ export class PlaybackControls {
         this.playButton.textContent = "Play";
         this.animationController.seekToIndex(frameIndex);
         this.animationController.forceRedrawStaticElements();
-        this.forceRedraw();
     }
 
     // Shows/hides the episode controls and redraws the boundary ticks. Cheap
@@ -350,11 +351,6 @@ export class PlaybackControls {
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
     }
 
-    forceRedraw() {
-        this.updateElements();
-        this.lastRenderTime = Number.NEGATIVE_INFINITY;
-    }
-
     animate(now) {
         if (now - this.lastRenderTime < this.minRenderDelay) return;
         this.updateElements();
@@ -362,33 +358,8 @@ export class PlaybackControls {
     }
 
     dispose() {
-        // Remove the container from the DOM
         this.container.remove();
-
-        // Remove all event listeners using cached functions
-        this.recordButton.removeEventListener("click", this.recordButtonClick);
-        this.formatSelect.removeEventListener("change", this.formatSelectChange);
-        this.screenshotButton.removeEventListener("click", this.screenshotButtonClick);
-        this.playButton.removeEventListener("click", this.playButtonClick);
-        this.stepBackButton.removeEventListener("click", this.stepBackButtonClick);
-        this.stepForwardButton.removeEventListener(
-            "click",
-            this.stepForwardButtonClick
-        );
-        this.prevEpisodeButton.removeEventListener(
-            "click",
-            this.prevEpisodeButtonClick
-        );
-        this.nextEpisodeButton.removeEventListener(
-            "click",
-            this.nextEpisodeButtonClick
-        );
-        this.speedSelect.removeEventListener("change", this.speedSelectChange);
-        this.progressBarContainer.removeEventListener(
-            "click",
-            this.progressBarContainerClick
-        );
-        document.removeEventListener("keydown", this.keydownListener);
+        this.abortController.abort();
     }
 
     // Fixed widths keep the row from shifting when a label toggles
@@ -397,7 +368,9 @@ export class PlaybackControls {
         const button = document.createElement("button");
         button.style.width = width;
         button.textContent = text;
-        button.addEventListener("click", onClick);
+        button.addEventListener("click", onClick, {
+            signal: this.abortController.signal,
+        });
         return button;
     }
 }

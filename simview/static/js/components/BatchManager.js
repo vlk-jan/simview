@@ -36,9 +36,7 @@ export class BatchManager {
             console.log(
                 `Initializing with ${this.simBatches} simulation batches`
             );
-            this.app.simBatches = this.simBatches;
         }
-
 
         this.sideLength = Math.ceil(Math.sqrt(this.simBatches));
         const sideLength = this.sideLength;
@@ -112,10 +110,6 @@ export class BatchManager {
         }
     }
 
-    getSimBatches() {
-        return this.simBatches;
-    }
-
     getColorForBatch(batchIndex) {
         if (batchIndex < 0 || batchIndex >= this.simBatches) {
             return new THREE.Color(0x000000); // Default to black for invalid index
@@ -150,20 +144,6 @@ export class BatchManager {
         return batchIndex;
     }
 
-    getOffsetByRowCol(rowIdx, colIdx) {
-        const sideLength = this.sideLength;
-        if (
-            rowIdx < 0 ||
-            colIdx < 0 ||
-            rowIdx >= sideLength ||
-            colIdx >= sideLength
-        ) {
-            throw new Error("Invalid row or column index");
-        }
-        const batchIndex = rowIdx * sideLength + colIdx;
-        return this.getBatchOffset(batchIndex);
-    }
-
     // Get offset for a specific batch
     getBatchOffset(batchIndex) {
         if (batchIndex >= 0 && batchIndex < this.batchOffsets.length) {
@@ -172,18 +152,12 @@ export class BatchManager {
         return { x: 0, y: 0, z: 0 };
     }
 
-    changeFocusOnBatchByRowCol(row, col) {
-        const { camera, controls } = this.app.scene;
-        const { x, y, z } = this.getOffsetByRowCol(row, col);
-        const newCameraTarget = new THREE.Vector3(x, y, z);
-        const oldCameraTarget = controls.target.clone();
-        controls.target = newCameraTarget;
-        camera.position.add(newCameraTarget.clone().sub(oldCameraTarget));
-    }
-
     changeFocusOnBatchByIndex(batchIndex) {
-        const { row, col } = this.getRowColFromBatchIndex(batchIndex);
-        this.changeFocusOnBatchByRowCol(row, col);
+        const { camera, controls } = this.app.scene;
+        const { x, y, z } = this.getBatchOffset(batchIndex);
+        const newCameraTarget = new THREE.Vector3(x, y, z);
+        camera.position.add(newCameraTarget.clone().sub(controls.target));
+        controls.target = newCameraTarget;
     }
 
     setActiveBatch(batchIndex) {

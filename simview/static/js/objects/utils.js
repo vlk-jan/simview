@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import chroma from "chroma";
 
 // Blob-decoded fields (SimView.js::fetchBlobs) arrive as flat TypedArrays with
 // no reshape metadata; hand-authored (non-tensor) data arrives as plain nested
@@ -30,7 +29,6 @@ const DEFAULT_MESH_CONFIG = {
     color: 0xffffff,
     roughness: 0.5,
     metalness: 0.5,
-    envMapIntensity: 1,
     transparent: false,
 };
 
@@ -275,7 +273,7 @@ export function createWireframe(geometry, wireframeConfig, visible = true) {
 }
 
 /**
- * Creates a THREE.js mesh with standard material and environment mapping
+ * Creates a THREE.js mesh with a standard material
  * @param {THREE.BufferGeometry} geometry - The geometry for the mesh
  * @param {MeshConfig} [meshConfig={}] - Configuration for mesh appearance
  * @param {boolean} [visible=true] - Initial visibility of the mesh
@@ -286,28 +284,12 @@ export function createMesh(geometry, meshConfig, visible = true) {
 
     const config = { ...DEFAULT_MESH_CONFIG, ...meshConfig };
 
-    let envMap = null;
-    if (config.envMapPath) {
-        const format = ".jpg";
-        const urls = [
-            config.envMapPath + "nx" + format,
-            config.envMapPath + "px" + format,
-            config.envMapPath + "pz" + format,
-            config.envMapPath + "nz" + format,
-            config.envMapPath + "py" + format,
-            config.envMapPath + "ny" + format,
-        ];
-        envMap = new THREE.CubeTextureLoader().load(urls);
-    }
-
     const material = new THREE.MeshStandardMaterial({
         color: config.color,
         roughness: config.roughness,
         metalness: config.metalness,
         opacity: config.opacity,
-        envMapIntensity: config.envMapIntensity,
         transparent: config.transparent,
-        envMap: envMap,
         side: THREE.DoubleSide,
     });
 
@@ -342,9 +324,75 @@ export function createArrow(start, end, arrowConfig = {}) {
     return arrow;
 }
 
+// sRGB hex <-> CIE LCh (D65), the same math chroma-js's "lch" mode uses.
+const SRGB_TO_XYZ = [
+    [0.4124564, 0.3575761, 0.1804375],
+    [0.2126729, 0.7151522, 0.072175],
+    [0.0193339, 0.119192, 0.9503041],
+];
+const XYZ_TO_SRGB = [
+    [3.2404542, -1.5371385, -0.4985314],
+    [-0.969266, 1.8760108, 0.041556],
+    [0.0556434, -0.2040259, 1.0572252],
+];
+const D65 = [0.95047, 1, 1.08883];
+const LAB_E = 216 / 24389;
+const LAB_K = 24389 / 27;
+const mul = (m, v) => m.map((row) => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+
+function hexToLch(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const linear = [n >> 16, (n >> 8) & 255, n & 255].map((c) => {
+        c /= 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    const [fx, fy, fz] = mul(SRGB_TO_XYZ, linear).map((v, i) => {
+        v /= D65[i];
+        return v > LAB_E ? Math.cbrt(v) : (LAB_K * v + 16) / 116;
+    });
+    const a = 500 * (fx - fy);
+    const b = 200 * (fy - fz);
+    const c = Math.hypot(a, b);
+    // Greys have no hue: NaN, so interpolation borrows the other end's.
+    const h = Math.round(c * 1e4) === 0 ? NaN : (Math.atan2(b, a) * 180) / Math.PI;
+    return [116 * fy - 16, c, h];
+}
+
+function lchToHex([L, c, h]) {
+    const rad = ((Number.isNaN(h) ? 0 : h) * Math.PI) / 180;
+    const fy = (L + 16) / 116;
+    const fx = fy + (c * Math.cos(rad)) / 500;
+    const fz = fy - (c * Math.sin(rad)) / 200;
+    const xyz = [
+        fx ** 3 > LAB_E ? fx ** 3 : (116 * fx - 16) / LAB_K,
+        L > 8 ? fy ** 3 : L / LAB_K,
+        fz ** 3 > LAB_E ? fz ** 3 : (116 * fz - 16) / LAB_K,
+    ].map((v, i) => v * D65[i]);
+    const rgb = mul(XYZ_TO_SRGB, xyz).map((v) => {
+        const s = v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+        return Math.round(Math.min(255, Math.max(0, s * 255)));
+    });
+    return "#" + ((rgb[0] << 16) | (rgb[1] << 8) | rgb[2]).toString(16).padStart(6, "0");
+}
+
+function mixLch([l0, c0, h0], [l1, c1, h1], f) {
+    let h = Number.isNaN(h0) ? h1 : h0;
+    if (!Number.isNaN(h0) && !Number.isNaN(h1)) {
+        const dh = ((((h1 - h0) % 360) + 540) % 360) - 180; // shortest arc
+        h = h0 + f * dh;
+    }
+    return [l0 + f * (l1 - l0), c0 + f * (c1 - c0), h];
+}
+
 // `numColors` hex colors: the given ones as-is while they last, otherwise an
 // LCH interpolation through them (neighbours then get closer in hue).
 export function categoricalPalette(colors, numColors) {
     if (numColors <= colors.length) return colors.slice(0, numColors);
-    return chroma.scale(colors).mode("lch").colors(numColors);
+    const lch = colors.map(hexToLch);
+    const segments = lch.length - 1;
+    return Array.from({ length: numColors }, (_, i) => {
+        const t = (i / (numColors - 1)) * segments;
+        const k = Math.min(Math.floor(t), segments - 1);
+        return lchToHex(mixLch(lch[k], lch[k + 1], t - k));
+    });
 }
