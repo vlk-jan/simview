@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.1] - 2026-10-01
+
+### Fixed
+
+- **SimView's button and select styles no longer leak into pages that embed the
+  viewer.** 5.1.0 styled every `button` and `select` on the page, including a
+  1px press offset (`button:active { transform: translateY(1px) }`) that replaced
+  an embedder's own transform; the rules now apply only inside SimView's panels.
+- The **Body states**, **Analysis** and **Controls** panel headers share one size
+  (13.2px); Body states used to grow with the window width.
+- The docs and demo deploys no longer fail when two pushes land close together.
+
 ## [5.1.0] - 2026-10-01
 
 ### Added
@@ -484,7 +496,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v5.1.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v5.1.1...HEAD
+[5.1.1]: https://github.com/vlk-jan/simview/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/vlk-jan/simview/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/vlk-jan/simview/compare/v4.2.1...v5.0.0
 [4.2.1]: https://github.com/vlk-jan/simview/compare/v4.2.0...v4.2.1
