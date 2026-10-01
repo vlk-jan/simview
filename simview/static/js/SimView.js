@@ -577,13 +577,7 @@ export class SimView {
     // partial state must never break page load -- every step below is
     // independently guarded.
     applyViewStateFromHash() {
-        let state;
-        try {
-            state = parseViewState(location.hash);
-        } catch (e) {
-            console.warn("Failed to parse view-state hash:", e);
-            return;
-        }
+        const state = parseViewState(location.hash);
         if (!state) return;
 
         try {

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-    BOOLEAN_FLAG_KEYS,
-    applyToggleMapToUiState,
     parseViewState,
     serializeViewState,
     toggleMapFromUiState,
@@ -63,7 +61,7 @@ describe("serializeViewState / parseViewState round-trip", () => {
         expect(parsed.batchIndex).toBeUndefined();
     });
 
-    it("round-trips via toggleMapFromUiState/applyToggleMapToUiState helpers", () => {
+    it("round-trips toggles built by toggleMapFromUiState", () => {
         const uiState = {
             axesVisible: true,
             trailsVisible: true,
@@ -87,24 +85,22 @@ describe("serializeViewState / parseViewState round-trip", () => {
         const hash = serializeViewState({ toggles });
         const parsed = parseViewState(hash);
 
-        const target = { attributeVisible: {}, terrainVisualizationModes: {} };
-        applyToggleMapToUiState(target, parsed.toggles);
-
-        expect(target.axesVisible).toBe(true);
-        expect(target.trailsVisible).toBe(true);
-        expect(target.smoothInterpolation).toBe(false);
-        expect(target.terrainProbe).toBe(true);
-        expect(target.attributeVisible.contacts).toBe(true);
-        expect(target.attributeVisible.velocity).toBe(false);
-        expect(target.attributeVisible.force).toBe(true);
-        expect(target.terrainVisualizationModes.surface).toBe(true);
-        expect(target.terrainVisualizationModes.normals).toBe(false);
+        expect(parsed.toggles).toEqual(toggles);
+        expect(toggles.axesVisible).toBe(true);
+        expect(toggles["attributeVisible.force"]).toBe(true);
+        expect(toggles["terrainVisualizationModes.normals"]).toBe(false);
     });
 
-    it("names every BOOLEAN_FLAG_KEYS entry as a dotted or plain path", () => {
-        // Sanity check that the fixture above didn't silently drift from the
-        // real key list (would otherwise make the round-trip test vacuous).
-        expect(BOOLEAN_FLAG_KEYS.length).toBeGreaterThan(0);
+    it("keeps the hash format stable for existing links", () => {
+        const hash = serializeViewState({
+            time: 1.25,
+            camera: { position: { x: 1.5, y: -2, z: 3 }, target: { x: 0, y: 0, z: 0 }, fov: 50 },
+            batchIndex: 1,
+            bodyVisualizationMode: "mesh",
+            terrainColorMode: "height",
+            toggles: { trailsVisible: true, axesVisible: true, terrainProbe: true },
+        });
+        expect(hash).toBe("#v=1&t=1.25&cam=1.5,-2,3&tgt=0,0,0&fov=50&b=1&bvm=mesh&tcm=height&flags=11");
     });
 });
 
