@@ -9,6 +9,7 @@ import {
     rmse,
 } from "../utils/errorMath.js";
 import { makeChart } from "../utils/uplot.js";
+import { exportBar, selectGroup } from "./chartControls.js";
 
 // One place for the per-series colors: the plot strokes, the hover tooltip and
 // the swatches in front of the readout labels all have to agree, otherwise the
@@ -20,6 +21,23 @@ const SERIES_COLORS = {
     z: THEME.blue,
     rot: THEME.peach,
 };
+
+// [label, color, key] for the live readout rows (the color doubles as the
+// legend swatch for that curve) and the summary-stats rows (no curve).
+const READOUT_ROWS = [
+    ["Position error:", SERIES_COLORS.pos, "pos"],
+    ["X error:", SERIES_COLORS.x, "x"],
+    ["Y error:", SERIES_COLORS.y, "y"],
+    ["Z error:", SERIES_COLORS.z, "z"],
+    ["Orientation error:", SERIES_COLORS.rot, "rot"],
+];
+const STATS_ROWS = [
+    ["Position RMSE:", null, "posRmse"],
+    ["Max position error (t):", null, "posMax"],
+    ["Final drift:", null, "drift"],
+    ["Orientation RMSE:", null, "rotRmse"],
+    ["Max angle error (t):", null, "rotMax"],
+];
 
 // Compares two batches of the same body over the full timeline: Euclidean
 // position error and quaternion angle (orientation) error. Useful for e.g.
@@ -38,13 +56,10 @@ export class ErrorMetrics {
         this.batchB = defaultPair.batchB;
         this.showAxes = false;
         this.showStats = false;
-        this.posSeries = [];
-        this.rotSeries = [];
-        this.axisSeries = { x: [], y: [], z: [] };
+        this._clearSeries();
         this.minRenderDelay = 1000 / FREQ_CONFIG.errorMetrics;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
         this.chart = null;
-        this.resizeObserver = null;
         this.markerTime = null;
 
         this._setupHTML();
@@ -59,114 +74,65 @@ export class ErrorMetrics {
         this.controlsContainer.className = "error-metrics-controls";
         this.content.appendChild(this.controlsContainer);
 
-        this.bodySelect = this._addSelectGroup("Body:", [...this.app.bodies.keys()], this.selectedBody);
-        const batchOptions = [...Array(this.app.batchManager.simBatches).keys()];
-        this.batchASelect = this._addSelectGroup("Batch A:", batchOptions, this.batchA, true);
-        this.batchBSelect = this._addSelectGroup("Batch B:", batchOptions, this.batchB, true);
+        const batchOptions = [...Array(this.app.batchManager.simBatches).keys()].map((i) => ({
+            value: i,
+            label: `${i}: ${this.app.batchManager.getBatchName(i)}`,
+        }));
+        const bodyOptions = [...this.app.bodies.keys()].map((n) => ({ value: n, label: n }));
+        this.bodySelect = selectGroup(this.controlsContainer, "Body:", bodyOptions, this.selectedBody);
+        this.batchASelect = selectGroup(this.controlsContainer, "Batch A:", batchOptions, this.batchA);
+        this.batchBSelect = selectGroup(this.controlsContainer, "Batch B:", batchOptions, this.batchB);
         this.axesToggle = this._addCheckboxGroup("Per-axis:", this.showAxes);
         this.statsToggle = this._addCheckboxGroup("Details:", this.showStats);
 
-        this.readout = document.createElement("div");
-        this.readout.className = "error-metrics-readout";
-        const posRow = this._makeReadoutRow("Position error:", SERIES_COLORS.pos);
-        this.posReadout = posRow.row;
-        this.posReadoutValue = posRow.valueSpan;
-        const axisXRow = this._makeReadoutRow("X error:", SERIES_COLORS.x);
-        this.axisReadoutX = axisXRow.row;
-        this.axisReadoutXValue = axisXRow.valueSpan;
-        const axisYRow = this._makeReadoutRow("Y error:", SERIES_COLORS.y);
-        this.axisReadoutY = axisYRow.row;
-        this.axisReadoutYValue = axisYRow.valueSpan;
-        const axisZRow = this._makeReadoutRow("Z error:", SERIES_COLORS.z);
-        this.axisReadoutZ = axisZRow.row;
-        this.axisReadoutZValue = axisZRow.valueSpan;
-        const rotRow = this._makeReadoutRow("Orientation error:", SERIES_COLORS.rot);
-        this.rotReadout = rotRow.row;
-        this.rotReadoutValue = rotRow.valueSpan;
-        this.readout.appendChild(this.posReadout);
-        this.readout.appendChild(this.axisReadoutX);
-        this.readout.appendChild(this.axisReadoutY);
-        this.readout.appendChild(this.axisReadoutZ);
-        this.readout.appendChild(this.rotReadout);
+        this.readout = this._makeRows("error-metrics-readout", READOUT_ROWS);
         this.content.appendChild(this.readout);
         this._applyAxesVisibility();
 
-        this.stats = document.createElement("div");
-        this.stats.className = "error-metrics-stats";
-        const posRmseRow = this._makeReadoutRow("Position RMSE:");
-        this.posRmseValue = posRmseRow.valueSpan;
-        const posMaxRow = this._makeReadoutRow("Max position error (t):");
-        this.posMaxValue = posMaxRow.valueSpan;
-        const driftRow = this._makeReadoutRow("Final drift:");
-        this.driftValue = driftRow.valueSpan;
-        const rotRmseRow = this._makeReadoutRow("Orientation RMSE:");
-        this.rotRmseValue = rotRmseRow.valueSpan;
-        const rotMaxRow = this._makeReadoutRow("Max angle error (t):");
-        this.rotMaxValue = rotMaxRow.valueSpan;
-        this.stats.appendChild(posRmseRow.row);
-        this.stats.appendChild(posMaxRow.row);
-        this.stats.appendChild(driftRow.row);
-        this.stats.appendChild(rotRmseRow.row);
-        this.stats.appendChild(rotMaxRow.row);
+        this.stats = this._makeRows("error-metrics-stats", STATS_ROWS);
         this.content.appendChild(this.stats);
         this._applyStatsVisibility();
 
-        this.exportContainer = document.createElement("div");
-        this.exportContainer.className = "error-metrics-export";
-        this.exportButton = document.createElement("button");
-        this.exportButton.textContent = "Export CSV";
-        this.exportContainer.appendChild(this.exportButton);
-        this.content.appendChild(this.exportContainer);
+        this.content.appendChild(exportBar(() => this._exportCsv()));
 
         this.plotDiv = document.createElement("div");
-        this.plotDiv.className = "error-metrics-plot";
+        this.plotDiv.className = "sv-chart";
         this.content.appendChild(this.plotDiv);
     }
 
-    // `color` (optional) prepends a small square in that color to the label,
-    // so a readout row doubles as the legend entry for its plot series. Rows
-    // with no matching curve (the stats block) pass none.
-    _makeReadoutRow(labelText, color = null) {
-        const row = document.createElement("div");
-        const label = document.createElement("span");
-        if (color) {
-            const swatch = document.createElement("span");
-            swatch.className = "error-metrics-swatch";
-            swatch.style.backgroundColor = color;
-            label.appendChild(swatch);
+    // A block of "label ... value" rows from a [label, color, key] table;
+    // `block.rows[key]` is each row, `block.values[key]` its value span. A
+    // `color` prepends a small square in that color to the label, so the row
+    // doubles as the legend entry for its plot series.
+    _makeRows(className, table) {
+        const block = document.createElement("div");
+        block.className = className;
+        block.rows = {};
+        block.values = {};
+        for (const [labelText, color, key] of table) {
+            const row = document.createElement("div");
+            const label = document.createElement("span");
+            if (color) {
+                const swatch = document.createElement("span");
+                swatch.className = "error-metrics-swatch";
+                swatch.style.backgroundColor = color;
+                label.appendChild(swatch);
+            }
+            label.appendChild(document.createTextNode(labelText));
+            const valueSpan = document.createElement("span");
+            valueSpan.textContent = "-";
+            row.appendChild(label);
+            row.appendChild(valueSpan);
+            block.appendChild(row);
+            block.rows[key] = row;
+            block.values[key] = valueSpan;
         }
-        label.appendChild(document.createTextNode(labelText));
-        const valueSpan = document.createElement("span");
-        valueSpan.textContent = "-";
-        row.appendChild(label);
-        row.appendChild(valueSpan);
-        return { row, valueSpan };
-    }
-
-    _addSelectGroup(labelText, options, selected, isBatch = false) {
-        const group = document.createElement("div");
-        group.className = "error-metrics-control-group";
-        const label = document.createElement("label");
-        label.textContent = labelText;
-        const select = document.createElement("select");
-        options.forEach((opt) => {
-            const option = document.createElement("option");
-            option.value = opt;
-            option.textContent = isBatch
-                ? `${opt}: ${this.app.batchManager.getBatchName(opt)}`
-                : opt;
-            if (opt === selected) option.selected = true;
-            select.appendChild(option);
-        });
-        group.appendChild(label);
-        group.appendChild(select);
-        this.controlsContainer.appendChild(group);
-        return select;
+        return block;
     }
 
     _addCheckboxGroup(labelText, checked) {
         const group = document.createElement("div");
-        group.className = "error-metrics-control-group";
+        group.className = "sv-control-group";
         const label = document.createElement("label");
         label.textContent = labelText;
         const checkbox = document.createElement("input");
@@ -181,16 +147,15 @@ export class ErrorMetrics {
     // Shows the combined-magnitude readout row or the per-axis rows,
     // whichever matches the current toggle state.
     _applyAxesVisibility() {
-        this.posReadout.style.display = this.showAxes ? "none" : "";
-        this.axisReadoutX.style.display = this.showAxes ? "" : "none";
-        this.axisReadoutY.style.display = this.showAxes ? "" : "none";
-        this.axisReadoutZ.style.display = this.showAxes ? "" : "none";
+        const rows = this.readout.rows;
+        rows.pos.hidden = this.showAxes;
+        rows.x.hidden = rows.y.hidden = rows.z.hidden = !this.showAxes;
     }
 
     // Shows/hides the RMSE/max-error/drift summary block based on the
     // "Details" toggle.
     _applyStatsVisibility() {
-        this.stats.style.display = this.showStats ? "" : "none";
+        this.stats.hidden = !this.showStats;
     }
 
     // Called after a batch is renamed elsewhere (e.g. the BatchLegend), so the
@@ -226,7 +191,6 @@ export class ErrorMetrics {
             this.showStats = e.target.checked;
             this._applyStatsVisibility();
         });
-        this.exportButton.addEventListener("click", () => this._exportCsv());
     }
 
     // Called by AnalysisPanel when this panel becomes/stops being the visible section.
@@ -244,19 +208,21 @@ export class ErrorMetrics {
         if (this.isExpanded) this._recompute();
     }
 
+    _clearSeries() {
+        this.posSeries = [];
+        this.rotSeries = [];
+        this.axisSeries = { x: [], y: [], z: [] };
+    }
+
     _computeSeries() {
         const body = this.app.bodies.get(this.selectedBody);
         if (!body || !body.validStates) {
-            this.posSeries = [];
-            this.rotSeries = [];
-            this.axisSeries = { x: [], y: [], z: [] };
+            this._clearSeries();
             return;
         }
         const store = this.app.animationController ? this.app.animationController.store : null;
         if (!store) {
-            this.posSeries = [];
-            this.rotSeries = [];
-            this.axisSeries = { x: [], y: [], z: [] };
+            this._clearSeries();
             return;
         }
 
@@ -265,9 +231,7 @@ export class ErrorMetrics {
         const quatA = body.quaternionHistory[this.batchA];
         const quatB = body.quaternionHistory[this.batchB];
         if (!posA || !posB || !quatA || !quatB) {
-            this.posSeries = [];
-            this.rotSeries = [];
-            this.axisSeries = { x: [], y: [], z: [] };
+            this._clearSeries();
             return;
         }
 
@@ -305,12 +269,9 @@ export class ErrorMetrics {
     // time it occurs at), final-frame drift, orientation RMSE, and max angle
     // error. Displayed compactly below the live readout.
     _computeStats() {
+        const v = this.stats.values;
         if (this.posSeries.length === 0) {
-            this.posRmseValue.textContent = "-";
-            this.posMaxValue.textContent = "-";
-            this.driftValue.textContent = "-";
-            this.rotRmseValue.textContent = "-";
-            this.rotMaxValue.textContent = "-";
+            for (const span of Object.values(v)) span.textContent = "-";
             return;
         }
 
@@ -324,11 +285,11 @@ export class ErrorMetrics {
         const rotRmse = rmse(rotValues);
         const rotMax = maxWithIndex(rotValues);
 
-        this.posRmseValue.textContent = `${posRmse.toFixed(3)} m`;
-        this.posMaxValue.textContent = `${posMax.value.toFixed(3)} m (t=${posMaxTime.toFixed(3)})`;
-        this.driftValue.textContent = `${drift.toFixed(3)} m`;
-        this.rotRmseValue.textContent = `${rotRmse.toFixed(2)}°`;
-        this.rotMaxValue.textContent = `${rotMax.value.toFixed(2)}°`;
+        v.posRmse.textContent = `${posRmse.toFixed(3)} m`;
+        v.posMax.textContent = `${posMax.value.toFixed(3)} m (t=${posMaxTime.toFixed(3)})`;
+        v.drift.textContent = `${drift.toFixed(3)} m`;
+        v.rotRmse.textContent = `${rotRmse.toFixed(2)}°`;
+        v.rotMax.textContent = `${rotMax.value.toFixed(2)}°`;
     }
 
     // Downloads the current selection's per-frame series as CSV: time,
@@ -353,33 +314,11 @@ export class ErrorMetrics {
         downloadCsv(filename, csv);
     }
 
-    // Draws the current playback time as a vertical marker line over the
-    // finished plot.
-    _drawMarker(u) {
-        if (this.markerTime === null) return;
-        const x = u.valToPos(this.markerTime, "x", true);
-        if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) return;
-        const ctx = u.ctx;
-        ctx.save();
-        ctx.strokeStyle = THEME.text;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, u.bbox.top);
-        ctx.lineTo(x, u.bbox.top + u.bbox.height);
-        ctx.stroke();
-        ctx.restore();
-    }
-
     _buildChart() {
-        if (this.resizeObserver) {
-            this.resizeObserver.disconnect();
-            this.resizeObserver = null;
-        }
         if (this.chart) {
             this.chart.destroy();
             this.chart = null;
         }
-        this.plotDiv.innerHTML = "";
         if (this.posSeries.length === 0) {
             return;
         }
@@ -470,40 +409,15 @@ export class ErrorMetrics {
                         font: THEME.chartFont,
                     },
                 ],
-                hooks: {
-                    draw: [(u) => this._drawMarker(u)],
-                    setCursor: [(u) => this._updateTooltip(u)],
-                },
+                tooltip: (u, idx) => this._tooltipHtml(u, idx),
+                markerTime: () => this.markerTime,
             },
             dataArrays,
             this.app
         );
-
-        this._createTooltip();
-
-        this.resizeObserver = new ResizeObserver(() => {
-            const r = this.plotDiv.getBoundingClientRect();
-            if (r.width > 0 && r.height > 0 && this.chart) {
-                this.chart.setSize({ width: r.width, height: r.height });
-            }
-        });
-        this.resizeObserver.observe(this.plotDiv);
     }
 
-    _createTooltip() {
-        const tooltip = document.createElement("div");
-        tooltip.className = "sv-chart-tooltip";
-        this.plotDiv.appendChild(tooltip);
-        this._tooltip = tooltip;
-    }
-
-    _updateTooltip(u) {
-        if (!this._tooltip) return;
-        const idx = u.cursor.idx;
-        if (idx === null || idx === undefined || u.cursor.left < 0) {
-            this._tooltip.style.display = "none";
-            return;
-        }
+    _tooltipHtml(u, idx) {
         const time = u.data[0][idx];
         let html = `Time: ${time.toFixed(3)}<br>`;
         if (this.showAxes) {
@@ -523,10 +437,7 @@ export class ErrorMetrics {
                 `<span style="color:${SERIES_COLORS.pos};">Position: ${pos.toFixed(3)} m</span><br>` +
                 `<span style="color:${SERIES_COLORS.rot};">Orientation: ${rot.toFixed(2)}°</span>`;
         }
-        this._tooltip.innerHTML = html;
-        this._tooltip.style.left = `${u.cursor.left + 12}px`;
-        this._tooltip.style.top = `${u.cursor.top + 12}px`;
-        this._tooltip.style.display = "block";
+        return html;
     }
 
     _updateReadoutAndMarker() {
@@ -534,17 +445,16 @@ export class ErrorMetrics {
         const idx = this.app.animationController.getCurrentStateIndex();
         const pos = this.posSeries[idx];
         const rot = this.rotSeries[idx];
+        const v = this.readout.values;
         if (this.showAxes) {
-            const ax = this.axisSeries.x[idx];
-            const ay = this.axisSeries.y[idx];
-            const az = this.axisSeries.z[idx];
-            this.axisReadoutXValue.textContent = ax ? ax.y.toFixed(3) + " m" : "-";
-            this.axisReadoutYValue.textContent = ay ? ay.y.toFixed(3) + " m" : "-";
-            this.axisReadoutZValue.textContent = az ? az.y.toFixed(3) + " m" : "-";
+            for (const key of ["x", "y", "z"]) {
+                const p = this.axisSeries[key][idx];
+                v[key].textContent = p ? p.y.toFixed(3) + " m" : "-";
+            }
         } else {
-            this.posReadoutValue.textContent = pos ? pos.y.toFixed(3) + " m" : "-";
+            v.pos.textContent = pos ? pos.y.toFixed(3) + " m" : "-";
         }
-        this.rotReadoutValue.textContent = rot ? rot.y.toFixed(2) + "°" : "-";
+        v.rot.textContent = rot ? rot.y.toFixed(2) + "°" : "-";
 
         if (this.chart && pos) {
             if (this.markerTime !== pos.x) {
@@ -562,10 +472,6 @@ export class ErrorMetrics {
     }
 
     dispose() {
-        if (this.resizeObserver) {
-            this.resizeObserver.disconnect();
-            this.resizeObserver = null;
-        }
         if (this.chart) {
             this.chart.destroy();
             this.chart = null;

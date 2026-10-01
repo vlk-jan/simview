@@ -1,4 +1,3 @@
-import { decodeFloat32Blob } from "../utils/blobCodec.js";
 import {
     MAX_RESIDENT_WINDOWS,
     bytesPerFrame,
@@ -110,7 +109,7 @@ export class WindowedField {
                 return response.arrayBuffer();
             })
             .then((buffer) => {
-                this._windows.set(windowIndex, decodeFloat32Blob(buffer));
+                this._windows.set(windowIndex, new Float32Array(buffer)); // little-endian "<f4"
                 this._touch(windowIndex);
                 this._evict();
             })

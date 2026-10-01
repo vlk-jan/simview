@@ -1,6 +1,7 @@
 import { PlaybackControls } from "../ui/PlaybackControls.js";
 import { resolveStateBodies } from "../utils/bodyTransforms.js";
 import { interpolateTransformRows, lerpVectorRows } from "../utils/interpolate.js";
+import { downloadBlob } from "../utils/csv.js";
 
 // Optional per-batch 3-vector attributes that get lerp'd alongside
 // bodyTransform on the interpolated path. Everything else (contacts, and any
@@ -38,19 +39,6 @@ export function isMp4RecordingSupported() {
 
 function extensionForMimeType(mimeType) {
     return mimeType.startsWith("video/mp4") ? "mp4" : "webm";
-}
-
-// Triggers a browser download of `blob` named `filename` via a temporary,
-// never-appended <a download> link -- no library needed for this.
-function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    // Revoke on a delay rather than immediately: some browsers kick off the
-    // download asynchronously, and revoking the URL too early can abort it.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export class AnimationController {
@@ -121,7 +109,7 @@ export class AnimationController {
             // The timeline just got longer, so every episode tick's position
             // changed -- re-place them before redrawing.
             this.playbackControls.refreshEpisodes();
-            this.playbackControls.forceRedraw();
+            this.playbackControls.updateElements();
         }
     }
 
@@ -146,37 +134,20 @@ export class AnimationController {
     }
 
     forceRedrawStaticElements() {
-        this.playbackControls.forceRedraw();
+        this.playbackControls.updateElements();
         this.app.bodyStateWindow.forceRedraw();
     }
 
-    // Binary search over store.timeAt(i) (time-ordered, but not necessarily
-    // uniformly spaced -- adaptive-step simulations break the old
-    // targetTime/simulationTimestep shortcut) for the index whose time is
-    // nearest targetTime.
+    // Index of the frame whose time is nearest targetTime (timestamps need not
+    // be uniformly spaced -- adaptive-step simulations).
     getStateIndexForTime(targetTime) {
-        const store = this.store;
-        let lo = 0;
-        let hi = store.length - 1;
-        if (targetTime <= store.timeAt(lo)) return lo;
-        if (targetTime >= store.timeAt(hi)) return hi;
-        while (lo < hi - 1) {
-            const mid = (lo + hi) >> 1;
-            if (store.timeAt(mid) <= targetTime) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        // lo and hi now straddle targetTime; pick whichever is closer.
-        return targetTime - store.timeAt(lo) <= store.timeAt(hi) - targetTime ? lo : hi;
+        const { lo, hi, alpha } = this.getBracketingIndices(targetTime);
+        return alpha <= 0.5 ? lo : hi;
     }
 
     // Binary search for the bracketing pair (lo, hi = lo+1 clamped) around
-    // targetTime, plus alpha in [0, 1] for interpolating between them. Unlike
-    // getStateIndexForTime this never rounds to the nearer frame -- it always
-    // returns the pair straddling targetTime (or the boundary pair if
-    // targetTime is outside the timeline).
+    // targetTime, plus alpha in [0, 1] for interpolating between them (or the
+    // boundary pair if targetTime is outside the timeline).
     getBracketingIndices(targetTime) {
         const store = this.store;
         const last = store.length - 1;
@@ -321,10 +292,6 @@ export class AnimationController {
         return this.currentStateIndex;
     }
 
-    getCurrentState() {
-        return this.store.getFrame(this.currentStateIndex);
-    }
-
     stopRecording() {
         if (!this.isRecording) return;
         this.isRecording = false;
@@ -346,7 +313,10 @@ export class AnimationController {
         const mimeType = this._recordingMimeType || "video/webm";
         const blob = new Blob(chunks, { type: mimeType });
         downloadBlob(blob, `simview-recording.${extensionForMimeType(mimeType)}`);
+        this.#clearVideoRecording();
+    }
 
+    #clearVideoRecording() {
         if (this._captureTrack) {
             this._captureTrack.stop();
         }
@@ -374,30 +344,15 @@ export class AnimationController {
         const indexChanged = newStateIndex !== this.currentStateIndex;
         this.currentStateIndex = newStateIndex;
 
-        if (this.app.uiState?.smoothInterpolation) {
-            // Interpolated path: render every tick regardless of whether the
-            // nearest index changed, so bodies move smoothly between states
-            // instead of snapping. Index-snapped consumers (playbackControls'
-            // frame counter, bodyStateWindow readouts) still only refresh
-            // when the nearest frame actually changes -- their own throttles
-            // also apply, matching today's cadence.
+        // The interpolated path renders every tick so bodies move smoothly
+        // between states; index-snapped consumers (frame counter, body state
+        // readouts) only refresh when the nearest frame actually changes.
+        if (indexChanged || this.app.uiState?.smoothInterpolation) {
             this.updateScene();
-            if (indexChanged) {
-                if (this.playbackControls) {
-                    this.playbackControls.animate(now);
-                }
-                if (this.app.bodyStateWindow) {
-                    this.app.bodyStateWindow.animate(now);
-                }
-            }
-        } else if (indexChanged) {
-            this.updateScene();
-            if (this.playbackControls) {
-                this.playbackControls.animate(now);
-            }
-            if (this.app.bodyStateWindow) {
-                this.app.bodyStateWindow.animate(now);
-            }
+        }
+        if (indexChanged) {
+            this.playbackControls?.animate(now);
+            this.app.bodyStateWindow?.animate(now);
         }
     }
 
@@ -418,7 +373,7 @@ export class AnimationController {
 
         // Stop recording if we've completed one loop
         if (elapsed >= duration) {
-            this.playbackControls.recordButtonClick();
+            this.playbackControls.recordButton.click();
         }
     }
 
@@ -429,8 +384,7 @@ export class AnimationController {
     // rendered frame's pixels, but re-rendering synchronously first guards
     // against capturing a stale frame if this fires between animation ticks
     // (e.g. right after a scrub, before the next rAF has redrawn). Downloads
-    // as `simview_t<currentTime>s.png` via a temporary <a download>, same
-    // pattern as downloadBlob() above.
+    // as `simview_t<currentTime>s.png` via downloadBlob().
     captureScreenshot() {
         const { scene, renderer } = this.app.scene;
         const camera = this.app.scene.camera;
@@ -561,15 +515,11 @@ export class AnimationController {
         }
         if (this.isRecording) {
             this.isRecording = false;
+            // Stop without downloading: the viewer is being torn down.
             if (this._mediaRecorder && this._mediaRecorder.state !== "inactive") {
                 this._mediaRecorder.stop();
             }
-            if (this._captureTrack) {
-                this._captureTrack.stop();
-            }
-            this._mediaRecorder = null;
-            this._captureTrack = null;
-            this._recordedChunks = null;
+            this.#clearVideoRecording();
         }
     }
 }

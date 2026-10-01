@@ -1,159 +1,88 @@
-// Shared top-center panel hosting the Scalars plots and the Error Metrics
-// comparison. Owns the collapsible container and, when both are present, the
-// mode switcher between them; ScalarPlotter and ErrorMetrics just mount their
-// content into the sections this panel provides.
+// Shared top-center panel hosting the Scalars plots, the Error Metrics
+// comparison and the Terrain profile. Owns the collapsible container and,
+// when two or more are present, the mode switcher between them; each panel
+// just mounts its content into the section this panel provides.
 export class AnalysisPanel {
     constructor(app) {
         this.app = app;
-        this.isExpanded = false;
         this.mode = "scalars";
-        this.scalarPlotter = null;
-        this.errorMetrics = null;
-        this.terrainProfile = null;
-        this.modeTabElements = {};
+        // In tab order. `instance` is set once the panel is attached.
+        this.sections = [
+            { key: "scalars", title: "Scalars" },
+            { key: "errorMetrics", title: "Error Metrics" },
+            { key: "terrain", title: "Terrain" },
+        ];
 
-        this._setupHTML();
-    }
+        this.container = document.createElement("details");
+        this.container.className = "analysis-container sv-collapsible";
+        this.container.addEventListener("toggle", () => this._applyMode());
 
-    _setupHTML() {
-        this.container = document.createElement("div");
-        this.container.className = "analysis-container";
-
-        this.header = document.createElement("div");
-        this.header.className = "analysis-header";
-        this.icon = document.createElement("span");
-        this.icon.className = "analysis-header-icon";
-        this.icon.textContent = "▸";
+        const summary = document.createElement("summary");
+        summary.className = "analysis-header";
         this.titleEl = document.createElement("span");
         this.titleEl.className = "analysis-header-title";
         this.titleEl.textContent = "Analysis";
-        this.header.appendChild(this.icon);
-        this.header.appendChild(this.titleEl);
-        this.header.addEventListener("click", () => this._toggleDropdown());
-
-        this.content = document.createElement("div");
-        this.content.className = "analysis-content";
+        summary.appendChild(this.titleEl);
 
         this.modeTabBar = document.createElement("div");
         this.modeTabBar.className = "analysis-mode-tab-bar";
-        this.modeTabElements.scalars = this._addModeTab("Scalars", "scalars");
-        this.modeTabElements.errorMetrics = this._addModeTab("Error Metrics", "errorMetrics");
-        this.modeTabElements.terrain = this._addModeTab("Terrain", "terrain");
+        this.modeTabBar.hidden = true;
+        this.container.appendChild(summary);
+        this.container.appendChild(this.modeTabBar);
 
-        this.scalarsSection = document.createElement("div");
-        this.scalarsSection.className = "analysis-section";
-        this.errorMetricsSection = document.createElement("div");
-        this.errorMetricsSection.className = "analysis-section";
-        this.terrainSection = document.createElement("div");
-        this.terrainSection.className = "analysis-section";
+        for (const section of this.sections) {
+            section.tab = document.createElement("button");
+            section.tab.className = "analysis-mode-tab";
+            section.tab.textContent = section.title;
+            section.tab.hidden = true;
+            section.tab.addEventListener("click", () => {
+                this.mode = section.key;
+                this._applyMode();
+            });
+            this.modeTabBar.appendChild(section.tab);
 
-        this.content.appendChild(this.modeTabBar);
-        this.content.appendChild(this.scalarsSection);
-        this.content.appendChild(this.errorMetricsSection);
-        this.content.appendChild(this.terrainSection);
-        this.container.appendChild(this.header);
-        this.container.appendChild(this.content);
+            section.el = document.createElement("div");
+            section.el.hidden = true;
+            this.container.appendChild(section.el);
+        }
         document.body.appendChild(this.container);
     }
 
-    _addModeTab(label, mode) {
-        const tab = document.createElement("button");
-        tab.className = "analysis-mode-tab";
-        tab.textContent = label;
-        tab.addEventListener("click", () => this._switchMode(mode));
-        this.modeTabBar.appendChild(tab);
-        return tab;
-    }
+    attach(key, instance, ...elements) {
+        const section = this.sections.find((s) => s.key === key);
+        section.instance = instance;
+        section.el.append(...elements);
+        section.tab.hidden = false;
 
-    attachScalarPlotter(scalarPlotter) {
-        this.scalarPlotter = scalarPlotter;
-        this.scalarsSection.appendChild(scalarPlotter.tabBar);
-        this.scalarsSection.appendChild(scalarPlotter.plotArea);
-        this._refreshLayout();
-    }
-
-    attachErrorMetrics(errorMetrics) {
-        this.errorMetrics = errorMetrics;
-        this.errorMetricsSection.appendChild(errorMetrics.content);
-        this._refreshLayout();
-    }
-
-    attachTerrainProfile(terrainProfile) {
-        this.terrainProfile = terrainProfile;
-        this.terrainSection.appendChild(terrainProfile.content);
-        this._refreshLayout();
-    }
-
-    // Sections currently attached, in tab order -- drives the tab bar
-    // (shown whenever >= 2 are attached, with individual tabs for any
-    // sections not attached hidden), the title fallback (the lone
-    // section's own title when only one is attached), and which mode a
-    // stale `this.mode` falls back to if its section gets detached.
-    _sections() {
-        return [
-            { key: "scalars", instance: this.scalarPlotter, title: "Scalars" },
-            { key: "errorMetrics", instance: this.errorMetrics, title: "Error Metrics" },
-            { key: "terrain", instance: this.terrainProfile, title: "Terrain" },
-        ];
-    }
-
-    _refreshLayout() {
-        const sections = this._sections();
-        const attached = sections.filter((s) => !!s.instance);
-        const showModeBar = attached.length >= 2;
-        this.modeTabBar.classList.toggle("visible", showModeBar);
-
-        for (const section of sections) {
-            const tab = this.modeTabElements[section.key];
-            if (tab) tab.style.display = section.instance ? "" : "none";
-        }
-
-        if (!attached.some((s) => s.key === this.mode)) {
-            this.mode = attached[0] ? attached[0].key : this.mode;
-        }
-
-        this.titleEl.textContent = showModeBar
-            ? "Analysis"
-            : attached[0]
-              ? attached[0].title
-              : "Analysis";
-
+        const attached = this.sections.filter((s) => s.instance);
+        this.modeTabBar.hidden = attached.length < 2;
+        if (!attached.some((s) => s.key === this.mode)) this.mode = attached[0].key;
+        this.titleEl.textContent = attached.length === 1 ? attached[0].title : "Analysis";
         this._applyMode();
+    }
+
+    attachScalarPlotter(p) {
+        this.attach("scalars", p, p.tabBar, p.plotArea);
+    }
+
+    attachErrorMetrics(p) {
+        this.attach("errorMetrics", p, p.content);
+    }
+
+    attachTerrainProfile(p) {
+        this.attach("terrain", p, p.content);
     }
 
     _applyMode() {
-        this.scalarsSection.classList.toggle("visible", this.mode === "scalars");
-        this.errorMetricsSection.classList.toggle(
-            "visible",
-            this.mode === "errorMetrics"
-        );
-        this.terrainSection.classList.toggle("visible", this.mode === "terrain");
-
-        for (const section of this._sections()) {
-            const tab = this.modeTabElements[section.key];
-            if (tab) tab.classList.toggle("active", this.mode === section.key);
-            if (section.instance) {
-                section.instance.setVisible(this.isExpanded && this.mode === section.key);
-            }
+        for (const section of this.sections) {
+            const active = this.mode === section.key;
+            section.el.hidden = !active;
+            section.tab.classList.toggle("active", active);
+            if (section.instance) section.instance.setVisible(this.container.open && active);
         }
-    }
-
-    _switchMode(mode) {
-        if (mode === this.mode) return;
-        this.mode = mode;
-        this._applyMode();
-    }
-
-    _toggleDropdown() {
-        this.isExpanded = !this.isExpanded;
-        this.content.classList.toggle("visible", this.isExpanded);
-        this.icon.textContent = this.isExpanded ? "▾" : "▸";
-        this._applyMode();
     }
 
     dispose() {
-        if (this.container && this.container.parentElement) {
-            this.container.parentElement.removeChild(this.container);
-        }
+        this.container.remove();
     }
 }

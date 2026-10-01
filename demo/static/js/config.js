@@ -63,10 +63,6 @@ export const CONTROLS_CONFIG = {
     zoomSpeed: 1.2,
 };
 
-export const SCENE_CONFIG = {
-    defaultUp: [0, 0, 1],
-};
-
 export const RENDERER_CONFIG = {
     antialias: true,
     preserveDrawingBuffer: true,

@@ -1,3 +1,5 @@
+import { getCallableFromColorMapName } from "../objects/colormap.js";
+
 export class Legend {
     constructor(app) {
         this.app = app;
@@ -118,7 +120,7 @@ export class Legend {
         `;
 
         const gradientDiv = container.querySelector(".legend-gradient");
-        const callableColormap = this.app.terrain.getCallableFromColorMapName(cmapName);
+        const callableColormap = getCallableFromColorMapName(cmapName);
 
         // Generate CSS gradient
         const steps = 10;

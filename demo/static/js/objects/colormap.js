@@ -13,12 +13,6 @@ const LEGACY_ALIASES = {
 /**
  * Resolves a colormap name (matplotlib-style, from js-colormaps.js, or one of
  * a few hand-rolled fallbacks) to a callable `(value in [0,1]) => THREE.Color`.
- *
- * Deliberately its own module (not part of utils.js, which imports the
- * `chroma` package -- a browser-only import-map alias with no npm
- * equivalent, unresolvable under vitest/Node): this file only depends on
- * `three` and `js-colormaps.js`, both real npm-resolvable packages, so any
- * consumer (Terrain.js, Body.js) stays unit-testable.
  * @param {string} cmapName
  * @returns {(value: number) => THREE.Color}
  */
