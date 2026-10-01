@@ -45,6 +45,7 @@
     --sv-radius-sm: 4px;
     --sv-radius: 6px;
     --sv-radius-lg: 10px;
+    --sv-title-size: 13.2px; /* shared by the top-row panel headers */
     --sv-ease: 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
 
     /* lil-gui's auto-placed root sits at 1001: panels stay under it,
@@ -83,9 +84,10 @@ body {
 }
 
 /* Form controls. One look for every button/select in the viewer (lil-gui
-   styles its own widgets and is themed separately below). */
-button,
-select {
+   styles its own widgets and is themed separately below). Scoped to SimView's
+   panels so pages that embed the viewer keep their own control styles. */
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) button,
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) select {
     background-color: var(--sv-raised);
     color: var(--sv-text);
     border: 1px solid var(--sv-border);
@@ -96,27 +98,27 @@ select {
         transform var(--sv-ease);
 }
 
-select {
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) select {
     padding: 0.2em 0.4em;
 }
 
-button:hover,
-select:hover {
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) button:hover,
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) select:hover {
     background-color: var(--sv-hover);
     border-color: var(--sv-border-strong);
 }
 
-button:active {
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) button:active {
     background-color: var(--sv-pressed);
     transform: translateY(1px);
 }
 
-select option {
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) select option {
     background-color: var(--sv-surface-solid);
     color: var(--sv-text);
 }
 
-:focus-visible {
+:where(.analysis-container, .body-state-window, .sv-playback, .lil-gui.root) :focus-visible {
     outline: 2px solid var(--sv-accent);
     outline-offset: 2px;
 }
@@ -154,7 +156,7 @@ select option {
     overflow: hidden;
 }
 .lil-gui.lil-gui.root > .title {
-    font-size: 1.1em;
+    font-size: var(--sv-title-size);
 }
 .lil-gui.lil-gui.root > .title:hover {
     background-color: var(--sv-hover);
@@ -527,7 +529,7 @@ select option {
 }
 .analysis-header-title {
     font-weight: 600;
-    font-size: 1.1em;
+    font-size: var(--sv-title-size);
 }
 .analysis-header-icon {
     display: inline-block;
@@ -797,7 +799,7 @@ select option {
 /* Header styles */
 .body-state-window-header {
     font-weight: 600;
-    font-size: 1.1em; /* Relative to parent window font size */
+    font-size: var(--sv-title-size);
     display: flex;
     justify-content: space-between;
     align-items: center;
