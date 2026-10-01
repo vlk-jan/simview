@@ -1,4 +1,6 @@
+import csv
 import gzip
+import io
 import json
 import logging
 import socket
@@ -122,6 +124,28 @@ def resolve_body(all_names: list, body: str | None) -> list:
             f"body '{body}' is ambiguous; matches {labels}; pass the full label instead"
         )
     return matches
+
+
+def write_csv(header: list[str], rows) -> str:
+    """`header` plus `rows` rendered as one CSV string."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+def series_stats(values: list[float]) -> dict:
+    """`{"mean", "min", "max", "final"}` of a numeric series (all None when
+    empty)."""
+    if not values:
+        return {"mean": None, "min": None, "max": None, "final": None}
+    return {
+        "mean": sum(values) / len(values),
+        "min": min(values),
+        "max": max(values),
+        "final": values[-1],
+    }
 
 
 def cap(items: list, n: int) -> tuple[list, bool]:

@@ -4,10 +4,7 @@
 
 SimView caches scene files fetched from remote hosts (see [Opening a file on a remote
 host](#opening-a-file-on-a-remote-host)) under `$XDG_CACHE_HOME/.simview_cache`
-(`~/.cache/.simview_cache` by default). It also cleans up any `simview_viz_*.json` temp
-scene files left behind by older versions (a launched viewer now serves an in-memory
-`SimulationScene` directly, without writing one). You can clear all of this using the
-following command:
+(`~/.cache/.simview_cache` by default). You can clear it using the following command:
 
 ```bash
 simview clear

@@ -16,8 +16,6 @@ truncation) for scripts/coding agents to consume directly, with
 same data.
 """
 
-import csv
-import io
 import math
 
 from simview.columnar import body_key, decode_transform_row
@@ -28,6 +26,8 @@ from simview.utils import (
     collect_body_names,
     iter_names,
     resolve_body,
+    series_stats,
+    write_csv,
 )
 
 _MAX_SERIES_ROWS = 10
@@ -185,12 +185,6 @@ def _resolve_batches(model_data: dict, batch_a: int, batch_b: int) -> int:
     return batch_size
 
 
-def _stats(values: list[float]) -> dict:
-    if not values:
-        return {"mean": None, "max": None, "final": None}
-    return {"mean": sum(values) / len(values), "max": max(values), "final": values[-1]}
-
-
 def _first_exceeding(
     frame_indices: list[int], values: list[float], threshold: float | None
 ) -> int | None:
@@ -301,41 +295,36 @@ def compute_trajectory_diff(
                 out["err_y"].append(row_a[1] - row_b[1])
                 out["err_z"].append(row_a[2] - row_b[2])
 
+    axes = ("err_x", "err_y", "err_z") if per_axis else ()
     bodies_out = {}
     for name in target_names:
         out = series[body_key(name)]
-        label = body_label(name)
         frame_indices = out["frame_indices"]
-        times = out["times"]
-        position_error = out["position_error"]
-        orientation_error_deg = out["orientation_error_deg"]
-        err_x, err_y, err_z = out["err_x"], out["err_y"], out["err_z"]
-
         summary = {
             "frame_count": len(frame_indices),
-            "position_error": _stats(position_error),
-            "orientation_error_deg": _stats(orientation_error_deg),
+            "position_error": series_stats(out["position_error"]),
+            "orientation_error_deg": series_stats(out["orientation_error_deg"]),
             "first_frame_exceeding_pos_threshold": _first_exceeding(
-                frame_indices, position_error, pos_threshold
+                frame_indices, out["position_error"], pos_threshold
             ),
             "first_frame_exceeding_rot_threshold": _first_exceeding(
-                frame_indices, orientation_error_deg, rot_threshold_deg
+                frame_indices, out["orientation_error_deg"], rot_threshold_deg
             ),
         }
-        bodies_out[label] = {
-            "frame_indices": frame_indices,
-            "times": times,
-            "position_error": position_error,
-            "orientation_error_deg": orientation_error_deg,
-            "summary": summary,
+        body_out = {
+            key: out[key]
+            for key in (
+                "frame_indices",
+                "times",
+                "position_error",
+                "orientation_error_deg",
+            )
         }
-        if per_axis:
-            bodies_out[label]["err_x"] = err_x
-            bodies_out[label]["err_y"] = err_y
-            bodies_out[label]["err_z"] = err_z
-            summary["err_x"] = _stats(err_x)
-            summary["err_y"] = _stats(err_y)
-            summary["err_z"] = _stats(err_z)
+        body_out["summary"] = summary
+        for axis in axes:
+            body_out[axis] = out[axis]
+            summary[axis] = series_stats(out[axis])
+        bodies_out[body_label(name)] = body_out
 
     return {
         "batch_a": batch_a,
@@ -421,22 +410,16 @@ def format_diff_csv(result: dict) -> str:
     (body, frame), full series (no truncation) -- CSV output is for scripts,
     matching the "just the numbers, in full" philosophy `--json` already
     uses everywhere in this CLI."""
-    per_axis = result.get("per_axis")
-    buf = io.StringIO()
-    writer = csv.writer(buf)
+    keys = ["frame_indices", "times", "position_error", "orientation_error_deg"]
     header = ["body", "frame", "time", "position_error", "orientation_error_deg"]
-    if per_axis:
+    if result.get("per_axis"):
+        keys += ["err_x", "err_y", "err_z"]
         header += ["err_x", "err_y", "err_z"]
-    writer.writerow(header)
-    for label, body in result["bodies"].items():
-        columns = [
-            body["frame_indices"],
-            body["times"],
-            body["position_error"],
-            body["orientation_error_deg"],
-        ]
-        if per_axis:
-            columns += [body["err_x"], body["err_y"], body["err_z"]]
-        for row in zip(*columns):
-            writer.writerow([label, *row])
-    return buf.getvalue()
+    return write_csv(
+        header,
+        (
+            [label, *row]
+            for label, body in result["bodies"].items()
+            for row in zip(*(body[k] for k in keys))
+        ),
+    )

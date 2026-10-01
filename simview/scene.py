@@ -489,35 +489,28 @@ class SimulationScene:
                     "to fall back to the legacy per-frame layout automatically."
                 )
 
-        try:
-            logger.info("Saving simulation data to %s...", output_path)
-            open_fn = (
-                (lambda p: gzip.open(p, "wt")) if compress else (lambda p: open(p, "w"))
-            )
-            with open_fn(output_path) as f:
-                f.write("{\n")
-                f.write('  "model": ')
-                json.dump(model_json, f, indent=2)
-                f.write(",\n")
-                if columnar_states is not None:
-                    f.write('  "states": ')
-                    json.dump(columnar_states, f)
-                    f.write("\n}")
-                else:
-                    # Streamed frame by frame: the per-frame layout is only
-                    # reached for scenes too irregular to columnarize, which are
-                    # exactly the large ones worth not materializing at once.
-                    f.write('  "states": [\n')
-                    for i, state in enumerate(self.states):
-                        if i > 0:
-                            f.write(",\n")
-                        f.write("    ")
-                        json.dump(state, f)
-                    f.write("\n  ]\n}")
-            logger.info("Simulation data successfully saved to %s", output_path)
-        except Exception:
-            logger.exception("Error saving simulation data to %s", output_path)
-            raise
+        logger.info("Saving simulation data to %s...", output_path)
+        with (gzip.open if compress else open)(output_path, "wt") as f:
+            f.write("{\n")
+            f.write('  "model": ')
+            json.dump(model_json, f, indent=2)
+            f.write(",\n")
+            if columnar_states is not None:
+                f.write('  "states": ')
+                json.dump(columnar_states, f)
+                f.write("\n}")
+            else:
+                # Streamed frame by frame: the per-frame layout is only
+                # reached for scenes too irregular to columnarize, which are
+                # exactly the large ones worth not materializing at once.
+                f.write('  "states": [\n')
+                for i, state in enumerate(self.states):
+                    if i > 0:
+                        f.write(",\n")
+                    f.write("    ")
+                    json.dump(state, f)
+                f.write("\n  ]\n}")
+        logger.info("Simulation data successfully saved to %s", output_path)
 
     def show(
         self,
