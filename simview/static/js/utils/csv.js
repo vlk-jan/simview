@@ -1,5 +1,5 @@
 // Pure CSV assembly (rows -> escaped CSV string) shared by ScalarPlotter and
-// ErrorMetrics CSV export buttons, plus a small browser-only download helper.
+// ErrorMetrics CSV export buttons, plus small browser-only download helpers.
 
 // Escapes a single CSV field per RFC 4180: wraps in double quotes if it
 // contains a comma, double quote, or newline, doubling any embedded quotes.
@@ -29,18 +29,22 @@ export function sanitizeForFilename(name) {
     return str.replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
-// Triggers a browser download of `content` as a file named `filename`. No-op
-// outside a browser environment (e.g. under vitest/node), so this module
-// stays importable from tests without a DOM.
+// Triggers a browser download of `blob` named `filename` via a temporary
+// <a download> link.
+export function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    // Revoke on a delay rather than immediately: some browsers kick off the
+    // download asynchronously, and revoking the URL too early can abort it.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Downloads `content` as a CSV file. No-op outside a browser environment
+// (e.g. under vitest/node), so this module stays importable without a DOM.
 export function downloadCsv(filename, content) {
     if (typeof document === "undefined" || typeof Blob === "undefined") return;
-    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([content], { type: "text/csv;charset=utf-8;" }), filename);
 }
