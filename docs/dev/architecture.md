@@ -47,9 +47,10 @@ Python (authoring or file-on-disk)           Browser
   is repacked into the columnar payload at load time for much cheaper playback of long
   recordings, falling back to serving the per-frame array if the frames aren't uniform
   enough to columnarize. Also handles WebSocket live-push (see `live.py`) and
-  batch-rename persistence.
+  batch-rename persistence. `ViewerHandle` runs a server on a background thread
+  (shared by `scene.show()`, `LiveViewer` and `simview render`).
 - **`live.py`** — `LiveViewer`: starts the server immediately (on a background thread
-  via `_ThreadedServer`) and streams `push_state` calls to connected browser tabs over
+  via `ViewerHandle`) and streams `push_state` calls to connected browser tabs over
   WebSocket as a simulation runs, instead of saving-then-viewing after the fact.
 - **`launcher.py`** — `SimViewLauncher`: blocking launch used by the CLI / `save`+view
   workflows (as opposed to `live.py`'s streaming launch or `scene.show()`'s
@@ -143,10 +144,10 @@ simview/
 ├── simview/                # Python package
 │   ├── model.py             # SimViewModel, SimViewBody, SimViewStaticObject, SimViewTerrain
 │   ├── state.py             # SimViewBodyState, BodyTrajectory
-│   ├── scene.py             # SimulationScene, ViewerHandle
+│   ├── scene.py             # SimulationScene
 │   ├── columnar.py          # columnar ("v4") states layout (wire + on disk)
-│   ├── server.py            # SimViewServer (FastAPI app, columnar repack)
-│   ├── live.py               # LiveViewer, _ThreadedServer
+│   ├── server.py            # SimViewServer (FastAPI app, columnar repack), ViewerHandle
+│   ├── live.py               # LiveViewer
 │   ├── launcher.py           # SimViewLauncher
 │   ├── merge.py               # merge_simulation_files
 │   ├── diff.py                 # simview diff backend

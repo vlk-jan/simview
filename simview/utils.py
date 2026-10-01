@@ -1,5 +1,6 @@
 import gzip
 import json
+import logging
 import socket
 from pathlib import Path
 from typing import Any
@@ -11,22 +12,36 @@ _GZIP_MAGIC = b"\x1f\x8b"
 
 _MAX_PORT = 65535
 
+logger = logging.getLogger("simview.utils")
+
 
 def find_free_port(host: str, base_port: int) -> int:
     """Return the first free TCP port on `host` starting at `base_port`.
 
-    Raises OSError if no port is free up to the maximum valid port number
-    (65535), rather than looping forever.
+    Logs a warning when `base_port` itself is taken. Raises OSError if no
+    port is free up to the maximum valid port number (65535), rather than
+    looping forever.
     """
-    port = base_port
-    while port <= _MAX_PORT:
+    for port in range(base_port, _MAX_PORT + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.bind((host, port))
-                return port
             except OSError:
-                port += 1
+                continue
+        if port != base_port:
+            logger.warning(
+                "Preferred port %s is not available. Using port %s instead.",
+                base_port,
+                port,
+            )
+        return port
     raise OSError(f"No free port found on {host} in range [{base_port}, {_MAX_PORT}].")
+
+
+def dialable_host(host: str) -> str:
+    """Host to put in URLs -- 0.0.0.0/:: aren't dialable, so localhost stands
+    in for them."""
+    return "127.0.0.1" if host in ("0.0.0.0", "::") else host
 
 
 def read_maybe_gzipped_bytes(path: str | Path) -> bytes:

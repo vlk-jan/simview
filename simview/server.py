@@ -6,23 +6,15 @@ import hashlib
 import json
 import logging
 import secrets
+import threading
+import time
 from collections import deque
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
+from importlib.resources import files
 from pathlib import Path
 
-try:
-    import orjson
-except ImportError:
-    orjson = None
-
-try:
-    import numpy as np
-except ImportError:
-    np = None
-
-from importlib.resources import files
-
+import orjson
 import uvicorn
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +24,7 @@ from pydantic import BaseModel
 from starlette.types import Scope
 
 from simview.columnar import BLOB_PREFIX, columnarize_states, is_columnar
-from simview.utils import find_free_port, read_maybe_gzipped_bytes
+from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.server")
 
@@ -249,7 +241,7 @@ class SimViewServer:
             assert self.sim_path is not None
             logger.info("Loading simulation data from %s...", self.sim_path)
             raw = read_maybe_gzipped_bytes(self.sim_path)
-            data = orjson.loads(raw) if orjson else json.loads(raw)
+            data = orjson.loads(raw)
 
         model_data = data.get("model")
         states_data = data.get("states")
@@ -351,17 +343,18 @@ class SimViewServer:
         # compresslevel=1 is fastest (still typically 5-10x smaller for JSON). model_data
         # itself is kept around (it's small, unlike states_data) so /batch-names can
         # patch and re-serialize it without re-reading the source file.
-        self._dumps = orjson.dumps if orjson else (lambda o: json.dumps(o).encode())
         if model_data is not None:
-            self.model_bytes = gzip.compress(self._dumps(model_data), compresslevel=1)
+            self.model_bytes = gzip.compress(orjson.dumps(model_data), compresslevel=1)
         if self.live:
             # Live mode: frames arrive over /ws/states instead, so /states just
             # tells the client to open the socket (see loadData in SimView.js).
             self.states_bytes = gzip.compress(
-                self._dumps({"live": True}), compresslevel=1
+                orjson.dumps({"live": True}), compresslevel=1
             )
         elif states_data is not None:
-            self.states_bytes = gzip.compress(self._dumps(states_data), compresslevel=1)
+            self.states_bytes = gzip.compress(
+                orjson.dumps(states_data), compresslevel=1
+            )
 
         logger.info("Simulation data loaded successfully.")
 
@@ -458,7 +451,7 @@ class SimViewServer:
 
             self.model_data["batchNames"] = names
             self.model_bytes = gzip.compress(
-                self._dumps(self.model_data), compresslevel=1
+                orjson.dumps(self.model_data), compresslevel=1
             )
 
             names_path = self._names_sidecar_path()
@@ -530,7 +523,7 @@ class SimViewServer:
         if self.model_data is None:
             return
         self.model_data["episodes"] = episodes
-        self.model_bytes = gzip.compress(self._dumps(self.model_data), compresslevel=1)
+        self.model_bytes = gzip.compress(orjson.dumps(self.model_data), compresslevel=1)
 
     async def broadcast_episodes(self, episodes: list[dict]) -> None:
         """Push updated episode boundaries to every connected /ws/states client.
@@ -569,49 +562,24 @@ class SimViewServer:
 
     def run(
         self,
-        debug: bool = False,
         host: str = "127.0.0.1",
         port: int = 5420,
         open_browser: bool = False,
     ):
         logger.info("SimView server running on http://%s:%s", host, port)
         if open_browser:
-            import threading
             import webbrowser
 
             # uvicorn.run() below blocks until the server stops, so the browser is
             # opened from a background timer instead of a startup hook (FastAPI's
             # on_event/lifespan hooks are more ceremony than this one-shot needs).
             # The short delay gives uvicorn a head start on binding the socket.
-            bind_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
             threading.Timer(
-                0.5, webbrowser.open, args=(f"http://{bind_host}:{port}",)
+                0.5, webbrowser.open, args=(f"http://{dialable_host(host)}:{port}",)
             ).start()
 
-        # uvloop/httptools are faster than the stdlib fallbacks but aren't available
-        # everywhere (uvloop doesn't support Windows). Use them opportunistically and
-        # fall back to uvicorn's "auto" detection rather than crashing at startup.
-        try:
-            import uvloop  # noqa: F401
-
-            loop = "uvloop"
-        except ImportError:
-            loop = "auto"
-        try:
-            import httptools  # noqa: F401
-
-            http = "httptools"
-        except ImportError:
-            http = "auto"
-        uvicorn.run(
-            self.app,
-            host=host,
-            port=port,
-            log_level="debug" if debug else "info",
-            access_log=debug,
-            loop=loop,
-            http=http,
-        )
+        # uvicorn's "auto" loop/http already prefer uvloop/httptools when present.
+        uvicorn.run(self.app, host=host, port=port, log_level="info", access_log=False)
 
     @staticmethod
     def start(
@@ -644,22 +612,102 @@ class SimViewServer:
             )
         else:
             server = SimViewServer(sim_path=paths[0])
-        port = find_free_port(host, preferred_port)
-        if port != preferred_port:
-            logger.warning(
-                "Preferred port %s is not available. Using port %s instead.",
-                preferred_port,
-                port,
-            )
-        server.run(host=host, port=port, open_browser=open_browser)
+        server.run(
+            host=host,
+            port=find_free_port(host, preferred_port),
+            open_browser=open_browser,
+        )
 
 
-if __name__ == "__main__":
-    import argparse
+# How long to poll uvicorn's Server.started flag for before giving up --
+# binding a localhost socket and completing FastAPI startup is normally well
+# under this, so a timeout almost always means something is wrong (bad host,
+# port stolen after find_free_port checked it, ...).
+_START_TIMEOUT = 10.0
+_START_POLL_INTERVAL = 0.02
 
-    parser = argparse.ArgumentParser(description="Run the SimView server.")
-    parser.add_argument(
-        "--sim_path", type=str, required=True, help="Path to the simulation JSON file."
-    )
-    args = parser.parse_args()
-    SimViewServer.start(args.sim_path)
+
+class ViewerHandle:
+    """A SimViewServer's uvicorn app running on a background daemon thread.
+
+    Returned by `SimulationScene.show`, and the shared non-blocking plumbing
+    behind `LiveViewer` and `simview render`. `__init__` blocks until the
+    socket is actually bound (or raises if startup fails/times out);
+    `stop()` (also called on context-manager exit) shuts it down.
+    `_repr_html_` lets Jupyter render the viewer inline in an iframe just by
+    evaluating the handle in a cell.
+    """
+
+    def __init__(
+        self,
+        app,
+        host: str = "127.0.0.1",
+        preferred_port: int = 5420,
+        thread_name: str = "simview-server",
+        log_level: str = "info",
+    ) -> None:
+        self.host = host
+        self.port = find_free_port(host, preferred_port)
+
+        # Prefer uvicorn's modern sansio websocket implementation when the
+        # `websockets` package is available -- the default "auto" still selects
+        # the legacy implementation, which emits DeprecationWarnings. Fall back
+        # to "auto" (which degrades gracefully to wsproto/none) on a bare
+        # install without `websockets`.
+        try:
+            import websockets  # noqa: F401
+
+            ws = "websockets-sansio"
+        except ImportError:
+            ws = "auto"
+        config = uvicorn.Config(
+            app, host=host, port=self.port, log_level=log_level, ws=ws
+        )
+        self._uvicorn_server = uvicorn.Server(config)
+
+        self._thread = threading.Thread(
+            target=self._uvicorn_server.run, name=thread_name, daemon=True
+        )
+        self._thread.start()
+
+        # Block until the socket is actually bound, so a caller's very first
+        # action (push_state, an HTTP request, a browser opened right after
+        # construction, ...) never races server startup.
+        deadline = time.monotonic() + _START_TIMEOUT
+        while not self._uvicorn_server.started:
+            if not self._thread.is_alive():
+                raise RuntimeError("SimView server thread died during startup.")
+            if time.monotonic() > deadline:
+                raise TimeoutError(
+                    f"SimView server did not start within {_START_TIMEOUT}s."
+                )
+            time.sleep(_START_POLL_INTERVAL)
+
+    @property
+    def url(self) -> str:
+        return f"http://{dialable_host(self.host)}:{self.port}"
+
+    def stop(self) -> None:
+        """Signal the server to exit and wait for its thread to finish.
+
+        Idempotent -- safe to call multiple times.
+        """
+        if not self._thread.is_alive():
+            return
+        self._uvicorn_server.should_exit = True
+        self._thread.join(timeout=5.0)
+
+    def _repr_html_(self) -> str:
+        """Jupyter calls this automatically when the handle is the result of
+        a cell, embedding the viewer inline without the user having to open a
+        separate browser tab."""
+        return (
+            f'<iframe src="{self.url}" width="100%" height="600" '
+            f'style="border:none;" allow="fullscreen"></iframe>'
+        )
+
+    def __enter__(self) -> "ViewerHandle":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.stop()
