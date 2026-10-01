@@ -12,6 +12,11 @@ on:
 permissions:
   contents: write
 
+# Newer runs of this workflow supersede older ones; deploying stale content is pointless.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   deploy-demo:
     runs-on: ubuntu-latest
@@ -135,6 +140,9 @@ jobs:
         run: kill "$SERVER_PID" 2>/dev/null || true
 
       - name: Deploy demo to gh-pages
+        id: deploy
+        # Docs and Demo both push to gh-pages; a concurrent push rejects ours.
+        continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -142,4 +150,13 @@ jobs:
           destination_dir: demo
           # keep_files: true preserves the rest of gh-pages (the MkDocs docs)
           # so this job and the docs job never clobber each other.
+          keep_files: true
+
+      - name: Retry deploy demo to gh-pages
+        if: steps.deploy.outcome == 'failure'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _demo_out
+          destination_dir: demo
           keep_files: true
