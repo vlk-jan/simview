@@ -5,33 +5,28 @@
 export class BatchLegend {
     constructor(app) {
         this.app = app;
-        this.isExpanded = true;
         this.rowElements = new Map();
 
         this._setupHTML();
     }
 
     _setupHTML() {
-        this.container = document.createElement("div");
-        this.container.className = "batch-legend-container";
+        this.container = document.createElement("details");
+        this.container.className = "batch-legend-container sv-collapsible";
+        this.container.open = true;
 
-        this.header = document.createElement("div");
-        this.header.className = "batch-legend-header";
-        this.icon = document.createElement("span");
-        this.icon.className = "batch-legend-header-icon";
+        const summary = document.createElement("summary");
+        summary.className = "batch-legend-header";
         const title = document.createElement("span");
         title.textContent = "Batches";
-        this.header.appendChild(this.icon);
-        this.header.appendChild(title);
-        this.header.addEventListener("click", () => this._toggleDropdown());
+        summary.appendChild(title);
 
         this.content = document.createElement("div");
         this.content.className = "batch-legend-content";
 
         this._buildRows();
-        this._applyExpandedState();
 
-        this.container.appendChild(this.header);
+        this.container.appendChild(summary);
         this.container.appendChild(this.content);
         document.body.appendChild(this.container);
     }
@@ -88,16 +83,6 @@ export class BatchLegend {
     // Re-reads names/colors from BatchManager, e.g. after a rename elsewhere.
     refresh() {
         this._buildRows();
-    }
-
-    _toggleDropdown() {
-        this.isExpanded = !this.isExpanded;
-        this._applyExpandedState();
-    }
-
-    _applyExpandedState() {
-        this.content.classList.toggle("visible", this.isExpanded);
-        this.icon.textContent = this.isExpanded ? "▾" : "▸";
     }
 
     dispose() {

@@ -20,63 +20,51 @@ export class BodyStateWindow {
 
     initWindow() {
         // --- Window setup ---
-        this.window = document.createElement("div");
-        this.window.classList.add("body-state-window"); // Use CSS class
+        this.window = document.createElement("details");
+        this.window.className = "body-state-window sv-collapsible";
+        this.window.open = true;
 
         // --- Header setup ---
-        this.header = document.createElement("div");
+        this.header = document.createElement("summary");
         this.header.classList.add("body-state-window-header"); // Use CSS class
-        this.header.style.cursor = "pointer";
-        this.header.addEventListener("click", () => this.toggleCollapse());
         this.window.appendChild(this.header);
-
-        const titleGroup = document.createElement("div"); // Group title and toggle
-        titleGroup.style.display = "flex";
-        titleGroup.style.alignItems = "baseline"; // chevron sits on the text baseline
-        this.header.appendChild(titleGroup);
-
-        this.toggleIcon = document.createElement("span");
-        this.toggleIcon.classList.add("body-state-window-toggle-icon");
-        this.toggleIcon.textContent = "▾"; // Default state is expanded
-        titleGroup.appendChild(this.toggleIcon);
 
         const title = document.createElement("span");
         title.textContent = "Body states";
-        titleGroup.appendChild(title);
+        this.header.appendChild(title);
 
         // --- Batch Selector (if needed) ---
-        if (this.app.batchManager && this.app.batchManager.getSimBatches) {
-            const batchSize = this.app.batchManager.getSimBatches();
-            if (batchSize > 1) {
-                const selectorContainer = document.createElement("div");
-                selectorContainer.classList.add("batch-selector-container"); // Use CSS class
+        const batchSize = this.app.batchManager.simBatches;
+        if (batchSize > 1) {
+            const selectorContainer = document.createElement("div");
+            selectorContainer.classList.add("batch-selector-container"); // Use CSS class
 
-                const label = document.createElement("span");
-                label.textContent = "Batch: ";
-                label.classList.add("batch-selector-label"); // Use CSS class
-                selectorContainer.appendChild(label);
+            const label = document.createElement("span");
+            label.textContent = "Batch: ";
+            label.classList.add("batch-selector-label"); // Use CSS class
+            selectorContainer.appendChild(label);
 
-                const batchSelector = document.createElement("select");
-                batchSelector.classList.add("batch-selector"); // Use CSS class
+            const batchSelector = document.createElement("select");
+            batchSelector.classList.add("batch-selector"); // Use CSS class
 
-                for (let i = 0; i < batchSize; i++) {
-                    const option = document.createElement("option");
-                    option.value = i;
-                    option.textContent = `${i}`;
-                    batchSelector.appendChild(option);
-                }
-
-                batchSelector.addEventListener("change", (e) => {
-                    const batchIndex = parseInt(e.target.value);
-                    this.app.batchManager.setActiveBatch(batchIndex);
-                    e.target.blur(); // Remove focus from the selector
-                });
-
-                selectorContainer.addEventListener("click", (e) => e.stopPropagation());
-                selectorContainer.appendChild(batchSelector);
-                this.header.appendChild(selectorContainer); // Append to header
-                this.batchSelector = batchSelector;
+            for (let i = 0; i < batchSize; i++) {
+                const option = document.createElement("option");
+                option.value = i;
+                option.textContent = `${i}`;
+                batchSelector.appendChild(option);
             }
+
+            batchSelector.addEventListener("change", (e) => {
+                const batchIndex = parseInt(e.target.value);
+                this.app.batchManager.setActiveBatch(batchIndex);
+                e.target.blur(); // Remove focus from the selector
+            });
+
+            // A click on the selector would otherwise toggle the panel.
+            selectorContainer.addEventListener("click", (e) => e.preventDefault());
+            selectorContainer.appendChild(batchSelector);
+            this.header.appendChild(selectorContainer); // Append to header
+            this.batchSelector = batchSelector;
         }
 
         // --- Content Area (for scrolling) ---
@@ -108,12 +96,6 @@ export class BodyStateWindow {
 
         // Initialize body list once
         this.updateBodyList();
-    }
-
-    toggleCollapse() {
-        if (!this.window) return;
-        const isCollapsed = this.window.classList.toggle("collapsed");
-        this.toggleIcon.textContent = isCollapsed ? "▸" : "▾";
     }
 
     updateBodyList() {
@@ -251,7 +233,7 @@ export class BodyStateWindow {
         return container;
     }
 
-    // --- update, updateBodyDetailContainer, setSelectedBatch, show, hide, dispose, forceRedraw, animate ---
+    // --- update, updateBodyDetailContainer, setSelectedBatch, dispose, forceRedraw, animate ---
     // These methods should remain largely unchanged as they deal with data logic,
     // not the initial setup and styling which we've refactored.
 
@@ -270,7 +252,7 @@ export class BodyStateWindow {
         const batchManager = this.app.batchManager;
         let batchText = "";
         const batchIndex = batchManager.currentlyActiveBatch;
-        const batchSize = batchManager.getSimBatches();
+        const batchSize = batchManager.simBatches;
         if (batchSize > 1) {
             batchText = ` (Batch ${batchIndex})`;
         }
@@ -307,18 +289,6 @@ export class BodyStateWindow {
         this.update(); // Update displayed details for the new batch
     }
 
-    show() {
-        if (this.window) {
-            this.window.style.display = "flex"; // Use flex since the class uses it
-        }
-    }
-
-    hide() {
-        if (this.window) {
-            this.window.style.display = "none";
-        }
-    }
-
     dispose() {
         if (this.window && this.window.parentNode) {
             this.window.parentNode.removeChild(this.window);
@@ -333,7 +303,7 @@ export class BodyStateWindow {
     }
 
     animate(now) {
-        if (!this.window || this.window.style.display === "none") return; // Don't update if hidden
+        if (!this.window) return;
 
         if (now - this.lastRenderTime < this.minRenderDelay) return;
         this.lastRenderTime = now;

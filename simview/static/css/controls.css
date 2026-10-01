@@ -168,17 +168,32 @@ body {
     border-bottom-color: transparent;
 }
 
-/* Collapse indicators. The panels write the same ▾/▸ characters lil-gui
-   does; drawing them in lil-gui's bundled icon font (registered by its
-   injected <style>) turns them into the Controls panel's chevrons. Their
-   headers align to the baseline, as lil-gui's inline chevron does. */
-.analysis-header-icon,
-.body-state-window-toggle-icon,
-.batch-legend-header-icon {
+/* Collapsible panels (<details>). The chevron is the same ▾/▸ characters
+   lil-gui writes, drawn in lil-gui's bundled icon font (registered by its
+   injected <style>) so it matches the Controls panel's; it sits on the
+   title's text baseline, as lil-gui's inline chevron does. */
+.sv-collapsible > summary {
+    list-style: none;
+    cursor: pointer;
+}
+.sv-collapsible > summary::-webkit-details-marker {
+    display: none;
+}
+.sv-collapsible > summary > span:first-child::before {
+    content: "▸";
+    display: inline-block;
     font-family: lil-gui, var(--sv-font);
+    font-size: 12px; /* the Analysis chevron's size */
     font-weight: 600;
     color: var(--sv-text);
     padding-right: 3px;
+    user-select: none;
+}
+.sv-collapsible[open] > summary > span:first-child::before {
+    content: "▾";
+}
+.sv-collapsible [hidden] {
+    display: none !important;
 }
 
 /* Loading splash. Its <h1> is rewritten by SimView.loadData as each phase
@@ -519,7 +534,6 @@ body {
     width: 100%;
     padding: 7px 10px;
     color: var(--sv-text);
-    cursor: pointer;
     border-radius: var(--sv-radius-lg) var(--sv-radius-lg) 0 0;
     transition: background-color 0.2s ease;
     box-sizing: border-box;
@@ -531,26 +545,9 @@ body {
     font-weight: 600;
     font-size: var(--sv-title-size);
 }
-.analysis-header-icon {
-    display: inline-block;
-    user-select: none;
-}
-
-.analysis-content {
-    border-radius: 0 0 var(--sv-radius-lg) var(--sv-radius-lg);
-    display: none;
-    box-sizing: border-box;
-}
-.analysis-content.visible {
-    display: block;
-}
-
 .analysis-mode-tab-bar {
-    display: none;
-    width: 100%;
-}
-.analysis-mode-tab-bar.visible {
     display: flex;
+    width: 100%;
 }
 .analysis-mode-tab {
     flex: 1;
@@ -574,13 +571,6 @@ body {
 .analysis-mode-tab.active {
     color: var(--sv-text);
     border-bottom: 2px solid var(--sv-accent);
-}
-
-.analysis-section {
-    display: none;
-}
-.analysis-section.visible {
-    display: block;
 }
 
 /* ==========================================================================
@@ -626,18 +616,6 @@ body {
     border-bottom-color: var(--sv-accent);
 }
 
-/* Export toolbar */
-.scalar-export-bar {
-    display: flex;
-    justify-content: flex-end;
-    padding: 6px 0 0;
-}
-.scalar-export-bar button {
-    padding: 0.2em 0.6em;
-    font-size: 0.85em;
-    cursor: pointer;
-}
-
 /* Plot area */
 /* Flex column so the plot takes what the export bar leaves, instead of a
    fixed 99% that overflowed the panel by the bar's height. */
@@ -648,26 +626,59 @@ body {
     flex-direction: column;
 }
 
-.uplot-plot-div {
-    width: 100%;
+.scalar-plot-area .sv-export-bar {
+    margin-top: 6px;
+}
+.scalar-plot-area .sv-chart {
     flex: 1;
     min-height: 0;
     margin-top: 6px;
-    display: none;
+}
+
+/* ==========================================================================
+   Shared by the Analysis panels' charts (utils/uplot.js)
+   ========================================================================== */
+
+.sv-chart {
+    width: 100%;
+    height: 15vh;
+    margin-top: 10px;
+    position: relative;
     background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
     border-radius: var(--sv-radius-sm);
     cursor: pointer;
 }
-.uplot-plot-div.visible {
-    display: block;
-}
-.uplot-plot-div .uplot,
-.uplot-plot-div .u-wrap {
+.sv-chart .uplot,
+.sv-chart .u-wrap {
     width: 100%;
     height: 100%;
 }
-.uplot-plot-div .u-legend {
-    display: none;
+.sv-export-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+.sv-export-bar button {
+    padding: 0.2em 0.6em;
+    font-size: 0.85em;
+}
+.sv-control-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.sv-control-group label {
+    color: var(--sv-muted);
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+.sv-control-group select {
+    padding: 0.1em 0.2em;
+    font-size: 0.9em;
+    max-width: 100px;
+}
+.sv-control-group input[type="checkbox"] {
+    cursor: pointer;
 }
 
 /* ==========================================================================
@@ -685,24 +696,6 @@ body {
     row-gap: 6px;
     gap: 10px;
     margin-top: 8px;
-}
-.error-metrics-control-group {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-.error-metrics-control-group label {
-    color: var(--sv-muted);
-    font-size: 0.9em;
-    white-space: nowrap;
-}
-.error-metrics-control-group select {
-    padding: 0.1em 0.2em;
-    font-size: 0.9em;
-    max-width: 100px;
-}
-.error-metrics-control-group input[type="checkbox"] {
-    cursor: pointer;
 }
 .error-metrics-readout {
     margin-top: 10px;
@@ -739,33 +732,6 @@ body {
 .error-metrics-stats div span:last-child {
     color: var(--sv-text);
 }
-.error-metrics-export {
-    margin-top: 8px;
-    display: flex;
-    justify-content: flex-end;
-}
-.error-metrics-export button {
-    padding: 0.2em 0.6em;
-    font-size: 0.85em;
-    cursor: pointer;
-}
-.error-metrics-plot {
-    width: 100%;
-    height: 15vh;
-    margin-top: 10px;
-    position: relative;
-    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
-    border-radius: var(--sv-radius-sm);
-    cursor: pointer;
-}
-.error-metrics-plot .uplot,
-.error-metrics-plot .u-wrap {
-    width: 100%;
-    height: 100%;
-}
-.error-metrics-plot .u-legend {
-    display: none;
-}
 
 /* ==========================================================================
    BodyStateWindow (simview/static/js/ui/BodyStateWindow.js)
@@ -783,6 +749,12 @@ body {
     width: 320px;
     max-height: clamp(300px, 85vh, 90vh);
     font-size: clamp(0.8rem, 0.9vw + 0.5rem, 1rem); /* Responsive base font */
+}
+
+/* <details> wraps the content in ::details-content; dissolve that box so
+   the content is a flex item again and scrolls within max-height. */
+.body-state-window[open]::details-content {
+    display: contents;
 }
 
 /* Allow content area to scroll */
@@ -860,9 +832,6 @@ body {
     background-color: var(--sv-accent-soft);
 }
 
-/* Details container */
-.details-container { } /* Container for all detail blocks */
-
 /* Individual body detail block */
 .body-detail-container {
     margin-top: 0.75rem; /* Use rem */
@@ -926,18 +895,6 @@ body {
     color: var(--sv-text);
 }
 
-/* Collapsed state */
-.body-state-window.collapsed {
-    height: auto !important;
-    max-height: none !important;
-}
-.body-state-window.collapsed .body-state-window-content {
-    display: none;
-}
-.body-state-window-toggle-icon {
-    display: inline-block;
-    user-select: none;    font-size: 12px; /* the Analysis chevron's size */
-}
 
 /* ==========================================================================
    BatchLegend (simview/static/js/ui/BatchLegend.js)
@@ -956,22 +913,20 @@ body {
     display: flex;
     align-items: baseline;
     padding: 8px 10px;
-    cursor: pointer;
     font-weight: 600;
     font-size: 1.1em;
+}
+.sv-collapsible > .batch-legend-header > span::before {
+    font-size: inherit; /* this header's chevron matches its title */
 }
 .batch-legend-header:hover {
     background-color: var(--sv-hover);
 }
 .batch-legend-content {
-    display: none;
     padding: 0 8px 8px 8px;
     border-top: 1px solid var(--sv-border);
     max-height: 30vh;
     overflow-y: auto;
-}
-.batch-legend-content.visible {
-    display: block;
 }
 .batch-legend-row {
     display: flex;
@@ -1038,45 +993,6 @@ body {
     row-gap: 6px;
     gap: 10px;
 }
-.terrain-profile-control-group {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-.terrain-profile-control-group label {
-    color: var(--sv-muted);
-    font-size: 0.9em;
-    white-space: nowrap;
-}
-.terrain-profile-control-group select {
-    padding: 0.1em 0.2em;
-    font-size: 0.9em;
+.terrain-profile-controls .sv-control-group select {
     max-width: 160px;
-}
-.terrain-profile-export-bar {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 8px;
-}
-.terrain-profile-export-bar button {
-    padding: 0.2em 0.6em;
-    font-size: 0.85em;
-    cursor: pointer;
-}
-.terrain-profile-plot {
-    width: 100%;
-    height: 15vh;
-    margin-top: 10px;
-    position: relative;
-    background-color: color-mix(in srgb, var(--ctp-crust) 35%, transparent);
-    border-radius: var(--sv-radius-sm);
-    cursor: pointer;
-}
-.terrain-profile-plot .uplot,
-.terrain-profile-plot .u-wrap {
-    width: 100%;
-    height: 100%;
-}
-.terrain-profile-plot .u-legend {
-    display: none;
 }
