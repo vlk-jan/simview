@@ -142,4 +142,20 @@ describe("categoricalPalette", () => {
         expect(palette[0]).toBe("#89b4fa");
         expect(palette[6]).toBe("#a6e3a1");
     });
+
+    // Reference outputs of chroma-js 3.1.2's
+    // `chroma.scale(colors).mode("lch").colors(n)`, which this replaced.
+    it.each([
+        [hues, 7, ["#89b4fa", "#dda5e4", "#ffa1b2", "#fab387", "#e7c47e", "#cad587", "#a6e3a1"]],
+        [
+            ["#89b4fa", "#fab387", "#a6e3a1", "#cba6f7"],
+            9,
+            ["#89b4fa", "#e5a3df", "#ffa4a5", "#f4b982", "#d9cd80", "#b4de95", "#54e2cf", "#41ceff", "#cba6f7"],
+        ],
+        [["#ff0000", "#0000ff"], 5, ["#ff0000", "#ff0045", "#fa0080", "#c500c3", "#0000ff"]],
+        // Grey has no hue: the red end's hue is used throughout.
+        [["#808080", "#ff0000"], 4, ["#808080", "#b56d5b", "#dd5035", "#ff0000"]],
+    ])("matches chroma-js lch interpolation (%j, %i)", (colors, n, expected) => {
+        expect(categoricalPalette(colors, n)).toEqual(expected);
+    });
 });
