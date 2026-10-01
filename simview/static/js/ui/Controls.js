@@ -648,65 +648,65 @@ export class UIControls {
     }
 
     setupKeyboardControls(app) {
-        this.keyboardControlsListener = window.addEventListener(
-            "keydown",
-            (event) => {
-                switch (event.key.toLowerCase()) {
-                    case "b":
-                        const modes = this.visualizationModes;
-                        if (modes.length === 0) break;
-                        const currentIndex = modes.indexOf(
-                            this.app.uiState.bodyVisualizationMode
-                        );
-                        const nextIndex = (currentIndex + 1) % modes.length;
-                        this.updateVisualizationMode(modes[nextIndex]);
-                        const controller = this.findController("bodyVisualizationMode");
-                        if (controller) controller.setValue(modes[nextIndex]);
-                        break;
-                    case "a":
-                        this.toggleControl("showAxes");
-                        break;
-                    case "g":
-                        this.toggleControl("showTrails");
-                        break;
-                    case "i":
-                        this.toggleControl("smoothInterpolation");
-                        break;
-                    case "c":
-                        // Shared key: contacts win when the scene has them.
-                        if (this.attributeAvailability.contacts)
-                            this.toggleControl("showContacts");
-                        else if (this.hasPointClouds)
-                            this.toggleControl("showPointClouds");
-                        break;
-                    case "v":
-                        if (this.attributeAvailability.velocity)
-                            this.toggleControl("showVelocity");
-                        break;
-                    case "w":
-                        if (this.attributeAvailability.angularVelocity)
-                            this.toggleControl("showAngularVelocity");
-                        break;
-                    case "f":
-                        if (this.attributeAvailability.force)
-                            this.toggleControl("showForce");
-                        break;
-                    case "t":
-                        if (this.attributeAvailability.torque)
-                            this.toggleControl("showTorque");
-                        break;
-                    case "arrowup":
-                    case "arrowdown":
-                    case "arrowleft":
-                    case "arrowright":
-                        if (event.shiftKey) {
-                            this.changeTargetBatch(event.key.toLowerCase());
-                            event.stopPropagation();
-                        }
-                        break;
-                }
+        // Stored (not addEventListener's undefined return) so dispose() can
+        // actually remove it.
+        this.keyboardControlsListener = (event) => {
+            switch (event.key.toLowerCase()) {
+                case "b":
+                    const modes = this.visualizationModes;
+                    if (modes.length === 0) break;
+                    const currentIndex = modes.indexOf(
+                        this.app.uiState.bodyVisualizationMode
+                    );
+                    const nextIndex = (currentIndex + 1) % modes.length;
+                    this.updateVisualizationMode(modes[nextIndex]);
+                    const controller = this.findController("bodyVisualizationMode");
+                    if (controller) controller.setValue(modes[nextIndex]);
+                    break;
+                case "a":
+                    this.toggleControl("showAxes");
+                    break;
+                case "g":
+                    this.toggleControl("showTrails");
+                    break;
+                case "i":
+                    this.toggleControl("smoothInterpolation");
+                    break;
+                case "c":
+                    // Shared key: contacts win when the scene has them.
+                    if (this.attributeAvailability.contacts)
+                        this.toggleControl("showContacts");
+                    else if (this.hasPointClouds)
+                        this.toggleControl("showPointClouds");
+                    break;
+                case "v":
+                    if (this.attributeAvailability.velocity)
+                        this.toggleControl("showVelocity");
+                    break;
+                case "w":
+                    if (this.attributeAvailability.angularVelocity)
+                        this.toggleControl("showAngularVelocity");
+                    break;
+                case "f":
+                    if (this.attributeAvailability.force)
+                        this.toggleControl("showForce");
+                    break;
+                case "t":
+                    if (this.attributeAvailability.torque)
+                        this.toggleControl("showTorque");
+                    break;
+                case "arrowup":
+                case "arrowdown":
+                case "arrowleft":
+                case "arrowright":
+                    if (event.shiftKey) {
+                        this.changeTargetBatch(event.key.toLowerCase());
+                        event.stopPropagation();
+                    }
+                    break;
             }
-        );
+        };
+        window.addEventListener("keydown", this.keyboardControlsListener);
     }
 
     // Searches every folder (Body/Terrain/Camera Options), not just
