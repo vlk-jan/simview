@@ -783,7 +783,6 @@ body {
     width: 320px;
     max-height: clamp(300px, 85vh, 90vh);
     font-size: clamp(0.8rem, 0.9vw + 0.5rem, 1rem); /* Responsive base font */
-    padding: 1.0rem; /* ~20px if 1rem=16px */
 }
 
 /* Allow content area to scroll */
@@ -791,8 +790,7 @@ body {
     overflow-y: auto; /* Enable vertical scrolling ONLY for content */
     overflow-x: hidden; /* Prevent horizontal scroll */
     flex-grow: 1; /* Allow content to fill available space */
-    padding-top: 0.5rem;
-    margin-top: 0.5rem;
+    padding: 0.5rem 1rem 1rem;
     border-top: 1px solid var(--sv-border); /* Separator line */
 }
 
@@ -804,6 +802,13 @@ body {
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0; /* Prevent header from shrinking */
+    /* Same box as .analysis-header so the collapsed panels match. */
+    padding: 7px 10px;
+    border-radius: var(--sv-radius-lg) var(--sv-radius-lg) 0 0;
+    transition: background-color 0.2s ease;
+}
+.body-state-window-header:hover {
+    background-color: var(--sv-hover);
 }
 
 /* Batch selector container */
@@ -811,7 +816,7 @@ body {
     display: flex;
     align-items: center;
     font-size: 0.8em; /* Smaller font size relative to header */
-    font-weight: normal; /* Normal weight for selector part */
+    font-weight: normal; /* Normal weight for selector part */    height: 0; /* select overflows centered, so the header keeps the title's height */
 }
 
 .batch-selector-label {
@@ -925,14 +930,13 @@ body {
 .body-state-window.collapsed {
     height: auto !important;
     max-height: none !important;
-    padding-bottom: 0.5rem;
 }
 .body-state-window.collapsed .body-state-window-content {
     display: none;
 }
 .body-state-window-toggle-icon {
     display: inline-block;
-    user-select: none;
+    user-select: none;    font-size: 12px; /* the Analysis chevron's size */
 }
 
 /* ==========================================================================
