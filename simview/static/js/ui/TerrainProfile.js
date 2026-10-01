@@ -1,7 +1,7 @@
 import { FREQ_CONFIG, THEME } from "../config.js";
 import { downloadCsv, rowsToCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
-import { makeChart } from "../utils/uplot.js";
+import { makeChart, yIncrements } from "../utils/uplot.js";
 
 const LAYER_LABELS = { height: "Height" };
 
@@ -223,12 +223,6 @@ export class TerrainProfile {
         this._updateMarker(true);
     }
 
-    _chartInterval(min, max) {
-        const diff = max - min;
-        if (diff === 0) return Math.max(Math.abs(max) / 5, 1e-3);
-        return diff / 5;
-    }
-
     _buildChart() {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
@@ -282,10 +276,11 @@ export class TerrainProfile {
                 axes: [
                     {
                         show: true,
-                        stroke: "transparent",
+                        stroke: THEME.overlay0,
                         grid: { show: false },
                         ticks: { show: false },
-                        values: () => [],
+                        size: 24, // uPlot's default 50px leaves an empty strip under the labels
+                        font: THEME.chartFont,
                     },
                     {
                         show: true,
@@ -294,7 +289,7 @@ export class TerrainProfile {
                         ticks: { stroke: THEME.surface1 },
                         font: THEME.chartFont,
                         space: 30,
-                        incrs: [this._chartInterval(min, max)],
+                        incrs: yIncrements(min, max),
                     },
                 ],
                 hooks: {

@@ -6,7 +6,7 @@ import {
     episodeLabel,
     normalizeEpisodes,
 } from "../utils/episodes.js";
-import { makeChart } from "../utils/uplot.js";
+import { makeChart, yIncrements } from "../utils/uplot.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -286,26 +286,6 @@ export class ScalarPlotter {
         );
     }
 
-    // uPlot walks `incrs` and takes the first increment whose ticks fit the
-    // axis's available length. Offering exactly one (range/stepsPerYAxis) meant
-    // that in a short panel -- which is what the Analysis panel gives us -- no
-    // increment fit, and uPlot drew no ticks or labels at all. Coarser
-    // multiples let it degrade instead of giving up.
-    _yIncrements(min, max) {
-        const base = this.getChartInterval(min, max);
-        return [1, 2, 5, 10, 20, 50, 100].map((m) => base * m);
-    }
-
-    getChartInterval(min, max) {
-        const diff = max - min;
-        if (diff === 0)
-            return Math.max(
-                Math.abs(max) / SCALAR_PLOTTER_CONFIG.stepsPerYAxis,
-                1e-3
-            );
-        return diff / SCALAR_PLOTTER_CONFIG.stepsPerYAxis;
-    }
-
     // Finds the batch series whose y-value at the clicked x-index is closest
     // to the clicked y-pixel, so a click near a particular line focuses that
     // batch.
@@ -384,7 +364,7 @@ export class ScalarPlotter {
                             ticks: { stroke: THEME.surface1 },
                             font: THEME.chartFont,
                             space: 30,
-                            incrs: this._yIncrements(min, max),
+                            incrs: yIncrements(min, max, SCALAR_PLOTTER_CONFIG.stepsPerYAxis),
                         },
                     ],
                     hooks: {

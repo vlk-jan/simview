@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bar wraps as before.
 - The Analysis panel's scalar chart no longer overflows the panel by the height of
   the Export CSV bar.
+- The Analysis panel's Terrain chart shows its y-axis values again (a single
+  tick step that didn't fit the short panel made uPlot drop the axis labels; the
+  Scalars chart's coarser-step fallback is now shared) and gains time labels on
+  its x-axis. The Error Metrics orientation label is no longer clipped, and both
+  charts get more plot height from a slimmer x-axis strip.
 
 ## [5.0.0] - 2026-09-21
 

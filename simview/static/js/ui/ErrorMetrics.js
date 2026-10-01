@@ -422,7 +422,9 @@ export class ErrorMetrics {
         this.chart = makeChart(
             this.plotDiv,
             {
-                padding: [8, 8, 0, 0],
+                // Extra right padding: uPlot sizes the right axis for its
+                // tick values, and the rotated "Orientation" label overhangs it.
+                padding: [8, 16, 0, 0],
                 series: seriesConfigs,
                 scales: {
                     x: { time: false },
@@ -442,6 +444,7 @@ export class ErrorMetrics {
                         stroke: THEME.overlay0,
                         grid: { show: false },
                         ticks: { show: false },
+                        size: 24, // uPlot's default 50px leaves an empty strip under the labels
                         font: THEME.chartFont,
                     },
                     {
@@ -459,7 +462,7 @@ export class ErrorMetrics {
                         scale: "rot",
                         show: true,
                         side: 1,
-                        label: "Orientation (deg)",
+                        label: "Orient. (°)", // short enough for the rotated label to fit a short panel
                         labelFont: THEME.chartFont,
                         stroke: SERIES_COLORS.rot,
                         grid: { show: false },
