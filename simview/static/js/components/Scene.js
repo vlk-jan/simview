@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { setupControls } from "./InteractionControls.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import {
-    SCENE_CONFIG,
+    FREQ_CONFIG,
     RENDERER_CONFIG,
     CAMERA_CONFIG,
     CONTROLS_CONFIG,
@@ -14,15 +14,23 @@ export class Scene {
         this.app = app;
         this.scene = new THREE.Scene();
         this.initScene();
-        this.minRenderDelay = 1000 / 60; // 60 FPS
+        this.minRenderDelay = 1000 / FREQ_CONFIG.scene;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
     }
 
     initScene() {
-        THREE.Object3D.DEFAULT_UP.set(...SCENE_CONFIG.defaultUp);
+        THREE.Object3D.DEFAULT_UP.set(...CAMERA_CONFIG.up);
         const renderer = this.createRenderer();
         const camera = this.createCamera();
-        const controls = setupControls(camera, renderer);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.listenToKeyEvents(window);
+        Object.assign(controls, CONTROLS_CONFIG);
+        controls.addEventListener("start", () => {
+            document.body.style.cursor = "grabbing";
+        });
+        controls.addEventListener("end", () => {
+            document.body.style.cursor = "auto";
+        });
         this.setupLighting(this.scene);
         const light = new THREE.DirectionalLight(0xffffff, 1);
         light.position.set(10, 10, 10);
@@ -51,7 +59,6 @@ export class Scene {
 
     setupWindowHandlers() {
         window.addEventListener("resize", () => this.#handleWindowResize());
-        window.addEventListener("error", (event) => this.#handleError(event));
     }
 
     #handleWindowResize() {
@@ -59,16 +66,6 @@ export class Scene {
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    }
-
-    #handleError(event) {
-        console.error("Application Error:", {
-            message: event.message,
-            source: event.filename,
-            lineNumber: event.lineno,
-            columnNumber: event.colno,
-            error: event.error,
-        });
     }
 
     createRenderer() {
