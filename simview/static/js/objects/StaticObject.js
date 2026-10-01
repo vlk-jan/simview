@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { STATIC_OBJECT_CONFIG } from "../config.js"; // Assuming this exists
+import { STATIC_OBJECT_CONFIG } from "../config.js";
 import {
     createGeometry,
     createMesh,
@@ -48,18 +48,15 @@ export class StaticObject {
     }
 
     createBatchGroups(objectData) {
-        const geometryConfig = STATIC_OBJECT_CONFIG.geometry || {};
+        const geometryConfig = STATIC_OBJECT_CONFIG.geometry;
+        const configsFor = (shape) => {
+            const color = shape.color || 0xffffff;
+            return [{ color }, { ...STATIC_OBJECT_CONFIG.points, color }];
+        };
 
         if (this.isSingleton) {
             const shape = objectData.shape;
-            const meshConfig = {
-                ...STATIC_OBJECT_CONFIG.mesh,
-                color: shape.color || STATIC_OBJECT_CONFIG.color || 0xffffff,
-            };
-            const pointsConfig = {
-                ...STATIC_OBJECT_CONFIG.points,
-                color: shape.color || STATIC_OBJECT_CONFIG.color || 0xffffff,
-            };
+            const [meshConfig, pointsConfig] = configsFor(shape);
 
             if (shape.type === "pointcloud") {
                 for (let i = 0; i < this.batchSize; i++) {
@@ -76,7 +73,7 @@ export class StaticObject {
                 const geometry = createGeometry(shape, geometryConfig);
                 const meshMaterial = createMesh(geometry, meshConfig).material;
                 const wireframeMaterial = new THREE.MeshBasicMaterial({
-                    color: STATIC_OBJECT_CONFIG.wireframe?.color || 0x4080ff,
+                    color: STATIC_OBJECT_CONFIG.wireframe.color,
                     wireframe: true,
                     transparent: true,
                     opacity: 0.2
@@ -111,14 +108,7 @@ export class StaticObject {
                 this.batchGroups.push(batchGroup);
 
                 const shape = objectData.shapes[i];
-                const meshConfig = {
-                    ...STATIC_OBJECT_CONFIG.mesh,
-                    color: shape.color || STATIC_OBJECT_CONFIG.color || 0xffffff,
-                };
-                const pointsConfig = {
-                    ...STATIC_OBJECT_CONFIG.points,
-                    color: shape.color || STATIC_OBJECT_CONFIG.color || 0xffffff,
-                };
+                const [meshConfig, pointsConfig] = configsFor(shape);
 
                 if (shape.type === "pointcloud") {
                     const points = createPoints(shape.points, pointsConfig);

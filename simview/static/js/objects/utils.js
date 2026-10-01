@@ -29,7 +29,6 @@ const DEFAULT_MESH_CONFIG = {
     color: 0xffffff,
     roughness: 0.5,
     metalness: 0.5,
-    envMapIntensity: 1,
     transparent: false,
 };
 
@@ -274,7 +273,7 @@ export function createWireframe(geometry, wireframeConfig, visible = true) {
 }
 
 /**
- * Creates a THREE.js mesh with standard material and environment mapping
+ * Creates a THREE.js mesh with a standard material
  * @param {THREE.BufferGeometry} geometry - The geometry for the mesh
  * @param {MeshConfig} [meshConfig={}] - Configuration for mesh appearance
  * @param {boolean} [visible=true] - Initial visibility of the mesh
@@ -285,28 +284,12 @@ export function createMesh(geometry, meshConfig, visible = true) {
 
     const config = { ...DEFAULT_MESH_CONFIG, ...meshConfig };
 
-    let envMap = null;
-    if (config.envMapPath) {
-        const format = ".jpg";
-        const urls = [
-            config.envMapPath + "nx" + format,
-            config.envMapPath + "px" + format,
-            config.envMapPath + "pz" + format,
-            config.envMapPath + "nz" + format,
-            config.envMapPath + "py" + format,
-            config.envMapPath + "ny" + format,
-        ];
-        envMap = new THREE.CubeTextureLoader().load(urls);
-    }
-
     const material = new THREE.MeshStandardMaterial({
         color: config.color,
         roughness: config.roughness,
         metalness: config.metalness,
         opacity: config.opacity,
-        envMapIntensity: config.envMapIntensity,
         transparent: config.transparent,
-        envMap: envMap,
         side: THREE.DoubleSide,
     });
 

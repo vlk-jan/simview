@@ -326,7 +326,7 @@ export class Body {
                 this.representations["mesh"] = this.createInstancedRepresentation(
                     "mesh",
                     geometry,
-                    BODY_CONFIG.mesh,
+                    {},
                     bodyData
                 );
                 this.representations["wireframe"] = this.createInstancedRepresentation(
