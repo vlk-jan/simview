@@ -11,21 +11,8 @@ export class Legend {
     createContainer(id, bottomOffset) {
         const container = document.createElement("div");
         container.id = id;
-        container.style.position = "absolute";
+        container.className = "sv-legend";
         container.style.bottom = bottomOffset;
-        container.style.left = "20px";
-        container.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-        container.style.color = "white";
-        container.style.padding = "10px";
-        container.style.borderRadius = "5px";
-        container.style.fontFamily = "sans-serif";
-        container.style.fontSize = "12px";
-        container.style.pointerEvents = "none";
-        container.style.zIndex = "1000";
-        container.style.display = "flex";
-        container.style.flexDirection = "column";
-        container.style.minWidth = "150px";
-        container.style.border = "1px solid rgba(255, 255, 255, 0.2)";
         return container;
     }
 
@@ -122,9 +109,9 @@ export class Legend {
 
     #renderGradient(container, title, unit, minVal, maxVal, decimals, cmapName) {
         container.innerHTML = `
-            <div style="font-weight: bold; margin-bottom: 5px; text-align: center;">${title} ${unit ? `(${unit})` : ""}</div>
-            <div class="legend-gradient" style="height: 20px; width: 100%; margin-bottom: 5px; border: 1px solid white;"></div>
-            <div style="display: flex; justify-content: space-between;">
+            <div class="sv-legend-title">${title} ${unit ? `(${unit})` : ""}</div>
+            <div class="legend-gradient"></div>
+            <div class="sv-legend-range">
                 <span>${minVal.toFixed(decimals)}</span>
                 <span>${maxVal.toFixed(decimals)}</span>
             </div>

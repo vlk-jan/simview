@@ -51,7 +51,7 @@ export const RENDERER_CONFIG = {
     antialias: true,
     preserveDrawingBuffer: true,
     pixelRatio: window.devicePixelRatio,
-    clearColor: 0x000000,
+    clearColor: 0x0d0f13, // matches --sv-bg in controls.css
     clearAlpha: 1.0,
 };
 

@@ -425,11 +425,7 @@ export class ScalarPlotter {
 
     _createTooltip(plotDiv) {
         const tooltip = document.createElement("div");
-        tooltip.style.cssText =
-            "position:absolute;pointer-events:none;display:none;" +
-            "background:rgba(20,20,20,0.9);border:1px solid rgba(255,255,255,0.3);" +
-            "border-radius:3px;padding:4px 6px;font-family:Arial;font-size:11px;" +
-            "color:white;white-space:nowrap;z-index:10;";
+        tooltip.className = "sv-chart-tooltip";
         plotDiv.style.position = "relative";
         plotDiv.appendChild(tooltip);
         plotDiv._tooltip = tooltip;

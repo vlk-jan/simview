@@ -9,7 +9,6 @@ import {
     previousEpisodeStart,
 } from "../utils/episodes.js";
 
-const buttonHeight = 25;
 export class PlaybackControls {
     constructor(animationController) {
         this.animationController = animationController;
@@ -22,38 +21,21 @@ export class PlaybackControls {
         this.minRenderDelay = 1000 / FREQ_CONFIG.playbackControls;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
         this.container = document.createElement("div");
-        Object.assign(this.container.style, {
-            position: "absolute",
-            bottom: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "5px",
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            padding: "10px 20px",
-            borderRadius: "5px",
-        });
+        this.container.className = "sv-playback";
 
         this.controlsRow = document.createElement("div");
-        Object.assign(this.controlsRow.style, {
-            display: "flex",
-            alignItems: "center",
-            flexDirection: "row",
-            gap: "15px",
-        });
+        this.controlsRow.className = "sv-playback-row";
 
         // **Cache listener functions**
         this.recordButtonClick = () => {
             if (this.animationController.isRecording) {
                 this.animationController.stopRecording();
                 this.recordButton.textContent = "⚫ REC";
-                this.recordButton.style.backgroundColor = "#444";
+                this.recordButton.classList.remove("is-recording");
             } else {
                 this.animationController.startRecording();
                 this.recordButton.textContent = "⬛ STOP";
-                this.recordButton.style.backgroundColor = "#aa0000";
+                this.recordButton.classList.add("is-recording");
             }
         };
 
@@ -193,14 +175,11 @@ export class PlaybackControls {
             option.text = formatLabels[format];
             this.formatSelect.appendChild(option);
         });
-        Object.assign(this.formatSelect.style, {
-            width: "100px",
-            textAlign: "center",
-            height: buttonHeight + "px",
-        });
+        this.formatSelect.style.width = "80px";
         this.formatSelect.addEventListener("change", this.formatSelectChange);
 
         this.playButton = this.#createButton("Play", this.playButtonClick, "70px");
+        this.playButton.classList.add("sv-play");
 
         this.stepBackButton = this.#createButton(
             "←",
@@ -229,14 +208,7 @@ export class PlaybackControls {
         );
         this.nextEpisodeButton.title = "Next episode (])";
         this.episodeLabelSpan = document.createElement("span");
-        Object.assign(this.episodeLabelSpan.style, {
-            color: "white",
-            display: "none",
-            alignItems: "center",
-            height: "30px",
-            fontFamily: "monospace",
-            whiteSpace: "nowrap",
-        });
+        this.episodeLabelSpan.className = "sv-readout";
 
         this.speedSelect = document.createElement("select");
         [0.1, 0.25, 0.5, 1, 2, 5].forEach((speed) => {
@@ -246,55 +218,22 @@ export class PlaybackControls {
             if (speed === 1) option.selected = true;
             this.speedSelect.appendChild(option);
         });
-        Object.assign(this.speedSelect.style, {
-            width: "80px",
-            textAlign: "center",
-            height: buttonHeight + "px",
-        });
+        this.speedSelect.style.width = "70px";
         this.speedSelect.addEventListener("change", this.speedSelectChange);
 
         this.frameCounter = document.createElement("span");
-        Object.assign(this.frameCounter.style, {
-            color: "white",
-            display: "flex",
-            alignItems: "center",
-            height: "30px",
-            marginLeft: "5px",
-            fontFamily: "monospace",
-            whiteSpace: "nowrap",
-        });
+        this.frameCounter.className = "sv-readout";
 
         this.progressBarContainer = document.createElement("div");
-        Object.assign(this.progressBarContainer.style, {
-            width: "100%",
-            marginLeft: "15px",
-            marginRight: "15px",
-            // `relative` so the absolutely-positioned episode ticks below are
-            // placed against the bar rather than the page.
-            position: "relative",
-            height: "8px",
-            backgroundColor: "#222",
-            borderRadius: "4px",
-            cursor: "pointer",
-            marginTop: "5px",
-        });
+        this.progressBarContainer.className = "sv-progress";
 
         this.progressBar = document.createElement("div");
-        Object.assign(this.progressBar.style, {
-            width: "0%",
-            height: "100%",
-            backgroundColor: "#888",
-            borderRadius: "4px",
-        });
+        this.progressBar.className = "sv-progress-fill";
         this.progressBarContainer.appendChild(this.progressBar);
         // Ticks live in their own overlay so redrawing them never disturbs the
         // progress fill, which updates every frame.
         this.episodeTicks = document.createElement("div");
-        Object.assign(this.episodeTicks.style, {
-            position: "absolute",
-            inset: "0",
-            pointerEvents: "none",
-        });
+        this.episodeTicks.className = "sv-progress-ticks";
         this.progressBarContainer.appendChild(this.episodeTicks);
         this.progressBarContainer.addEventListener(
             "click",
@@ -376,15 +315,8 @@ export class PlaybackControls {
             // Frame 0 is the timeline's own start, not a visible boundary.
             if (episode.startIndex === 0) continue;
             const tick = document.createElement("div");
-            Object.assign(tick.style, {
-                position: "absolute",
-                top: "0",
-                bottom: "0",
-                width: "2px",
-                marginLeft: "-1px",
-                backgroundColor: "rgba(255, 255, 255, 0.75)",
-                left: `${(episode.startIndex / (frameCount - 1)) * 100}%`,
-            });
+            tick.className = "sv-episode-tick";
+            tick.style.left = `${(episode.startIndex / (frameCount - 1)) * 100}%`;
             this.episodeTicks.appendChild(tick);
         }
         // updateElements() only runs on a playback tick, so a scene sitting
@@ -411,7 +343,7 @@ export class PlaybackControls {
     updateElements() {
         const currentTime = this.animationController.getCurrentTime().toFixed(2);
         const totalTime = this.animationController.getTotalTime().toFixed(2);
-        this.frameCounter.textContent = `time: ${currentTime} / ${totalTime}`;
+        this.frameCounter.textContent = `${currentTime} / ${totalTime} s`;
         const progress = currentTime / totalTime;
         this.progressBar.style.width = `${(progress * 100).toFixed(1)}%`;
         this.#updateEpisodeLabel();
@@ -459,22 +391,11 @@ export class PlaybackControls {
         document.removeEventListener("keydown", this.keydownListener);
     }
 
+    // Fixed widths keep the row from shifting when a label toggles
+    // (Play/Pause, REC/STOP); everything else is styled by .sv-playback.
     #createButton(text, onClick, width = "auto") {
         const button = document.createElement("button");
-        Object.assign(button.style, {
-            padding: "5px 5px",
-            backgroundColor: "#444",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            width: width,
-            minWidth: "40px",
-            height: buttonHeight + "px",
-            display: "inline-flex",
-            justifyContent: "center",
-            alignItems: "center",
-        });
+        button.style.width = width;
         button.textContent = text;
         button.addEventListener("click", onClick);
         return button;

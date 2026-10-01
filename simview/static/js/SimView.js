@@ -81,14 +81,14 @@ export class SimView {
         const splash = document.getElementById("loading-splash");
         const base = this.staticBase;
         try {
-            if (splash) splash.innerHTML = "<h1>Loading Model (HTTP)...</h1>";
+            if (splash) splash.innerHTML = "<h1>Fetching model…</h1>";
             console.time("fetch_model");
             const modelResponse = await fetch(base ? `${base}/model.json` : "/model");
             console.timeEnd("fetch_model");
             if (!modelResponse.ok)
                 throw new Error(`Failed to fetch model: ${modelResponse.status} ${modelResponse.statusText}`);
 
-            if (splash) splash.innerHTML = "<h1>Parsing Model JSON...</h1>";
+            if (splash) splash.innerHTML = "<h1>Parsing model…</h1>";
             console.time("parse_model");
             const model = await modelResponse.json();
             console.timeEnd("parse_model");
@@ -100,7 +100,7 @@ export class SimView {
             console.log("Model received, initializing components...");
             this.initFromModel(model);
 
-            if (splash) splash.innerHTML = "<h1>Loading States (HTTP)...</h1>";
+            if (splash) splash.innerHTML = "<h1>Fetching states…</h1>";
             console.time("fetch_states");
             const statesResponse = await fetch(base ? `${base}/states.json` : "/states");
             console.timeEnd("fetch_states");
@@ -148,7 +148,7 @@ export class SimView {
         } catch (error) {
             console.error("Critical error during initial data fetch:", error);
             if (splash) {
-                splash.innerHTML = `<h1 style="color: red;">Load Error</h1><p>${error.message}</p><p>Check browser console for details.</p>`;
+                splash.innerHTML = `<h1 class="sv-splash-error">Couldn't load the simulation</h1><p>${error.message}</p><p>See the browser console for details.</p>`;
             }
             throw error;
         }
@@ -293,20 +293,8 @@ export class SimView {
     showLiveBadge() {
         if (this.liveBadge) return;
         const badge = document.createElement("div");
+        badge.className = "sv-live-badge";
         badge.textContent = "LIVE";
-        Object.assign(badge.style, {
-            position: "absolute",
-            bottom: "20px",
-            right: "20px",
-            padding: "4px 10px",
-            borderRadius: "4px",
-            backgroundColor: "rgba(200, 0, 0, 0.8)",
-            color: "white",
-            fontFamily: "monospace",
-            fontWeight: "bold",
-            letterSpacing: "1px",
-            zIndex: 1000,
-        });
         document.body.appendChild(badge);
         this.liveBadge = badge;
     }
@@ -568,7 +556,7 @@ export class SimView {
             console.error("Initialization failed:", error);
             const splash = document.getElementById("loading-splash");
             if (splash) {
-                splash.innerHTML = `<h1 style="color: red;">Failed to connect or initialize</h1><p>${error.message}</p>`;
+                splash.innerHTML = `<h1 class="sv-splash-error">Failed to connect or initialize</h1><p>${error.message}</p>`;
             }
         }
     }

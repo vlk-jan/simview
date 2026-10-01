@@ -208,18 +208,6 @@ export class InteractionController {
         if (!tooltip) {
             tooltip = document.createElement("div");
             tooltip.id = "terrain-tooltip";
-            Object.assign(tooltip.style, {
-                position: "absolute",
-                background: "rgba(0, 0, 0, 0.8)",
-                color: "white",
-                padding: "8px",
-                borderRadius: "4px",
-                pointerEvents: "none",
-                zIndex: "1000",
-                fontSize: "12px",
-                fontFamily: "monospace",
-                whiteSpace: "pre"
-            });
             document.body.appendChild(tooltip);
         }
 
