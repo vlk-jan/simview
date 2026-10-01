@@ -162,6 +162,14 @@ export class Body {
         this.validStates = Math.max(this.validStates || 0, stateIndex + 1);
     }
 
+    // A point cloud with no per-frame data is a static prop, not a body with
+    // a pose worth reading, tracking or profiling terrain under. One that
+    // does move (validStates > 0) counts like any other body. Only settled
+    // once the store's histories are appended (SimView.onStoreReady).
+    get hasPose() {
+        return !this.isPointCloud || this.validStates > 0;
+    }
+
     // --- Trails ---
 
     // Brings the trail lines up to date with `validStates`. Called once per

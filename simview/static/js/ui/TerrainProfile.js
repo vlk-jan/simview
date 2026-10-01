@@ -28,7 +28,7 @@ export class TerrainProfile {
         this.availableLayers = this.app.terrain.getAvailableDiffLayers();
         if (this.availableLayers.length === 0) this.availableLayers = ["height"];
         this.layer = this.availableLayers[0];
-        this.bodyNames = [...this.app.bodies.keys()];
+        this.bodyNames = [...this.app.bodies].filter(([, b]) => b.hasPose).map(([n]) => n);
         this.selectedBody = this.bodyNames[0] ?? null;
         this.pathMode = "own"; // "own", or a batch index (string) to sample every batch along
 

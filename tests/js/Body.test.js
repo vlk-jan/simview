@@ -65,6 +65,13 @@ describe("Body pointcloud color/embedding", () => {
         expect(body.embeddingDim).toBe(0);
     });
 
+    it("hasPose: a static point cloud has none until it gets per-frame states", () => {
+        const body = new Body(makePointcloudBodyData(), fakeApp());
+        expect(body.hasPose).toBe(false);
+        body.validStates = 3;
+        expect(body.hasPose).toBe(true);
+    });
+
     it("decodes shape.color/shape.embedding and infers embeddingDim from flat length", () => {
         const body = new Body(
             makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }),

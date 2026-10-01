@@ -387,6 +387,7 @@ export class SimView {
         // out to carry per-frame data, which is only knowable now that
         // appendBodyHistories has run (see BodyStateWindow.updateBodyList).
         if (this.bodyStateWindow) this.bodyStateWindow.updateBodyList();
+        if (this.uiControls) this.uiControls.updateTrackBodyOptions();
         if (this.errorMetrics) {
             this.errorMetrics.onHistoryReady();
         }

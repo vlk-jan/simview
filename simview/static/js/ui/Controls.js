@@ -58,6 +58,28 @@ export class UIControls {
         return [...modes];
     }
 
+    trackableBodyNames() {
+        return ["None", ...[...this.app.bodies].filter(([, b]) => b.hasPose).map(([n]) => n)];
+    }
+
+    // Body.hasPose is only settled once histories are appended (after this
+    // GUI is built), so SimView.onStoreReady calls this to drop static point
+    // clouds from Track Body. lil-gui's options() re-adds the controller at
+    // the folder's end, so it's moved back into its original slot.
+    updateTrackBodyOptions() {
+        const old = this.trackBodyCtrl;
+        if (!old) return;
+        const next = old.domElement.nextSibling;
+        const parent = old.domElement.parentNode;
+        const names = this.trackableBodyNames();
+        const ctrl = old.options(names).onChange((value) => {
+            this.app.uiState.trackBody = value;
+        });
+        parent.insertBefore(ctrl.domElement, next);
+        if (!names.includes(ctrl.getValue())) ctrl.setValue("None");
+        this.trackBodyCtrl = ctrl;
+    }
+
     determineHasPointClouds() {
         let found = false;
         this.app.bodies.forEach((body) => {
@@ -148,7 +170,7 @@ export class UIControls {
             if (this.hasPointClouds) {
                 this.bodyFolder
                     .add(controls, "showPointClouds")
-                    .name("Show Point Clouds")
+                    .name(this.attributeAvailability.contacts ? "Show Point Clouds" : "Show Point Clouds (C)")
                     .onChange((value) => {
                         this.updatePointCloudsVisibility(value);
                     });
@@ -401,9 +423,8 @@ export class UIControls {
                 this.app.scene.camera.updateProjectionMatrix();
             });
         if (this.app.bodies && this.app.bodies.size > 0) {
-            const bodyNames = ["None", ...Array.from(this.app.bodies.keys())];
-            cameraFolder
-                .add(cameraControls, "trackBody", bodyNames)
+            this.trackBodyCtrl = cameraFolder
+                .add(cameraControls, "trackBody", this.trackableBodyNames())
                 .name("Track Body")
                 .onChange((value) => {
                     this.app.uiState.trackBody = value;
@@ -652,8 +673,11 @@ export class UIControls {
                         this.toggleControl("smoothInterpolation");
                         break;
                     case "c":
+                        // Shared key: contacts win when the scene has them.
                         if (this.attributeAvailability.contacts)
                             this.toggleControl("showContacts");
+                        else if (this.hasPointClouds)
+                            this.toggleControl("showPointClouds");
                         break;
                     case "v":
                         if (this.attributeAvailability.velocity)

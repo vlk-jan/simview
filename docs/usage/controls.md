@@ -50,7 +50,7 @@ way.
 - **`A`**: Toggle Axes Visibility
 - **`G`**: Toggle Trajectory Trails
 - **`I`**: Toggle Smooth Interpolation (on by default; interpolates position/orientation between recorded states during playback and scrubbing instead of snapping to the nearest frame)
-- **`C`**: Toggle Contact Points
+- **`C`**: Toggle Contact Points (or, in a scene with point clouds and no contacts, Show Point Clouds)
 - **`V`**: Toggle Linear Velocity
 - **`W`**: Toggle Angular Velocity
 - **`F`**: Toggle Linear Force

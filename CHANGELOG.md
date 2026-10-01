@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`C` toggles Show Point Clouds** in scenes that have point clouds but no
+  contacts (contacts keep the key when present); the label reads "Show Point
+  Clouds (C)" when the key applies.
+
+### Fixed
+
+- **Stateless point clouds no longer show up as trackable bodies.** A point cloud
+  with no per-frame states (a static prop) is now left out of the Analysis tab's
+  terrain-profile body picker (it could even be the default, giving an empty
+  profile) and the Camera "Track Body" list, matching the Body State window.
+  `Body#hasPose` is the shared rule.
+- The playback time readout shows two decimals and no longer wraps onto two lines
+  in a narrow controls row.
+- Analysis scalar tabs size to their label instead of splitting the bar evenly, so
+  with many scalars the names stay readable rather than truncating to "wh…"; the
+  bar wraps as before.
+
 ## [5.0.0] - 2026-09-21
 
 A cleanup release: no new features, roughly a thousand lines less code, two Python

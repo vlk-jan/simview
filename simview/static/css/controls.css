@@ -209,7 +209,7 @@ button:active {
 
 /* Tabs */
 .scalar-tab {
-    flex: 1;
+    flex: 0 1 auto;
     text-align: center;
     padding: 5px 10px; /* Adjusted padding */
     margin-right: 2px; /* Space between tabs */
@@ -224,9 +224,7 @@ button:active {
     border-bottom: 1px solid white;
     margin-bottom: -1px;
     font-weight: bold;
-    white-space: nowrap; /* Prevent wrapping */
-    overflow: hidden; /* Hide overflow */
-    text-overflow: ellipsis; /* Add ellipsis if text too long */
+    white-space: nowrap; /* Prevent wrapping; the tab bar wraps instead */
 }
 .scalar-tab:first-child {
     margin-left: 0;

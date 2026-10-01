@@ -261,6 +261,7 @@ export class PlaybackControls {
             height: "30px",
             marginLeft: "5px",
             fontFamily: "monospace",
+            whiteSpace: "nowrap",
         });
 
         this.progressBarContainer = document.createElement("div");
@@ -408,8 +409,8 @@ export class PlaybackControls {
     }
 
     updateElements() {
-        const currentTime = this.animationController.getCurrentTime().toFixed(3);
-        const totalTime = this.animationController.getTotalTime().toFixed(3);
+        const currentTime = this.animationController.getCurrentTime().toFixed(2);
+        const totalTime = this.animationController.getTotalTime().toFixed(2);
         this.frameCounter.textContent = `time: ${currentTime} / ${totalTime}`;
         const progress = currentTime / totalTime;
         this.progressBar.style.width = `${(progress * 100).toFixed(1)}%`;
