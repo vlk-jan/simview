@@ -3,7 +3,7 @@ import json
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -653,20 +653,91 @@ class SimulationScene:
                 (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
                 enabling the viewer's click-to-similarity "features" color mode.
         """
-        self.model.create_terrain(
-            heightmap,
+        batch_size = self.model.batch_size
+        if heightmap.ndim == 2:
+            heightmap = heightmap.unsqueeze(0)  # add batch dim
+
+        if x_lim is None or y_lim is None:
+            if grid_res is None:
+                raise ValueError("Must provide either (x_lim, y_lim) or grid_res")
+            H_dim, W_dim = heightmap.shape[-2:]
+            x_lim = x_lim or (-W_dim * grid_res / 2.0, W_dim * grid_res / 2.0)
+            y_lim = y_lim or (-H_dim * grid_res / 2.0, H_dim * grid_res / 2.0)
+
+        if normals is None:
+            H_dim, W_dim = heightmap.shape[-2:]
+            res_x = (x_lim[1] - x_lim[0]) / W_dim
+            res_y = (y_lim[1] - y_lim[0]) / H_dim
+            dzdy, dzdx = torch.gradient(heightmap, spacing=(res_y, res_x), dim=(-2, -1))
+            nx = -dzdx
+            ny = -dzdy
+            nz = torch.ones_like(nx)
+            computed_normals = torch.stack([nx, ny, nz], dim=-3)
+            computed_normals = computed_normals / torch.linalg.norm(
+                computed_normals, dim=-3, keepdim=True
+            )
+            normals = cast(torch.Tensor, computed_normals.to(dtype=heightmap.dtype))
+
+        if normals.ndim == 3:  # channels first
+            normals = normals.unsqueeze(0)  # add batch dim
+        properties = {
+            name: (prop.unsqueeze(0) if prop.ndim == 2 else prop)
+            for name, prop in (properties or {}).items()
+        }
+        if embedding_map is not None and embedding_map.ndim == 3:  # channels first
+            embedding_map = embedding_map.unsqueeze(0)
+
+        # Each field's batch dim must be either 1 (shared across all batches) or
+        # exactly batch_size (per-batch). Anything else is a mistake, and the old
+        # code silently mishandled the mixed case (e.g. shared height + per-batch
+        # normals), producing an inconsistent isSingleton flag.
+        provided = {
+            "heightmap": heightmap,
+            "normals": normals,
+            "embedding_map": embedding_map,
+            **properties,
+        }
+        for name, tensor in provided.items():
+            if tensor is not None and tensor.shape[0] not in (1, batch_size):
+                raise ValueError(
+                    f"Terrain '{name}' batch dim ({tensor.shape[0]}) must be 1 "
+                    f"(shared) or {batch_size} (per-batch)."
+                )
+
+        # Singleton only when every provided field is shared and there is more than
+        # one batch to share it across.
+        is_singleton = batch_size > 1 and all(
+            tensor.shape[0] == 1 for tensor in provided.values() if tensor is not None
+        )
+
+        # A fully-shared (singleton) terrain ships exactly one copy of every
+        # field -- the viewer, merge, and `simview terrain` all detect the
+        # shared row by its length (resolution-sized instead of
+        # batch_size * resolution). Only the mixed case (some fields shared,
+        # some per-batch) broadcasts the shared ones, since a non-singleton
+        # terrain's fields must all be batch_size rows.
+        if batch_size > 1 and not is_singleton:
+            if heightmap.shape[0] == 1:
+                heightmap = heightmap.repeat(batch_size, 1, 1)
+            if normals.shape[0] == 1:
+                normals = normals.repeat(batch_size, 1, 1, 1)
+            properties = {
+                name: (prop.repeat(batch_size, 1, 1) if prop.shape[0] == 1 else prop)
+                for name, prop in properties.items()
+            }
+            if embedding_map is not None and embedding_map.shape[0] == 1:
+                embedding_map = embedding_map.repeat(batch_size, 1, 1, 1)
+
+        self.model.terrain = SimViewTerrain.create(
+            heightmap=heightmap,
             normals=normals,
             x_lim=x_lim,
             y_lim=y_lim,
-            grid_res=grid_res,
+            is_singleton=is_singleton,
             properties=properties,
             property_bounds=property_bounds,
             embedding_map=embedding_map,
         )
-
-    def add_terrain_object(self, terrain: SimViewTerrain) -> None:
-        """Adds a pre-configured SimViewTerrain object to the model."""
-        self.model.add_terrain(terrain)
 
     def create_pointcloud(
         self,
@@ -687,8 +758,6 @@ class SimulationScene:
                 vector (e.g. a reduced-dim PCA projection) enabling the
                 viewer's click-to-similarity color mode.
         """
-        if body_name in self.model.bodies:
-            raise ValueError(f"Dynamic body {body_name} already exists")
         self.model.add_body(
             SimViewBody.create_pointcloud(
                 body_name, points, color=color, embedding=embedding, **kwargs
@@ -719,35 +788,16 @@ class SimulationScene:
           ``add_trajectory`` as usual -- it's just interpreted as local to the
           parent's current-frame pose instead of world space.
         """
-        self.model.create_body(
-            body_name,
-            shape_type,
-            available_attributes=available_attributes,
-            parent=parent,
-            local_transform=local_transform,
-            **kwargs,
+        self.model.add_body(
+            SimViewBody.create(
+                body_name,
+                shape_type,
+                available_attributes=available_attributes,
+                parent=parent,
+                local_transform=local_transform,
+                **kwargs,
+            )
         )
-
-    def add_body_object(self, body: SimViewBody) -> None:
-        """Adds a pre-configured SimViewBody object to the model. See
-        `create_body` for the meaning of `body.parent`/`body.local_transform`."""
-        self.model.add_body(body)
-
-    def create_static_object_singleton(
-        self, name: str, shape_type: BodyShapeType, **kwargs
-    ) -> None:
-        """Creates and adds a singleton static object to the simulation model."""
-        self.model.create_static_object_singleton(name, shape_type, **kwargs)
-
-    def create_static_object_batched(
-        self, name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]
-    ) -> None:
-        """Creates and adds a batched static object to the simulation model."""
-        self.model.create_static_object_batched(name, shape_type, shapes_kwargs)
-
-    def add_static_object_instance(self, static_object: SimViewStaticObject) -> None:
-        """Adds a pre-configured SimViewStaticObject to the model."""
-        self.model.add_static_object(static_object)
 
     def _clear_internal_data(self) -> None:
         """
