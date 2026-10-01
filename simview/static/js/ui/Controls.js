@@ -443,13 +443,8 @@ export class UIControls {
             
             splitScreenCtrl.onChange(v => {
                 this.app.uiState.splitScreen = v;
-                if (v) {
-                    splitBatchACtrl.show();
-                    splitBatchBCtrl.show();
-                } else {
-                    splitBatchACtrl.hide();
-                    splitBatchBCtrl.hide();
-                }
+                splitBatchACtrl.show(v);
+                splitBatchBCtrl.show(v);
             });
 
             this.app.uiState.splitScreen = cameraControls.splitScreen;
@@ -807,10 +802,7 @@ export class UIControls {
     // "diff" -- they're meaningless otherwise.
     updateDiffControlsVisibility(mode) {
         if (!this.diffControlsElements) return;
-        for (const ctrl of this.diffControlsElements) {
-            if (mode === "diff") ctrl.show();
-            else ctrl.hide();
-        }
+        for (const ctrl of this.diffControlsElements) ctrl.show(mode === "diff");
     }
 
     // Re-renders the terrain diff overlay after the layer/batch-pair pickers
