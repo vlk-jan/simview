@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simview"
-version = "6.0.0"
+version = "6.0.1"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "BSD-3-Clause"
