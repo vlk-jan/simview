@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.1] - 2026-10-05
+
+### Fixed
+
+- **The 3D view now resizes with the browser window.** The canvas kept the size it
+  had when the page loaded while the panels and charts reflowed, so after a resize
+  the scene came out stretched or cropped.
+
 ## [6.0.0] - 2026-10-01
 
 A cleanup release: about 1,200 fewer lines of application code, plus the vendored
@@ -556,7 +564,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.0.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.0.1...HEAD
+[6.0.1]: https://github.com/vlk-jan/simview/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/vlk-jan/simview/compare/v5.1.1...v6.0.0
 [5.1.1]: https://github.com/vlk-jan/simview/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/vlk-jan/simview/compare/v5.0.0...v5.1.0
