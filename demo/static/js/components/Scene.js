@@ -65,7 +65,7 @@ export class Scene {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
     createRenderer() {
