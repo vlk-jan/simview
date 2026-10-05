@@ -72,3 +72,20 @@ test("screenshot button downloads a .png file", async ({ page }) => {
     const stats = await fs.stat(downloadPath);
     expect(stats.size).toBeGreaterThan(10 * 1024);
 });
+
+// Resize tripwire: the WebGL canvas must follow the window like the HTML
+// overlay does. Scene#handleWindowResize once passed updateStyle=false to
+// renderer.setSize, so the canvas kept its load-time CSS size and the 3D view
+// stretched/cropped while the panels reflowed around it.
+test("the 3D canvas follows a window resize", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForSelector("#loading-splash", { state: "detached", timeout: 20_000 });
+
+    await page.setViewportSize({ width: 900, height: 600 });
+    await expect
+        .poll(() => page.evaluate(() => {
+            const r = window.__debugSimView.scene.renderer.domElement.getBoundingClientRect();
+            return [r.width, r.height];
+        }))
+        .toEqual([900, 600]);
+});
