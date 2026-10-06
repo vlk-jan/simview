@@ -26,6 +26,9 @@ never need `torch` installed.
   per-body data inspection.
 - **Python API** — build scenes incrementally or stream live state as a
   simulation runs.
+- **Embeddable** — an iframe-able page controlled through its URL hash, with
+  static-bundle hosting and DOM events for host pages; see
+  [Embedding](usage/embedding.md).
 - **Portable JSON format** — load/save simulation data as a single JSON
   document (optionally gzip-compressed), with a documented
   [wire format](dev/json-format.md) for interop with other languages.
@@ -39,6 +42,7 @@ never need `torch` installed.
 | Use the `simview` CLI (inspect, query terrain, diff batches, render, merge) | [CLI Utilities](usage/cli.md) |
 | Stream simulation state live as it runs | [Live Streaming](usage/live-streaming.md) |
 | Use SimView from a Jupyter notebook | [Jupyter / Non-blocking Viewing](usage/jupyter.md) |
+| Embed the viewer in my own web app and drive it from outside | [Embedding in Other Applications](usage/embedding.md) |
 | Learn the viewer's keyboard shortcuts and panels | [Visualization Controls](usage/controls.md) |
 | Look up a Python class or function | [API Reference](api/scene.md) |
 | Understand how the pieces fit together, or the JSON wire format | [Developer Guide](dev/architecture.md) |

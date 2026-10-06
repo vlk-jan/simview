@@ -30,6 +30,7 @@ Want to try it without installing anything? There's a
 - **Python API**: Easy-to-use API for generating scenes and launching the visualizer directly from your code.
 - **JSON Support**: Load and save simulation data using a portable JSON format.
 - **Remote Files**: Open a scene straight off a compute host with `simview host:path/to/scene.json` — fetched over SSH, compressed on the wire, and cached locally.
+- **Embeddable**: Drop the viewer into another web app as an iframe — drive time, camera and colour modes through the URL hash, hide its panels, load data from static files you host, and react to `simview:ready`/`simview:frame` events.
 - **Comparing Runs**: Merge several scene files into one, taking whole files or just picked batches — `simview gt.json method_a.json#1 method_b.json#1`.
 
 ---
