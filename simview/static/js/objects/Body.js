@@ -92,6 +92,7 @@ export class Body {
         this.isPointCloud = bodyData.shape?.type === "pointcloud";
         this.representations = { mesh: [], wireframe: [], points: [] };
         this.createBatchGroups(bodyData);
+        if (bodyData.visible === false) this.group.visible = false;
 
         // Position/orientation history across all loaded states, per batch. Local
         // (un-offset) coordinates, shared by trail rendering and error metrics.
@@ -482,6 +483,13 @@ export class Body {
             let material;
             if (type === "mesh") {
                 material = createMesh(source, config).material;
+                // Per-body look declared at authoring time (SimViewBody.color/opacity).
+                if (bodyData.color) material.color.setRGB(...bodyData.color);
+                if (bodyData.opacity != null) {
+                    material.transparent = true;
+                    material.opacity = bodyData.opacity;
+                    material.depthWrite = false;
+                }
             } else if (type === "wireframe") {
                 // InstancedMesh only works with Mesh primitives, so we use a Mesh material with wireframe: true
                 material = new THREE.MeshBasicMaterial({

@@ -44,6 +44,22 @@ produces.
     the playback bar, offers episode navigation, and aggregates scalars per episode (see
     [Episodes](../usage/episodes.md)). Omit the key entirely for an ordinary continuous
     timeline.
+- **`viewerDefaults`** *(object, optional)* — initial viewer UI state. The Python side only
+    checks that it is a JSON-serializable object; the frontend owns the key set and warns
+    on (and ignores) unknown keys. Supported keys, all optional:
+    - **`ui`** *(object)* — values for the viewer's UI state, deep-merged over its
+        defaults before the controls are built: `pointCloudsVisible`, `axesVisible`,
+        `trailsVisible`, `smoothInterpolation`, `terrainColorMode`, `terrainColorMap`,
+        `bodyVisualizationMode`, `terrainProbe`, `attributeVisible.*` (`contacts`,
+        `velocity`, `angularVelocity`, `force`, `torque`) and `terrainVisualizationModes.*`
+        (`surface`, `wireframe`, `normals`). Wins over the viewer's automatic
+        `bodyVisualizationMode` choice.
+    - **`folders`** *(object)* — `{"<options-panel folder title>": true|false}`, opening
+        or closing the matching folder (e.g. `"Body Options"`, `"Terrain Options"`,
+        `"Camera Options"`, `"Scene Info"`).
+    - **`bodyStatesOpen`** *(boolean)* — whether the Body States window starts expanded.
+    - **`panels`** *(object)* — `{playback, analysis, legend, batchLegend, bodyStates,
+        controls}`; a panel set to `false` is hidden entirely.
 
 - **`bodies`** *(array)* — dynamic bodies. Each entry:
     - **`name`** *(string)* — unique identifier, referenced from each state.
@@ -75,6 +91,13 @@ produces.
         arm joint) instead, set only `parent` and keep providing a per-frame
         `bodyTransform` in `states[].bodies[]` as usual — it's then interpreted as local
         to the parent's current-frame pose rather than world space.
+    - **`color`** *(array[3], optional)* — RGB in [0, 1] for the mesh/primitive
+        representation (box, sphere, cylinder, mesh). A point cloud keeps using its
+        per-point `shape.color`; the body-level `color` does not tint points.
+    - **`opacity`** *(float, optional)* — in (0, 1]; below 1 the body is drawn translucent.
+        Omitted means opaque.
+    - **`visible`** *(boolean, optional)* — `false` hides the body initially. Written only
+        when `false`.
 - **`staticObjects`** *(array, optional)* — non-moving geometry. Each entry has `name`,
     `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
     *(array, one per batch)* using the same shape objects as bodies.

@@ -23,6 +23,7 @@ import { WindowedField } from "./components/WindowedField.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
 import { parseViewState, parseStartupOptions, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
+import { mergeUiDefaults, applyViewerDomDefaults } from "./utils/viewerDefaults.js";
 
 export class SimView {
     constructor() {
@@ -447,6 +448,11 @@ export class SimView {
                 }
             }
 
+            // Authoring-time UI defaults (see utils/viewerDefaults.js). After the
+            // auto-detect above so they win, and before any Body/Terrain/Controls
+            // read uiState.
+            this.uiState = mergeUiDefaults(this.uiState, model.viewerDefaults?.ui);
+
             if (Array.isArray(model.bodies)) {
                 model.bodies.forEach((bodyData) => {
                     const body = new Body(bodyData, this);
@@ -507,6 +513,7 @@ export class SimView {
                 this.batchLegend = new BatchLegend(this);
             }
             this.animationController = new AnimationController(this, model.dt);
+            applyViewerDomDefaults(this, model.viewerDefaults);
         } catch (error) {
             console.error("Error during initFromModel:", error);
             const splash = document.getElementById("loading-splash");
@@ -608,8 +615,8 @@ export class SimView {
         return {
             time: this.animationController ? this.animationController.getCurrentTime() : undefined,
             camera: {
-                position: camera.position,
-                target: controls.target,
+                position: camera.position.clone(),
+                target: controls.target.clone(),
                 fov: camera.fov,
             },
             batchIndex: this.batchManager ? this.batchManager.currentlyActiveBatch : undefined,

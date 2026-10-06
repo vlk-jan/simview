@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 from dataclasses import dataclass, field
@@ -293,8 +294,24 @@ class SimViewBody:
     # interpreted as local to the parent's current-frame pose rather than world.
     parent: str | None = None
     local_transform: list[float] | None = None
+    # Per-body look of the mesh/primitive representation (box/sphere/cylinder/
+    # mesh). `color` is an RGB triple in [0, 1]; `opacity` in (0, 1] (None =
+    # opaque); `visible=False` hides the whole body until the user shows it.
+    color: list[float] | None = None
+    opacity: float | None = None
+    visible: bool = True
 
     def __post_init__(self):
+        if self.color is not None:
+            if len(self.color) != 3 or not all(0.0 <= c <= 1.0 for c in self.color):
+                raise ValueError(
+                    f"Body '{self.name}' color must be an RGB triple of floats "
+                    f"in [0, 1]; got {self.color!r}."
+                )
+        if self.opacity is not None and not 0.0 < self.opacity <= 1.0:
+            raise ValueError(
+                f"Body '{self.name}' opacity must be in (0, 1]; got {self.opacity!r}."
+            )
         if self.local_transform is not None:
             if self.parent is None:
                 raise ValueError(
@@ -340,6 +357,9 @@ class SimViewBody:
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
         parent: str | None = None,
         local_transform: Any | None = None,
+        color: Any | None = None,
+        opacity: float | None = None,
+        visible: bool = True,
         **kwargs,
     ) -> "SimViewBody":
         shape_dict = SimViewBody._create_shape_dict(body_type, **kwargs)
@@ -352,6 +372,9 @@ class SimViewBody:
             local_transform=list(local_transform)
             if local_transform is not None
             else None,
+            color=[float(c) for c in color] if color is not None else None,
+            opacity=opacity,
+            visible=visible,
         )
         if available_attributes is not None:
             body.set_available_attributes(available_attributes)
@@ -385,21 +408,28 @@ class SimViewBody:
                 f"points must have shape (N, 3); got {tuple(points.shape)}."
             )
         N = points.shape[0]
+        shape_extra: dict[str, Any] = {}
         if color is not None:
             if tuple(color.shape) != (N, 3):
                 raise ValueError(
                     f"color must have shape ({N}, 3) matching points; got {tuple(color.shape)}."
                 )
-            kwargs["color"] = color
+            shape_extra["color"] = color
         if embedding is not None:
             if embedding.ndim != 2 or embedding.shape[0] != N:
                 raise ValueError(
                     f"embedding must have shape ({N}, K) matching points; got {tuple(embedding.shape)}."
                 )
-            kwargs["embedding"] = embedding
-        return SimViewBody.create(
+            shape_extra["embedding"] = embedding
+        # Per-point `color` lives in the shape, so it can't go through
+        # `create`'s kwargs (where `color` is the body-level tint).
+        body = SimViewBody.create(
             name, BodyShapeType.POINTCLOUD, points=points, **kwargs
         )
+        body.shape.update(
+            SimViewBody._create_shape_dict(BodyShapeType.POINTCLOUD, **shape_extra)
+        )
+        return body
 
     @staticmethod
     def create_mesh(
@@ -417,6 +447,12 @@ class SimViewBody:
             r["parent"] = self.parent
         if self.local_transform is not None:
             r["localTransform"] = self.local_transform
+        if self.color is not None:
+            r["color"] = self.color
+        if self.opacity is not None:
+            r["opacity"] = self.opacity
+        if not self.visible:
+            r["visible"] = False
         return r
 
     @classmethod
@@ -438,6 +474,9 @@ class SimViewBody:
             else None,
             parent=d.get("parent"),
             local_transform=d.get("localTransform"),
+            color=d.get("color"),
+            opacity=d.get("opacity"),
+            visible=d.get("visible", True),
         )
 
 
@@ -612,8 +651,20 @@ class SimViewModel:
     # Optional episode boundaries for an episodic (e.g. RL) recording -- see
     # SimViewEpisode. None means "one continuous timeline", the default.
     episodes: list[SimViewEpisode] | None = None
+    # Initial viewer UI state (see docs/dev/json-format.md "viewerDefaults");
+    # lenient on purpose -- the frontend owns the key set.
+    viewer_defaults: dict[str, Any] | None = None
 
     def __post_init__(self):
+        if self.viewer_defaults is not None:
+            if not isinstance(self.viewer_defaults, dict):
+                raise ValueError("viewer_defaults must be a dict.")
+            try:
+                json.dumps(self.viewer_defaults)
+            except TypeError as e:
+                raise ValueError(
+                    f"viewer_defaults must be JSON-serializable: {e}"
+                ) from e
         if self.batch_names is not None and len(self.batch_names) != self.batch_size:
             raise ValueError(
                 f"batch_names length ({len(self.batch_names)}) must match batch size ({self.batch_size})"
@@ -661,6 +712,8 @@ class SimViewModel:
             r["metadata"] = self.metadata
         if self.episodes:
             r["episodes"] = [e.to_json() for e in self.episodes]
+        if self.viewer_defaults is not None:
+            r["viewerDefaults"] = self.viewer_defaults
         return r
 
     @classmethod
@@ -710,6 +763,7 @@ class SimViewModel:
                 if d.get("episodes")
                 else None
             ),
+            viewer_defaults=d.get("viewerDefaults"),
         )
 
     @property

@@ -136,6 +136,7 @@ class SimulationScene:
         batch_names: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         episodes: list[SimViewEpisode] | None = None,
+        viewer_defaults: dict[str, Any] | None = None,
     ) -> None:
         """
         Initializes the simulation data container.
@@ -150,6 +151,10 @@ class SimulationScene:
         `episodes` marks the frames an episodic (e.g. RL) recording resets at.
         Usually easier to build up as you go with `mark_episode()` than to pass
         here up front.
+
+        `viewer_defaults` declares the viewer's initial UI state (hidden point
+        clouds, collapsed panels, open/closed GUI folders, ...); see
+        docs/dev/json-format.md for the supported keys.
         """
         self.model = SimViewModel(
             batch_size=batch_size,
@@ -162,6 +167,7 @@ class SimulationScene:
             batch_names=batch_names,
             metadata=metadata,
             episodes=episodes,
+            viewer_defaults=viewer_defaults,
         )
         self.states: list[dict] = []
 
@@ -227,6 +233,7 @@ class SimulationScene:
             batch_names=model.batch_names,
             metadata=model.metadata,
             episodes=model.episodes,
+            viewer_defaults=model.viewer_defaults,
         )
         scene.states = list(states)
         return scene
@@ -734,9 +741,17 @@ class SimulationScene:
         available_attributes: list[OptionalBodyStateAttribute | str] | None = None,
         parent: str | None = None,
         local_transform: LocalTransformLike | None = None,
+        color: Sequence[float] | None = None,
+        opacity: float | None = None,
+        visible: bool = True,
         **kwargs,
     ) -> None:
         """Creates and adds a dynamic body to the simulation model.
+
+        ``color`` (RGB in [0, 1]) and ``opacity`` (in (0, 1]) style the
+        mesh/primitive representation (box/sphere/cylinder/mesh); a point
+        cloud's per-point colour is its shape's own ``color``. ``visible=False``
+        hides the body initially.
 
         ``parent``/``local_transform`` attach this body to another body already
         in the model, instead of it moving in world space:
@@ -758,6 +773,9 @@ class SimulationScene:
                 available_attributes=available_attributes,
                 parent=parent,
                 local_transform=local_transform,
+                color=color,
+                opacity=opacity,
+                visible=visible,
                 **kwargs,
             )
         )
