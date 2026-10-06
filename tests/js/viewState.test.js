@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    parseStartupOptions,
     parseViewState,
     serializeViewState,
     toggleMapFromUiState,
@@ -208,5 +209,18 @@ describe("serializeViewState edge cases", () => {
         expect(hash).toContain("bvm=a%20b%26c");
         const parsed = parseViewState(hash);
         expect(parsed.bodyVisualizationMode).toBe("a b&c");
+    });
+});
+
+describe("parseStartupOptions", () => {
+    it("reads data and ui with or without v=1", () => {
+        expect(parseStartupOptions("#ui=0&data=/x")).toEqual({ data: "/x", ui: false });
+        expect(parseStartupOptions("#v=1&t=2&ui=0&data=%2Fx")).toEqual({ data: "/x", ui: false });
+    });
+    it("defaults when keys are missing or input is bad", () => {
+        expect(parseStartupOptions("#v=1&t=2")).toEqual({ data: null, ui: true });
+        expect(parseStartupOptions("")).toEqual({ data: null, ui: true });
+        expect(parseStartupOptions(undefined)).toEqual({ data: null, ui: true });
+        expect(parseStartupOptions("#ui=1")).toEqual({ data: null, ui: true });
     });
 });

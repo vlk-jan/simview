@@ -2,7 +2,7 @@ import { isEditableTarget } from "../utils/keyboard.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import { colorMapOptions } from "../../lib/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
-import { serializeViewState, toggleMapFromUiState } from "../utils/viewState.js";
+import { serializeViewState } from "../utils/viewState.js";
 
 export class UIControls {
     constructor(app) {
@@ -565,20 +565,7 @@ export class UIControls {
     // copies the full shareable URL to the clipboard, and gives transient
     // feedback on the button itself (label flips to "Copied!" for a beat).
     copyViewLink(controller) {
-        const { camera, controls } = this.app.scene;
-        const toggles = toggleMapFromUiState(this.app.uiState);
-        const hash = serializeViewState({
-            time: this.app.animationController ? this.app.animationController.getCurrentTime() : undefined,
-            camera: {
-                position: camera.position,
-                target: controls.target,
-                fov: camera.fov,
-            },
-            batchIndex: this.app.batchManager ? this.app.batchManager.currentlyActiveBatch : undefined,
-            bodyVisualizationMode: this.app.uiState.bodyVisualizationMode,
-            terrainColorMode: this.app.uiState.terrainColorMode,
-            toggles,
-        });
+        const hash = serializeViewState(this.app.getViewState());
 
         history.replaceState(null, "", hash);
         const url = location.href;
