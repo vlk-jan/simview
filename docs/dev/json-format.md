@@ -22,93 +22,94 @@ produces.
 
 - **`simBatches`** *(integer)* — number of parallel simulation instances (batches).
 - **`batchNames`** *(array[string], optional)* — display name for each batch, length
-  must equal `simBatches`. Shown in the [Batch Legend](../usage/controls.md#batch-legend); falls back to
-  `"Batch <index>"` per entry if omitted, empty, or the wrong length. Renames made from
-  the Batch Legend are persisted server-side (see below) and take precedence over this
-  field on subsequent loads.
+    must equal `simBatches`. Shown in the [Batch Legend](../usage/controls.md#batch-legend); falls back to
+    `"Batch <index>"` per entry if omitted, empty, or the wrong length. Renames made from
+    the Batch Legend are persisted server-side (see below) and take precedence over this
+    field on subsequent loads.
 - **`scalarNames`** *(array[string])* — names of per-batch scalar time-series (e.g. `"energy"`).
 - **`dt`** *(float)* — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.
 - **`collapse`** *(boolean)* — UI hint to start with the body-state window collapsed.
 - **`metadata`** *(object, optional)* — free-form, JSON-serializable run provenance (e.g.
-  engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
-  read-only in `simview info` and the browser's "Scene Info" GUI folder so a scene saved
-  months ago stays self-describing.
+    engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
+    read-only in `simview info` and the browser's "Scene Info" GUI folder so a scene saved
+    months ago stays self-describing.
 - **`episodes`** *(array, optional)* — episode boundaries for an episodic (e.g. RL)
-  recording. Each entry:
-  - **`startIndex`** *(integer)* — index into `states` of the episode's first frame.
-    Must be `>= 0` and strictly increasing across entries; each episode implicitly ends
-    where the next begins (the last runs to the end of `states`).
-  - **`label`** *(string, optional)* — display name; falls back to `"Episode <n>"`.
+    recording. Each entry:
+    - **`startIndex`** *(integer)* — index into `states` of the episode's first frame.
+        Must be `>= 0` and strictly increasing across entries; each episode implicitly ends
+        where the next begins (the last runs to the end of `states`).
+    - **`label`** *(string, optional)* — display name; falls back to `"Episode <n>"`.
 
     Purely descriptive: playback itself is unchanged, but the viewer draws boundaries on
     the playback bar, offers episode navigation, and aggregates scalars per episode (see
     [Episodes](../usage/episodes.md)). Omit the key entirely for an ordinary continuous
     timeline.
+
 - **`bodies`** *(array)* — dynamic bodies. Each entry:
-  - **`name`** *(string)* — unique identifier, referenced from each state.
-  - **`shape`** *(object)* — geometry, keyed by a **string** `type`:
-    - `"box"` — requires `hx`, `hy`, `hz` (half-extents).
-    - `"sphere"` — requires `radius`.
-    - `"cylinder"` — requires `radius`, `height`.
-    - `"pointcloud"` — requires `points` *(array[array[3]])* in the body's local frame.
-      Optional `color` *(array[array[3]], values in [0, 1])* — a static per-point RGB
-      color for vertex-colored rendering. Optional `embedding` *(array[array[K]])* — a
-      per-point K-wide feature vector (e.g. a reduced-dim PCA projection of a learned
-      backbone's features); enables the viewer's click-to-similarity "similarity" Point
-      Color Mode, computed client-side as cosine similarity to a clicked point (see
-      [Controls](../usage/controls.md#point-cloud-and-terrain-similarity-coloring)).
-    - `"mesh"` — requires `vertices` *(array[array[3]])* and `faces` *(array[array[3]])*.
-  - **`availableAttributes`** *(array[string], optional)* — which optional per-state
-    fields this body provides. Any of `"contacts"`, `"velocity"`, `"angularVelocity"`,
-    `"force"`, `"torque"`.
-  - **`parent`** *(string, optional)* — name of another `model.bodies[]` entry this
-    body is attached to. When set, this body's pose is no longer absolute world
-    space; see `localTransform` below and the `bodyTransform` note under
-    [States](#states-dynamic-data).
-  - **`localTransform`** *(array[7], optional)* — `[x, y, z, w, qx, qy, qz]` constant
-    offset from `parent`, for bodies **rigidly** attached (e.g. a wheel bolted to a
-    chassis). Set only together with `parent`. A body with `localTransform` never
-    appears in any state's `bodies[]` — its world pose is derived every frame from
-    its parent's current pose plus this fixed offset, saving the cost of repeating
-    an unchanging transform every frame. For an **articulated** attachment (e.g. an
-    arm joint) instead, set only `parent` and keep providing a per-frame
-    `bodyTransform` in `states[].bodies[]` as usual — it's then interpreted as local
-    to the parent's current-frame pose rather than world space.
+    - **`name`** *(string)* — unique identifier, referenced from each state.
+    - **`shape`** *(object)* — geometry, keyed by a **string** `type`:
+        - `"box"` — requires `hx`, `hy`, `hz` (half-extents).
+        - `"sphere"` — requires `radius`.
+        - `"cylinder"` — requires `radius`, `height`.
+        - `"pointcloud"` — requires `points` *(array[array[3]])* in the body's local frame.
+            Optional `color` *(array[array[3]], values in [0, 1])* — a static per-point RGB
+            color for vertex-colored rendering. Optional `embedding` *(array[array[K]])* — a
+            per-point K-wide feature vector (e.g. a reduced-dim PCA projection of a learned
+            backbone's features); enables the viewer's click-to-similarity "similarity" Point
+            Color Mode, computed client-side as cosine similarity to a clicked point (see
+            [Controls](../usage/controls.md#point-cloud-and-terrain-similarity-coloring)).
+        - `"mesh"` — requires `vertices` *(array[array[3]])* and `faces` *(array[array[3]])*.
+    - **`availableAttributes`** *(array[string], optional)* — which optional per-state
+        fields this body provides. Any of `"contacts"`, `"velocity"`, `"angularVelocity"`,
+        `"force"`, `"torque"`.
+    - **`parent`** *(string, optional)* — name of another `model.bodies[]` entry this
+        body is attached to. When set, this body's pose is no longer absolute world
+        space; see `localTransform` below and the `bodyTransform` note under
+        [States](#states-dynamic-data).
+    - **`localTransform`** *(array[7], optional)* — `[x, y, z, w, qx, qy, qz]` constant
+        offset from `parent`, for bodies **rigidly** attached (e.g. a wheel bolted to a
+        chassis). Set only together with `parent`. A body with `localTransform` never
+        appears in any state's `bodies[]` — its world pose is derived every frame from
+        its parent's current pose plus this fixed offset, saving the cost of repeating
+        an unchanging transform every frame. For an **articulated** attachment (e.g. an
+        arm joint) instead, set only `parent` and keep providing a per-frame
+        `bodyTransform` in `states[].bodies[]` as usual — it's then interpreted as local
+        to the parent's current-frame pose rather than world space.
 - **`staticObjects`** *(array, optional)* — non-moving geometry. Each entry has `name`,
-  `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
-  *(array, one per batch)* using the same shape objects as bodies.
+    `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
+    *(array, one per batch)* using the same shape objects as bodies.
 - **`terrain`** *(object)* — heightfield shared or per-batch:
-  - **`dimensions`**: `sizeX`, `sizeY` *(float)* and `resolutionX`, `resolutionY` *(int)*.
-  - **`bounds`**: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ` — purely spatial; a
-    named property's own value range lives on the property itself (see `properties`
-    below), not here.
-  - **`isSingleton`** *(boolean)* — `true` when one terrain is shared by all batches;
-    `false` when each batch has its own. A singleton terrain ships exactly **one**
-    copy of `heightData`/`normals`/each property's `data`/`embeddingData` (the
-    shared row is detected by its resolution-sized length); readers also still
-    accept the legacy layout where singleton data was broadcast to `simBatches`
-    identical copies.
-  - **`heightData`** *(array[array[float]])* — one flattened `resolutionX * resolutionY`
-    grid per batch (a single flat array is also accepted and treated as one batch).
-  - **`normals`** *(array[array[array[3]]])* — per-batch surface normals, one `[x, y, z]`
-    per grid point.
-  - **`properties`** *(object, optional)* — arbitrary named per-cell scalar fields over
-    the grid (e.g. `friction`, `stiffness`, or any custom name), each selectable as a
-    terrain color mode with no viewer code changes. Keyed by property name, each entry
-    is `{"data": array[array[float]] | null, "min": float | null, "max": float | null}`
-    — `data` follows the same per-batch flattened-grid shape as `heightData`; `min`/`max`
-    are the range the viewer normalizes its color map against, defaulting to the
-    property's own data range but overridable per property with
-    `create_terrain(property_bounds={"friction": (0.0, 1.0)})` to keep one scale
-    comparable across scenes. Cells outside `[min, max]` saturate at the end colors;
-    if either bound is missing or the range is degenerate the viewer falls back to
-    clamping the raw value into `[0, 1]`.
-    Example: `{"friction": {"data": [...], "min": 0.2, "max": 0.9}}`.
-  - **`embeddingData`** *(array[array[float]] | null, optional)* — per-batch, per-cell
-    K-wide feature vectors (flattened `resolutionX * resolutionY * K` per batch),
-    enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
-    `color`/`embedding` on point-cloud bodies above. Not a named property (no min/max,
-    similarity-colored), so it stays a separate top-level field.
+    - **`dimensions`**: `sizeX`, `sizeY` *(float)* and `resolutionX`, `resolutionY` *(int)*.
+    - **`bounds`**: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ` — purely spatial; a
+        named property's own value range lives on the property itself (see `properties`
+        below), not here.
+    - **`isSingleton`** *(boolean)* — `true` when one terrain is shared by all batches;
+        `false` when each batch has its own. A singleton terrain ships exactly **one**
+        copy of `heightData`/`normals`/each property's `data`/`embeddingData` (the
+        shared row is detected by its resolution-sized length); readers also still
+        accept the legacy layout where singleton data was broadcast to `simBatches`
+        identical copies.
+    - **`heightData`** *(array[array[float]])* — one flattened `resolutionX * resolutionY`
+        grid per batch (a single flat array is also accepted and treated as one batch).
+    - **`normals`** *(array[array[array[3]]])* — per-batch surface normals, one `[x, y, z]`
+        per grid point.
+    - **`properties`** *(object, optional)* — arbitrary named per-cell scalar fields over
+        the grid (e.g. `friction`, `stiffness`, or any custom name), each selectable as a
+        terrain color mode with no viewer code changes. Keyed by property name, each entry
+        is `{"data": array[array[float]] | null, "min": float | null, "max": float | null}`
+        — `data` follows the same per-batch flattened-grid shape as `heightData`; `min`/`max`
+        are the range the viewer normalizes its color map against, defaulting to the
+        property's own data range but overridable per property with
+        `create_terrain(property_bounds={"friction": (0.0, 1.0)})` to keep one scale
+        comparable across scenes. Cells outside `[min, max]` saturate at the end colors;
+        if either bound is missing or the range is degenerate the viewer falls back to
+        clamping the raw value into `[0, 1]`.
+        Example: `{"friction": {"data": [...], "min": 0.2, "max": 0.9}}`.
+    - **`embeddingData`** *(array[array[float]] | null, optional)* — per-batch, per-cell
+        K-wide feature vectors (flattened `resolutionX * resolutionY * K` per batch),
+        enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
+        `color`/`embedding` on point-cloud bodies above. Not a named property (no min/max,
+        similarity-colored), so it stays a separate top-level field.
 
 ## States (Dynamic Data)
 
@@ -116,20 +117,20 @@ produces.
 
 - **`time`** *(float)* — snapshot time in seconds.
 - **`bodies`** *(array)* — per body:
-  - **`name`** *(string | array[string])* — matches a `model.bodies[].name`. May instead be
-    a list of names when several bodies move rigidly together (e.g. links welded to the same
-    parent): the single entry's `bodyTransform` and other fields below then apply identically
-    to every named body, instead of repeating identical data once per body. All named bodies
-    must exist in `model.bodies`.
-  - **`bodyTransform`** — pose. Batched: `array[array[7]]`, one `[x, y, z, w, qx, qy, qz]`
-    per batch; single: a flat `[x, y, z, w, qx, qy, qz]`. Absolute world-space, unless
-    the referenced body has a `parent` in `model.bodies` (see above), in which case
-    this is local to that parent's current-frame pose instead. A body with a constant
-    `localTransform` on the model never has a `bodyTransform` entry here at all.
-  - **`contacts`** *(array[array[int]], optional)* — per batch, indices of contacting
-    points (into the body's pointcloud `points`). Empty array means no contacts.
-  - **`velocity`**, **`angularVelocity`**, **`force`**, **`torque`**
-    *(array[array[3]], optional)* — per-batch 3-vectors.
+    - **`name`** *(string | array[string])* — matches a `model.bodies[].name`. May instead be
+        a list of names when several bodies move rigidly together (e.g. links welded to the same
+        parent): the single entry's `bodyTransform` and other fields below then apply identically
+        to every named body, instead of repeating identical data once per body. All named bodies
+        must exist in `model.bodies`.
+    - **`bodyTransform`** — pose. Batched: `array[array[7]]`, one `[x, y, z, w, qx, qy, qz]`
+        per batch; single: a flat `[x, y, z, w, qx, qy, qz]`. Absolute world-space, unless
+        the referenced body has a `parent` in `model.bodies` (see above), in which case
+        this is local to that parent's current-frame pose instead. A body with a constant
+        `localTransform` on the model never has a `bodyTransform` entry here at all.
+    - **`contacts`** *(array[array[int]], optional)* — per batch, indices of contacting
+        points (into the body's pointcloud `points`). Empty array means no contacts.
+    - **`velocity`**, **`angularVelocity`**, **`force`**, **`torque`**
+        *(array[array[3]], optional)* — per-batch 3-vectors.
 - **`<scalarName>`** *(array[float])* — for each name in `model.scalarNames`, one value per batch.
 
 !!! note "Binary state fields"
@@ -215,12 +216,14 @@ from simview import SimulationScene, BodyShapeType, BodyTrajectory
 
 scene = SimulationScene(batch_size=B, scalar_names=[], dt=0.001)
 scene.create_terrain(...)
-scene.create_body(body_name="box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.3, hz=0.15)
+scene.create_body(
+    body_name="box", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.3, hz=0.15
+)
 
 # positions: (T, B, 3), orientations: (T, B, 4) as [w, x, y, z]
 # (2-D (T, 3) / (T, 4) is accepted when batch_size == 1)
 scene.add_trajectory(
-    times=times,                                  # length-T sequence or tensor
+    times=times,  # length-T sequence or tensor
     trajectories=[BodyTrajectory("box", positions, orientations)],
 )
 scene.save("scene.json")
@@ -243,19 +246,30 @@ decompress it transparently regardless of extension.
 already in the model, instead of it moving in world space:
 
 ```python
-scene.create_body(body_name="chassis", shape_type=BodyShapeType.BOX, hx=0.6, hy=0.4, hz=0.2)
-
-# Rigid attachment (e.g. a wheel bolted to the chassis): a constant offset, defined
-# once, never repeated per frame. Never call add_state/add_trajectory for "left_wheel".
 scene.create_body(
-    body_name="left_wheel", shape_type=BodyShapeType.CYLINDER, radius=0.15, height=0.1,
-    parent="chassis", local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+    body_name="chassis", shape_type=BodyShapeType.BOX, hx=0.6, hy=0.4, hz=0.2
 )
 
-# Articulated attachment (e.g. an arm joint): only `parent` is set, so this body's
-# pose is still supplied every frame via add_state/add_trajectory as usual -- it's
-# just interpreted as local to the chassis's current-frame pose instead of world.
-scene.create_body(body_name="arm_joint", shape_type=BodyShapeType.BOX, hx=0.05, hy=0.05, hz=0.2, parent="chassis")
+# Rigid attachment (e.g. a wheel bolted to the chassis): a constant offset,
+# defined once, never repeated per frame. Never call add_state/add_trajectory
+# for "left_wheel".
+scene.create_body(
+    body_name="left_wheel",
+    shape_type=BodyShapeType.CYLINDER,
+    radius=0.15,
+    height=0.1,
+    parent="chassis",
+    local_transform=[0.4, 0.52, 0.0, 1.0, 0.0, 0.0, 0.0],
+)
+
+# Articulated attachment (e.g. an arm joint): only `parent` is set, so this
+# body's pose is still supplied every frame via add_state/add_trajectory as
+# usual -- it's just interpreted as local to the chassis's current-frame pose
+# instead of world.
+scene.create_body(
+    body_name="arm_joint", shape_type=BodyShapeType.BOX,
+    hx=0.05, hy=0.05, hz=0.2, parent="chassis",
+)
 ```
 
 A body's `parent` must already exist in the model (added before its children), which
@@ -281,8 +295,12 @@ in `model.bodies` and doesn't require or emit per-frame data for them.
     ],
     "staticObjects": [],
     "terrain": {
-      "dimensions": { "sizeX": 10.0, "sizeY": 10.0, "resolutionX": 2, "resolutionY": 2 },
-      "bounds": { "minX": -5.0, "maxX": 5.0, "minY": -5.0, "maxY": 5.0, "minZ": 0.0, "maxZ": 0.0 },
+      "dimensions": {
+        "sizeX": 10.0, "sizeY": 10.0, "resolutionX": 2, "resolutionY": 2
+      },
+      "bounds": {
+        "minX": -5.0, "maxX": 5.0, "minY": -5.0, "maxY": 5.0, "minZ": 0.0, "maxZ": 0.0
+      },
       "isSingleton": true,
       "heightData": [[0.0, 0.0, 0.0, 0.0]],
       "normals": [[[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]]]
@@ -312,19 +330,15 @@ in `model.bodies` and doesn't require or emit per-frame data for them.
 
 ## Notes
 
-- **Quaternion Convention**
-  Quaternions use `[w, x, y, z]` (scalar-first format), packed into `bodyTransform` after the position.
+- **Quaternion Convention** — Quaternions use `[w, x, y, z]` (scalar-first format), packed into `bodyTransform` after the position.
 
-- **Terrain Consistency**
-  Each per-batch `heightData` grid and `normals` list must contain exactly
+- **Terrain Consistency** — Each per-batch `heightData` grid and `normals` list must contain exactly
   `resolutionX * resolutionY` elements.
 
-- **Batch Synchronization**
-  Per-batch arrays (`bodyTransform`, `velocity`, scalar values, …) must have length `simBatches`.
+- **Batch Synchronization** — Per-batch arrays (`bodyTransform`, `velocity`, scalar values, …) must have length `simBatches`.
   When `terrain.isSingleton` is `true`, `heightData`/`normals` hold a single shared
   copy that is reused for all instances (legacy files with `simBatches` identical
   broadcast copies are still accepted).
 
-- **Contact Points**
-  The `contacts` field lists point indices into a body's pointcloud `points` for each batch.
+- **Contact Points** — The `contacts` field lists point indices into a body's pointcloud `points` for each batch.
   An empty array means no contacts.
