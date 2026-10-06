@@ -45,7 +45,7 @@ Target pure logic in `utils/` and a few `components/`/`objects/`/`ui/` classes â
 DOM/browser needed, run under Node. One `*.test.js` per module covered: `blobCodec`,
 `blobWindow`, `bodyTransforms`, `interpolate`, `errorMath`, `csv`, `viewState`,
 `liveFollow`, `episodes`, `terrainSample`, `batchPresets`, `batchVisibility`,
-`cameraRange`, `similarity`, `objectsUtils`, `AnimationController`, `StateStore`,
+`cameraRange`, `chartControls`, `similarity`, `objectsUtils`, `AnimationController`, `StateStore`,
 `BatchManager`, `WindowedField`, `InteractionController`, `Body`, `Terrain`,
 `TerrainFeatures`.
 

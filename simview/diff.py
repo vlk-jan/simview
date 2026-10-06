@@ -5,7 +5,7 @@ each other.
 
 Deliberately dependency-free (stdlib only: json, base64, struct, math via
 its imports) so it works on a base install without the `authoring` extra
-(torch/einops/numpy) -- see CLAUDE.md. Shares its blob-decoding and
+(torch/numpy) -- see CLAUDE.md. Shares its blob-decoding and
 body-resolution helpers with `simview/terrain.py`/`simview/info.py` via
 `simview.columnar`/`simview.utils`, which are stdlib-only on this read path.
 

@@ -275,7 +275,7 @@ def test_importmap_is_fully_vendored_offline(client):
         )
 
     # The addon files our JS actually imports via the "three/addons/" prefix
-    # (OrbitControls in InteractionControls.js, lil-gui in Controls.js) must
+    # (OrbitControls in Scene.js, lil-gui in Controls.js) must
     # also resolve, not just the bare prefix.
     addons_prefix = prefix_urls.get("three/addons/")
     assert addons_prefix, "importmap must declare a 'three/addons/' prefix"

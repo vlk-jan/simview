@@ -69,6 +69,8 @@ Python (authoring or file-on-disk)           Browser
   warnings), backing `simview info`.
 - **`render.py`** — headless PNG screenshots via a real (headless) browser driving a
   real `SimViewServer` instance, backing `simview render`.
+- **`remote.py`** — scp-style `host:path` inputs: fetches a scene over SSH (gzipped on
+  the wire) into a local cache, re-fetching only when the remote file changes.
 - **`utils.py`** — small shared helpers (e.g. free-port lookup, gzip-transparent file
   reads).
 - **`__main__.py`** — CLI entry point (`simview` script): view file(s), `simview
@@ -90,10 +92,11 @@ Vanilla JS ES modules (no bundler/framework), loaded via `templates/index.html`'
 importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns startup
 (`loadData`/`fetchBlobs`/`initFromModel`) and wires everything else together:
 
-- **`components/`** — `Scene` (THREE.js scene/camera/renderer), `StateStore` (decoded
-  trajectory data + playback lookups), `AnimationController` (playback loop, speed,
-  interpolation), `BatchManager` (per-batch color/focus/visibility), `InteractionController`
-  - `InteractionControls` (camera/mouse/keyboard).
+- **`components/`** — `Scene` (THREE.js scene/camera/renderer + OrbitControls),
+  `StateStore` (decoded trajectory data + playback lookups), `AnimationController`
+  (playback loop, speed, interpolation), `BatchManager` (per-batch color/focus/visibility),
+  `InteractionController` (mouse picking, terrain probe, click-to-similarity),
+  `WindowedField` (range-fetched per-body vector fields).
 - **`objects/`** — THREE.js object wrappers: `Body`, `StaticObject`, `Terrain` (heightfield
   mesh + friction/stiffness/click-to-similarity "features" color modes), plus shared
   helpers in `utils.js`. `colormap.js`/`similarity.js` factor the colormap resolver and
@@ -102,11 +105,12 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
 - **`ui/`** — DOM-based UI panels: `Controls` (main options panel), `PlaybackControls`,
   `BodyStateWindow`, `Legend`/`BatchLegend`, and `ScalarPlotter`/`ErrorMetrics`/
   `TerrainProfile` (all three behind `AnalysisPanel`'s tab switcher, all three plotted
-  with vendored uPlot via the shared `utils/uplot.js` chart helper).
+  with vendored uPlot via the shared `utils/uplot.js` chart helper and the DOM-free
+  `chartControls.js` pieces).
 - **`utils/`** — pure logic factored out for unit testing without a DOM/THREE.js:
   `blobCodec.js` (decode the server's columnar float32 blobs — must stay in sync with
-  the server's repack logic), `bodyTransforms.js` (resolve parent-relative poses,
-  `topoSortBodies`), `interpolate.js`, `errorMath.js`, `csv.js`, `viewState.js`
+  `STATE_FIELD_WIDTHS`/`columnarize_states` in `columnar.py`), `bodyTransforms.js`
+  (resolve parent-relative poses, `topoSortBodies`), `interpolate.js`, `errorMath.js`, `csv.js`, `viewState.js`
   (encode/decode the shareable view-link URL hash), `liveFollow.js` (should new live
   frames auto-scroll playback), `terrainSample.js` (bilinear terrain layer sampling for
   the Analysis panel's Terrain tab, plus `hasBodyTrajectory` gating whether that tab
@@ -149,6 +153,7 @@ simview/
 │   ├── live.py               # LiveViewer
 │   ├── launcher.py           # SimViewLauncher
 │   ├── merge.py               # merge_simulation_files
+│   ├── remote.py              # host:path inputs over SSH, local cache
 │   ├── diff.py                 # simview diff backend
 │   ├── terrain.py              # simview terrain backend
 │   ├── info.py                  # simview info backend

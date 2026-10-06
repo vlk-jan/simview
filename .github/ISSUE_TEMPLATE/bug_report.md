@@ -20,7 +20,7 @@ What you expected to happen instead.
 
 **Environment**
 - SimView version:
-- Install type: [ ] base install  [ ] `authoring` extra (torch/einops/numpy)
+- Install type: [ ] base install  [ ] `authoring` extra (torch/numpy)
 - OS / browser (if frontend-related):
 - Python version (if backend-related):
 

@@ -3,9 +3,9 @@ agents inspecting simview-generated data files.
 
 Deliberately dependency-free (stdlib only: json, gzip via
 `simview.utils.read_maybe_gzipped_bytes`, base64) so it works on a base
-install without the `authoring` extra (torch/einops/numpy) -- see
+install without the `authoring` extra (torch/numpy) -- see
 CLAUDE.md. Does not import `simview.model`/`simview.server`: the former
-pulls in torch/einops at module scope, the latter fastapi/uvicorn just to
+pulls in torch at module scope, the latter fastapi/uvicorn just to
 reach a numpy-gated helper -- both wrong layering for a lightweight
 inspection tool. Shares its blob-decoding/body-label helpers with
 `simview/terrain.py`/`simview/diff.py` via `simview.columnar`/`simview.utils`,

@@ -19,7 +19,7 @@ del _version, PackageNotFoundError
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 # Public authoring API. These live in submodules that depend on the optional
-# `authoring` extra (torch, einops), so they are imported lazily: a viewing-only
+# `authoring` extra (torch, numpy), so they are imported lazily: a viewing-only
 # install can still `import simview` without those dependencies, and only pays
 # the import cost (and dependency requirement) when an authoring symbol is used.
 _LAZY_EXPORTS = {
