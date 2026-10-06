@@ -1158,8 +1158,22 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.0.1...HEAD">Unreleased</a></h2>
-<h2 id="601-2026-10-05"><a href="https://github.com/vlk-jan/simview/compare/v6.0.0...v6.0.1">6.0.1</a> - 2026-10-05</h2>
 <h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong>The JSON Format Specification page renders its field lists properly.</strong> Nested
+  lists were indented too little for MkDocs, so everything under <code>episodes</code>, <code>bodies</code>,
+  <code>terrain</code> and a state's <code>bodies</code> collapsed into one run-on paragraph with literal
+  dashes. The Notes headings no longer run into their text, and code examples no
+  longer overflow sideways.</li>
+<li><strong>The developer docs no longer describe code removed in 6.0.0.</strong> The architecture
+  page dropped <code>InteractionControls</code> and gained <code>remote.py</code>, <code>WindowedField</code> and
+  <code>chartControls.js</code>; <code>einops</code> is gone from the docstrings and the bug-report
+  template.</li>
+<li>The Live Streaming page no longer promises a late-joining viewer the full history:
+  catch-up replays at most the most recent 10,000 frames.</li>
+</ul>
+<h2 id="601-2026-10-05"><a href="https://github.com/vlk-jan/simview/compare/v6.0.0...v6.0.1">6.0.1</a> - 2026-10-05</h2>
+<h3 id="fixed_1">Fixed</h3>
 <ul>
 <li><strong>The 3D view now resizes with the browser window.</strong> The canvas kept the size it
   had when the page loaded while the panels and charts reflowed, so after a resize
@@ -1184,7 +1198,8 @@ redundant Python authoring entry points were removed, listed below.</p>
   <code>simview &lt;file&gt;</code>.</li>
 <li><strong>Module re-exports</strong> <code>simview.terrain.load_scene</code> / <code>load_scene_model</code>,
   <code>simview.diff.load_scene</code> and <code>simview.remote.human_bytes</code>. Import them from
-  <code>simview.utils</code>.</li>
+  <code>simview.utils</code>. <code>simview.model.BLOB_PREFIX</code> is gone too; use
+  <code>simview.columnar.BLOB_PREFIX</code>.</li>
 <li><strong><code>simview clear</code> no longer sweeps <code>simview_viz_*.json</code> temp files or
   <code>/tmp/.simview_cache</code>.</strong> The launcher stopped writing them some time ago.</li>
 <li><strong>The vendored <code>chroma-js</code>.</strong> Batch palettes are interpolated in CIE LCh by a
@@ -1206,7 +1221,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   <code>&lt;details&gt;</code>. Collapsed, Body states and Analysis now have the same height and
   centring.</li>
 </ul>
-<h3 id="fixed_1">Fixed</h3>
+<h3 id="fixed_2">Fixed</h3>
 <ul>
 <li><strong>Keyboard shortcuts no longer cancel themselves out after a model reload.</strong> The
   controls' keydown listener was never removed, so each reload added another and
@@ -1224,7 +1239,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   <code>URLSearchParams</code>, and existing share links still work.</li>
 </ul>
 <h2 id="511-2026-10-01"><a href="https://github.com/vlk-jan/simview/compare/v5.1.0...v5.1.1">5.1.1</a> - 2026-10-01</h2>
-<h3 id="fixed_2">Fixed</h3>
+<h3 id="fixed_3">Fixed</h3>
 <ul>
 <li><strong>SimView's button and select styles no longer leak into pages that embed the
   viewer.</strong> 5.1.0 styled every <code>button</code> and <code>select</code> on the page, including a
@@ -1259,7 +1274,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   between them.</li>
 <li>The live demo shows a new scene: GT vs prediction on helhest sample 774.</li>
 </ul>
-<h3 id="fixed_3">Fixed</h3>
+<h3 id="fixed_4">Fixed</h3>
 <ul>
 <li><strong>Stateless point clouds no longer show up as trackable bodies.</strong> A point cloud
   with no per-frame states (a static prop) is now left out of the Analysis tab's
@@ -1338,7 +1353,7 @@ versa, and authoring code needs no edits.</p>
   bodies. Point clouds are no longer governed by Body Visualization Mode (see below),
   so this is how they are hidden and shown.</li>
 </ul>
-<h3 id="fixed_4">Fixed</h3>
+<h3 id="fixed_5">Fixed</h3>
 <ul>
 <li><strong>Mesh bodies no longer disappear once a run travels away from where it started.</strong>
   Bodies are drawn as instanced meshes positioned per instance, and THREE caches an
@@ -1387,7 +1402,7 @@ versa, and authoring code needs no edits.</p>
 <li>Each Error Metrics readout is prefixed with a swatch in its plot series color, so the
   readout doubles as a legend for the curves below it.</li>
 </ul>
-<h3 id="fixed_5">Fixed</h3>
+<h3 id="fixed_6">Fixed</h3>
 <ul>
 <li>Nested fields in the Scene Info panel now start collapsed. A scene with rich metadata
   used to expand every nested key at once, burying the top-level entries.</li>
@@ -1439,7 +1454,7 @@ versa, and authoring code needs no edits.</p>
   length, so files written by older versions (which broadcast the singleton) keep
   working; a mixed terrain still broadcasts its shared fields.</li>
 </ul>
-<h3 id="fixed_6">Fixed</h3>
+<h3 id="fixed_7">Fixed</h3>
 <ul>
 <li><code>LiveViewer.push_state</code> no longer blocks the simulation loop on a slow or hung viewer
   tab (up to 5 s per frame before). Frames go through a bounded queue drained by a
@@ -1522,7 +1537,7 @@ versa, and authoring code needs no edits.</p>
   location, computed client-side — a new "similarity" Point Color Mode for point
   clouds and "features" terrain color mode, both with a matching colormap legend.</li>
 </ul>
-<h3 id="fixed_7">Fixed</h3>
+<h3 id="fixed_8">Fixed</h3>
 <ul>
 <li>Clicking now only recolors a point cloud/terrain by similarity when the matching
   mode is already selected from its dropdown; otherwise it's an ordinary selection,
@@ -1562,7 +1577,7 @@ versa, and authoring code needs no edits.</p>
   distinct from the usage/parse-error exit 1, so scripts and CI can use an
   exported scene as a regression tripwire.</li>
 </ul>
-<h3 id="fixed_8">Fixed</h3>
+<h3 id="fixed_9">Fixed</h3>
 <ul>
 <li>Focusing a batch while a Scalars plot was open threw
   <code>s.stroke is not a function</code> on the next redraw (uPlot expects
@@ -1648,7 +1663,7 @@ versa, and authoring code needs no edits.</p>
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
   covered by an e2e test.</li>
 </ul>
-<h3 id="fixed_9">Fixed</h3>
+<h3 id="fixed_10">Fixed</h3>
 <ul>
 <li>Unblock CI: guard the optional <code>numpy</code> import and add <code>--no-launch</code> to
   <code>example.py</code>.</li>
@@ -1670,7 +1685,7 @@ versa, and authoring code needs no edits.</p>
   repack), backed by a <code>Float32Array</code> <code>StateStore</code>, for much cheaper playback of
   long recordings.</li>
 </ul>
-<h3 id="fixed_10">Fixed</h3>
+<h3 id="fixed_11">Fixed</h3>
 <ul>
 <li>Binary-search seek for non-uniform timelines, parallel blob fetches, and
   versioned immutable blob URLs.</li>
