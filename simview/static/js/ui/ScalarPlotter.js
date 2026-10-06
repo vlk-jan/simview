@@ -354,6 +354,7 @@ export class ScalarPlotter {
     }
 
     setEndIndex(newEndIndex, force = false) {
+        if (this.times.length === 0) return; // store not loaded yet (initFromStore pending)
         if (newEndIndex < 0 || newEndIndex >= this.times.length) {
             console.warn(
                 "Invalid end index. Must be within the range of time values."
