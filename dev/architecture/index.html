@@ -592,6 +592,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../usage/embedding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Embedding in Other Applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/controls/" class="md-nav__link">
         
   
@@ -1420,6 +1448,8 @@ beyond the <a href="../json-format/">JSON wire format</a> they agree on.</p>
   <code>simview terrain</code>.</li>
 <li><strong><code>info.py</code></strong> — structural summary (body/terrain/state breakdown, consistency
   warnings), backing <code>simview info</code>.</li>
+<li><strong><code>view.py</code></strong> — <code>view_hash</code>, the stdlib-only builder for the viewer's view-link URL
+  fragment (mirrors <code>static/js/utils/viewState.js</code>; a test keeps the flag order in sync).</li>
 <li><strong><code>render.py</code></strong> — headless PNG screenshots via a real (headless) browser driving a
   real <code>SimViewServer</code> instance, backing <code>simview render</code>.</li>
 <li><strong><code>remote.py</code></strong> — scp-style <code>host:path</code> inputs: fetches a scene over SSH (gzipped on
@@ -1461,7 +1491,9 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
   <code>blobCodec.js</code> (decode the server's columnar float32 blobs — must stay in sync with
   <code>STATE_FIELD_WIDTHS</code>/<code>columnarize_states</code> in <code>columnar.py</code>), <code>bodyTransforms.js</code>
   (resolve parent-relative poses, <code>topoSortBodies</code>), <code>interpolate.js</code>, <code>errorMath.js</code>, <code>csv.js</code>, <code>viewState.js</code>
-  (encode/decode the shareable view-link URL hash), <code>liveFollow.js</code> (should new live
+  (encode/decode the shareable view-link URL hash and the <code>data=</code>/<code>ui=</code> startup keys),
+  <code>viewerDefaults.js</code> (apply the model's <code>viewerDefaults</code>), <code>keyboard.js</code> (ignore shortcuts
+  while typing in a form field), <code>liveFollow.js</code> (should new live
   frames auto-scroll playback), <code>terrainSample.js</code> (bilinear terrain layer sampling for
   the Analysis panel's Terrain tab, plus <code>hasBodyTrajectory</code> gating whether that tab
   shows up for a given body), <code>episodes.js</code> (episode segments, navigation and
@@ -1501,27 +1533,28 @@ read it before changing anything that touches serialization on either side
 </span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│   ├── diff.py                 # simview diff backend
 </span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│   ├── terrain.py              # simview terrain backend
 </span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>│   ├── info.py                  # simview info backend
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│   ├── render.py                 # simview render backend (Playwright)
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│   ├── utils.py                   # shared helpers
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│   ├── __main__.py                 # simview CLI entry point
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│   ├── templates/                   # index.html
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│   └── static/
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│       ├── css/
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>│       ├── js/
-</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│       │   ├── main.js               # entry point
-</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│       │   ├── SimView.js             # top-level SimView class
-</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│       │   ├── components/
-</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>│       │   ├── objects/
-</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>│       │   ├── ui/
-</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>│       │   └── utils/
-</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>│       ├── lib/                       # vendored three.js, uPlot, js-colormaps
-</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>│       └── textures/
-</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
-</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>├── example.py                 # authoring example (see Quick Start)
-</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>├── example_live.py             # LiveViewer example
-</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>├── mkdocs.yml                    # this documentation site
-</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>├── docs/                          # documentation source
-</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>└── pyproject.toml                  # package metadata, ruff/pyright config, uv dependency-groups
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│   ├── view.py                    # view_hash: view-link fragments
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│   ├── render.py                 # simview render backend (Playwright)
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│   ├── utils.py                   # shared helpers
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│   ├── __main__.py                 # simview CLI entry point
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│   ├── templates/                   # index.html
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>│   └── static/
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>│       ├── css/
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>│       ├── js/
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>│       │   ├── main.js               # entry point
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>│       │   ├── SimView.js             # top-level SimView class
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>│       │   ├── components/
+</span><span id="__span-1-26"><a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>│       │   ├── objects/
+</span><span id="__span-1-27"><a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>│       │   ├── ui/
+</span><span id="__span-1-28"><a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>│       │   └── utils/
+</span><span id="__span-1-29"><a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>│       ├── lib/                       # vendored three.js, uPlot, js-colormaps
+</span><span id="__span-1-30"><a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>│       └── textures/
+</span><span id="__span-1-31"><a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
+</span><span id="__span-1-32"><a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>├── example.py                 # authoring example (see Quick Start)
+</span><span id="__span-1-33"><a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a>├── example_live.py             # LiveViewer example
+</span><span id="__span-1-34"><a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a>├── mkdocs.yml                    # this documentation site
+</span><span id="__span-1-35"><a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a>├── docs/                          # documentation source
+</span><span id="__span-1-36"><a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>└── pyproject.toml                  # package metadata, ruff/pyright config, uv dependency-groups
 </span></code></pre></div>
 
 
