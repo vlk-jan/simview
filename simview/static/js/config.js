@@ -124,14 +124,14 @@ const SHAPE_CONFIG = {
         opacity: 0.7,
         alphaTest: 0.5,
         transparent: false,
-        texture: "static/textures/points/ball1.png",
+        texture: new URL("../textures/points/ball1.png", import.meta.url).href,
     },
     contactPoints: {
         size: 0.7,
         opacity: 1.0,
         alphaTest: 0.5,
         transparent: false,
-        texture: "static/textures/contacts/red-cross0.png",
+        texture: new URL("../textures/contacts/red-cross0.png", import.meta.url).href,
     },
 };
 

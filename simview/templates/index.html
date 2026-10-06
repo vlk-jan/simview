@@ -14,8 +14,8 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23181825'/%3E%3Cg stroke='%23181825' stroke-linejoin='round'%3E%3Cpath d='M16 3.5 27.5 10 16 16.5 4.5 10Z' fill='%23b4befe'/%3E%3Cpath d='M4.5 10 16 16.5V29L4.5 22.5Z' fill='%2389b4fa'/%3E%3Cpath d='M16 16.5 27.5 10V22.5L16 29Z' fill='%235e7fc0'/%3E%3C/g%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="/static/css/controls.css" />
-    <link rel="stylesheet" href="/static/lib/uPlot.min.css" />
+    <link rel="stylesheet" href="./static/css/controls.css" />
+    <link rel="stylesheet" href="./static/lib/uPlot.min.css" />
   </head>
   <body>
     <div id="container"></div>
@@ -37,13 +37,13 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "/static/lib/three-0.174.0/three.module.js",
-          "three/addons/": "/static/lib/three-0.174.0/addons/"
+          "three": "./static/lib/three-0.174.0/three.module.js",
+          "three/addons/": "./static/lib/three-0.174.0/addons/"
         }
       }
     </script>
 
-    <script type="module" src="/static/js/main.js"></script>
+    <script type="module" src="./static/js/main.js"></script>
     <script>
       console.log("SimView index.html loaded");
       window.onerror = function(msg, url, line, col, error) {
