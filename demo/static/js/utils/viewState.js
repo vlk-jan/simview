@@ -30,11 +30,9 @@ const BOOLEAN_FLAG_KEYS = [
     "terrainVisualizationModes.normals",
 ];
 
-// Deliberately NOT in the list above: `pointCloudsVisible`. Appending only
-// works for flags that default off -- a link made before the flag existed has
-// no bit for it, which decodes as false, so a default-on flag would arrive
-// switched off and hide point clouds on every old link. Adding it needs a
-// format version that can tell "absent" from "false".
+// Deliberately NOT in the list above: `pointCloudsVisible`. It defaults on,
+// so a bit would decode old links (bit absent) as off; it travels as the
+// named `pc=0|1` key instead, where absent means "leave alone".
 
 function getPath(obj, path) {
     return path.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
@@ -87,6 +85,11 @@ function decodeFlags(mask) {
 //   bodyVisualizationMode: string,
 //   terrainColorMode: string,
 //   toggles: { [key in BOOLEAN_FLAG_KEYS]?: boolean },
+//   pointCloudsVisible: boolean,   // `pc=0|1` -- a named key, not a flag bit,
+//                                  // so "absent" (leave alone) != false
+//   trackBody: string,             // `track=`
+//   terrainColorMap: string,       // `cmap=`
+//   playbackSpeed: number,         // `speed=`
 // }
 export function serializeViewState(state) {
     if (!state || typeof state !== "object") return "";
@@ -115,6 +118,18 @@ export function serializeViewState(state) {
     }
     if (state.toggles && typeof state.toggles === "object") {
         params.push(`flags=${encodeFlags(state.toggles)}`);
+    }
+    if (typeof state.pointCloudsVisible === "boolean") {
+        params.push(`pc=${state.pointCloudsVisible ? 1 : 0}`);
+    }
+    if (typeof state.trackBody === "string" && state.trackBody) {
+        params.push(`track=${encodeURIComponent(state.trackBody)}`);
+    }
+    if (typeof state.terrainColorMap === "string" && state.terrainColorMap) {
+        params.push(`cmap=${encodeURIComponent(state.terrainColorMap)}`);
+    }
+    if (Number.isFinite(state.playbackSpeed) && state.playbackSpeed > 0) {
+        params.push(`speed=${fmtNum(state.playbackSpeed)}`);
     }
 
     return `#${params.join("&")}`;
@@ -154,6 +169,15 @@ export function parseViewState(hash) {
 
     const mask = parseInt(params.get("flags"), 10);
     if (Number.isInteger(mask)) state.toggles = decodeFlags(mask);
+
+    const pc = params.get("pc");
+    if (pc === "0" || pc === "1") state.pointCloudsVisible = pc === "1";
+    const track = params.get("track");
+    if (track) state.trackBody = track;
+    const cmap = params.get("cmap");
+    if (cmap) state.terrainColorMap = cmap;
+    const speed = num("speed");
+    if (Number.isFinite(speed) && speed > 0) state.playbackSpeed = speed;
 
     return state;
 }

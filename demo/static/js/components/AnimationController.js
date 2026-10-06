@@ -126,6 +126,10 @@ export class AnimationController {
 
     setSpeed(speed) {
         this.playbackSpeed = speed;
+        // Keep the playback bar's dropdown in step with programmatic callers.
+        if (this.playbackControls && this.playbackControls.speedSelect) {
+            this.playbackControls.speedSelect.value = String(speed);
+        }
     }
 
     setRecordingFormat(format) {
