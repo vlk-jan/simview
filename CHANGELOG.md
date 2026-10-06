@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.1] - 2026-10-06
+
 ### Added
 
 - The view link (and `getViewState()`/`setViewState()`, `view_hash(...)`) now also
@@ -628,7 +630,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.1.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.1.1...HEAD
+[6.1.1]: https://github.com/vlk-jan/simview/compare/v6.1.0...v6.1.1
 [6.1.0]: https://github.com/vlk-jan/simview/compare/v6.0.1...v6.1.0
 [6.0.1]: https://github.com/vlk-jan/simview/compare/v6.0.0...v6.0.1
 [6.0.0]: https://github.com/vlk-jan/simview/compare/v5.1.1...v6.0.0
