@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The viewer can be embedded in other applications** -- see the new
+  [Embedding](docs/usage/embedding.md) guide. The URL hash is now live: changing it
+  after load (`#v=1&t=2&cam=...`) re-applies the view, so a host page can drive time,
+  camera, batch and colour modes from outside. Two startup keys join it: `#ui=0`
+  hides every floating panel, and `#data=<base url>` loads a static bundle instead
+  of the server API.
+- The viewer instance is exposed as `window.simview` (`__debugSimView` stays as an
+  alias) with a supported surface: `getViewState()`, `setViewState()`,
+  `focusBody(name)` and `destroy()`, plus `simview:ready` and `simview:frame` DOM
+  events for a host page to react to load completion and frame changes.
+- `simview.view_hash(...)` builds view-link fragments (time, camera, batch, colour
+  modes, toggle flags, `data=`, `ui=False`) from Python; stdlib-only, so it works on
+  a base install. `SimulationScene.show(view=..., height=...)` opens the inline
+  Jupyter viewer at a chosen view and iframe height; `ViewerHandle.url_for(view)` and
+  `LiveViewer.url` return full viewer URLs.
+- `SimulationScene.save_static(directory)` writes a static bundle (`model.json`,
+  `states.json`, `blob/<id>`) that any plain file server can host, via the
+  stdlib-only `simview.columnar.write_static_bundle`.
+- `create_body(color=..., opacity=..., visible=...)` styles a body's mesh or primitive
+  (RGB tint, translucency) and can start it hidden; the values are stored in the
+  scene file.
+- `SimulationScene(viewer_defaults=...)` declares the viewer's initial state -- UI
+  toggles such as `pointCloudsVisible`, open or closed options folders, the Body
+  States window, and whole panels hidden -- stored as `viewerDefaults` in the model.
+
 ### Fixed
+
+- Keyboard shortcuts (playback, visualization toggles, terrain probe) no longer fire
+  while typing in a text input, textarea, select or contentEditable element, and the
+  Body States window's Space-key handler is removed when the window is disposed.
+- The viewer page loads its stylesheets, scripts, import map and textures relative
+  to the page, so it can be served from any path instead of only the origin root.
 
 - **The JSON Format Specification page renders its field lists properly.** Nested
   lists were indented too little for MkDocs, so everything under `episodes`, `bodies`,

@@ -68,6 +68,7 @@ nav:
       - Live Streaming: usage/live-streaming.md
       - Episodes: usage/episodes.md
       - Jupyter / Non-blocking Viewing: usage/jupyter.md
+      - Embedding in Other Applications: usage/embedding.md
       - Visualization Controls: usage/controls.md
   - API Reference:
       - Scenes & Viewer Handles: api/scene.md

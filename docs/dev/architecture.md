@@ -67,6 +67,8 @@ Python (authoring or file-on-disk)           Browser
   `simview terrain`.
 - **`info.py`** — structural summary (body/terrain/state breakdown, consistency
   warnings), backing `simview info`.
+- **`view.py`** — `view_hash`, the stdlib-only builder for the viewer's view-link URL
+  fragment (mirrors `static/js/utils/viewState.js`; a test keeps the flag order in sync).
 - **`render.py`** — headless PNG screenshots via a real (headless) browser driving a
   real `SimViewServer` instance, backing `simview render`.
 - **`remote.py`** — scp-style `host:path` inputs: fetches a scene over SSH (gzipped on
@@ -111,7 +113,9 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   `blobCodec.js` (decode the server's columnar float32 blobs — must stay in sync with
   `STATE_FIELD_WIDTHS`/`columnarize_states` in `columnar.py`), `bodyTransforms.js`
   (resolve parent-relative poses, `topoSortBodies`), `interpolate.js`, `errorMath.js`, `csv.js`, `viewState.js`
-  (encode/decode the shareable view-link URL hash), `liveFollow.js` (should new live
+  (encode/decode the shareable view-link URL hash and the `data=`/`ui=` startup keys),
+  `viewerDefaults.js` (apply the model's `viewerDefaults`), `keyboard.js` (ignore shortcuts
+  while typing in a form field), `liveFollow.js` (should new live
   frames auto-scroll playback), `terrainSample.js` (bilinear terrain layer sampling for
   the Analysis panel's Terrain tab, plus `hasBodyTrajectory` gating whether that tab
   shows up for a given body), `episodes.js` (episode segments, navigation and
@@ -157,6 +161,7 @@ simview/
 │   ├── diff.py                 # simview diff backend
 │   ├── terrain.py              # simview terrain backend
 │   ├── info.py                  # simview info backend
+│   ├── view.py                    # view_hash: view-link fragments
 │   ├── render.py                 # simview render backend (Playwright)
 │   ├── utils.py                   # shared helpers
 │   ├── __main__.py                 # simview CLI entry point
