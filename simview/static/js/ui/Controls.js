@@ -1,3 +1,4 @@
+import { isEditableTarget } from "../utils/keyboard.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import { colorMapOptions } from "../../lib/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
@@ -399,7 +400,7 @@ export class UIControls {
         this.handleKeydown = (e) => {
             if (e.key.toLowerCase() === "p" && 
                 !e.ctrlKey && !e.metaKey && !e.altKey && 
-                document.activeElement.tagName !== "INPUT") {
+                !isEditableTarget(e)) {
                 terrainProbeCtrl.setValue(!terrainProbeCtrl.getValue());
             }
         };
@@ -646,6 +647,7 @@ export class UIControls {
         // Stored (not addEventListener's undefined return) so dispose() can
         // actually remove it.
         this.keyboardControlsListener = (event) => {
+            if (isEditableTarget(event)) return;
             switch (event.key.toLowerCase()) {
                 case "b":
                     const modes = this.visualizationModes;

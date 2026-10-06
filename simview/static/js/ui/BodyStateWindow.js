@@ -1,4 +1,5 @@
 import { FREQ_CONFIG } from "../config.js";
+import { isEditableTarget } from "../utils/keyboard.js";
 
 export class BodyStateWindow {
     constructor(app) {
@@ -83,16 +84,11 @@ export class BodyStateWindow {
 
         document.body.appendChild(this.window);
 
-        // --- Event Listener (unchanged) ---
-        window.addEventListener("keydown", (event) => {
-            if (event.code === "Space") {
-                const activeElement = document.activeElement;
-                if (activeElement === this.batchSelector) {
-                    return;
-                }
-                event.preventDefault();
-            }
-        });
+        this.keydownListener = (event) => {
+            if (isEditableTarget(event)) return; // also covers the batch selector
+            if (event.code === "Space") event.preventDefault();
+        };
+        window.addEventListener("keydown", this.keydownListener);
 
         // Initialize body list once
         this.updateBodyList();
@@ -290,10 +286,10 @@ export class BodyStateWindow {
     }
 
     dispose() {
+        window.removeEventListener("keydown", this.keydownListener);
         if (this.window && this.window.parentNode) {
             this.window.parentNode.removeChild(this.window);
             this.window = null; // Clear reference
-            // Could also remove the keydown listener here if necessary
         }
     }
 
