@@ -22,8 +22,8 @@ scene.save("recording.json.gz", compress=True)
 `push_state` has the same signature and validation as `SimulationScene.add_state` --
 it delegates to it directly, then hands the new frame to a background sender thread that
 broadcasts it to every connected viewer. A viewer opened after the stream has already
-started still gets the full history so far, replayed as a catch-up before it starts
-receiving new frames live. If no viewer is connected yet, pushed frames are simply
+started still gets the history so far (the most recent 10,000 frames on a longer run),
+replayed as a catch-up before it starts receiving new frames live. If no viewer is connected yet, pushed frames are simply
 buffered for the next one to connect. Playback in the browser follows the live frames
 automatically as long as you haven't scrubbed backward or started a loop; a small "LIVE"
 badge shows while the socket is open.

@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page dropped `InteractionControls` and gained `remote.py`, `WindowedField` and
   `chartControls.js`; `einops` is gone from the docstrings and the bug-report
   template.
+- The Live Streaming page no longer promises a late-joining viewer the full history:
+  catch-up replays at most the most recent 10,000 frames.
 
 ## [6.0.1] - 2026-10-05
 
@@ -48,7 +50,8 @@ redundant Python authoring entry points were removed, listed below.
   `simview <file>`.
 - **Module re-exports** `simview.terrain.load_scene` / `load_scene_model`,
   `simview.diff.load_scene` and `simview.remote.human_bytes`. Import them from
-  `simview.utils`.
+  `simview.utils`. `simview.model.BLOB_PREFIX` is gone too; use
+  `simview.columnar.BLOB_PREFIX`.
 - **`simview clear` no longer sweeps `simview_viz_*.json` temp files or
   `/tmp/.simview_cache`.** The launcher stopped writing them some time ago.
 - **The vendored `chroma-js`.** Batch palettes are interpolated in CIE LCh by a
