@@ -35,6 +35,13 @@ def test_view_hash():
     assert view_hash(ui=False, data="http://h/x") == "#data=http%3A%2F%2Fh%2Fx&ui=0"
     with pytest.raises(ValueError):
         view_hash(flags={"nope": True})
+    # Named carry-over keys, in the JS serializer's order; absent means "leave alone".
+    assert (
+        view_hash(point_clouds=False, track="robot 1", color_map="viridis", speed=0.25)
+        == "#v=1&pc=0&track=robot%201&cmap=viridis&speed=0.25"
+    )
+    with pytest.raises(ValueError):
+        view_hash(speed=0)
 
 
 def _urls(o):

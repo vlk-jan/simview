@@ -42,6 +42,14 @@ time, camera, batch and colour modes after load by assigning `iframe.src`'s hash
 | `b` | focused batch index |
 | `bvm`, `tcm` | body visualization mode, terrain colour mode |
 | `flags` | bitmask of the boolean toggles (`view_hash(flags={...})` builds it) |
+| `pc` | point clouds visible, `0` or `1` |
+| `track` | body to keep the camera on (a body name, or `None`) |
+| `cmap` | terrain colour map name |
+| `speed` | playback speed multiplier |
+
+Every key is optional and an absent key leaves the viewer's current setting alone, so a
+fragment can carry a whole setup between page loads (`getViewState()` → `serializeViewState`
+on one page, the hash on the next) or change one thing.
 
 Two **startup** keys are read once, at load, and don't need `v=1`:
 

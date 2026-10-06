@@ -32,6 +32,10 @@ test("loads a static bundle from #data= with #ui=0 and follows hash changes", as
         const rel = new URL(route.request().url()).pathname.replace(/^.*\/bundle\//, "");
         route.fulfill({ path: join(bundleDir, rel) });
     });
+    const warnings = [];
+    page.on("console", (msg) => {
+        if (msg.type() === "warning" || msg.type() === "error") warnings.push(msg.text());
+    });
     await page.addInitScript(() => {
         window.__events = [];
         for (const name of ["simview:ready", "simview:frame"]) {
@@ -63,4 +67,32 @@ test("loads a static bundle from #data= with #ui=0 and follows hash changes", as
     });
     await expect.poll(current).toBe(0);
     await expect.poll(() => page.evaluate(() => window.__events.at(-1))).toEqual(["simview:frame", 0]);
+
+    // The carry-over keys apply through the controls, so widgets and uiState agree.
+    const body = await page.evaluate(() => [...window.simview.bodies.keys()][0]);
+    await page.evaluate((h) => {
+        location.hash = h;
+    }, `#v=1&speed=2&cmap=viridis&track=${encodeURIComponent(body)}`);
+    await expect
+        .poll(() =>
+            page.evaluate(() => {
+                const s = window.simview;
+                return [
+                    s.animationController.playbackSpeed,
+                    s.animationController.playbackControls.speedSelect.value,
+                    s.uiState.terrainColorMap,
+                    s.uiState.trackBody,
+                    s.uiControls.findController("colorMap").getValue(),
+                ];
+            })
+        )
+        .toEqual([2, "2", "viridis", body, "viridis"]);
+    expect(await page.evaluate(() => window.simview.getViewState())).toMatchObject({
+        playbackSpeed: 2,
+        terrainColorMap: "viridis",
+        trackBody: body,
+    });
+
+    // No "Invalid end index" (scalar plotter before the store) or other warnings.
+    expect(warnings).toEqual([]);
 });

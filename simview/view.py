@@ -47,6 +47,10 @@ def view_hash(
     body_mode: str | None = None,
     terrain_color_mode: str | None = None,
     flags: Mapping[str, bool] | None = None,
+    point_clouds: bool | None = None,
+    track: str | None = None,
+    color_map: str | None = None,
+    speed: float | None = None,
     data: str | None = None,
     ui: bool | None = None,
 ) -> str:
@@ -55,6 +59,9 @@ def view_hash(
     `t` is the playback time in seconds, `cam`/`tgt` the camera position and
     orbit target, `batch` the focused batch index, `flags` a map of the dotted
     toggle names in `BOOLEAN_FLAG_KEYS` (unlisted ones default to off).
+    `point_clouds`, `track` (a body name, or ``"None"``), `color_map` and
+    `speed` are carried as named keys; leaving one ``None`` leaves the
+    viewer's current setting alone.
     `data` (base URL of a static bundle, see `SimulationScene.save_static`) and
     `ui=False` (hide all panels) are startup options, not view state.
     """
@@ -81,6 +88,16 @@ def view_hash(
             )
         mask = sum(1 << i for i, k in enumerate(BOOLEAN_FLAG_KEYS) if flags.get(k))
         params.append(f"flags={mask}")
+    if point_clouds is not None:
+        params.append(f"pc={int(bool(point_clouds))}")
+    if track:
+        params.append(f"track={quote(track, safe='')}")
+    if color_map:
+        params.append(f"cmap={quote(color_map, safe='')}")
+    if speed is not None:
+        if speed <= 0:
+            raise ValueError(f"speed must be positive; got {speed!r}")
+        params.append(f"speed={_num(speed)}")
     if params:
         params.insert(0, "v=1")
     if data is not None:

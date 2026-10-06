@@ -602,6 +602,9 @@ export class SimView {
             // actually flips body/terrain visuals) stay in sync instead of
             // uiState silently drifting out from under the displayed panel.
             if (this.uiControls) {
+                if (Number.isFinite(state.playbackSpeed) && this.animationController) {
+                    this.animationController.setSpeed(state.playbackSpeed);
+                }
                 this.uiControls.applyViewState(state);
             }
         } catch (e) {
@@ -623,6 +626,10 @@ export class SimView {
             bodyVisualizationMode: this.uiState.bodyVisualizationMode,
             terrainColorMode: this.uiState.terrainColorMode,
             toggles: toggleMapFromUiState(this.uiState),
+            pointCloudsVisible: this.uiState.pointCloudsVisible,
+            trackBody: this.uiState.trackBody,
+            terrainColorMap: this.uiState.terrainColorMap,
+            playbackSpeed: this.animationController ? this.animationController.playbackSpeed : undefined,
         };
     }
 

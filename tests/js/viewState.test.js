@@ -224,3 +224,26 @@ describe("parseStartupOptions", () => {
         expect(parseStartupOptions("#ui=1")).toEqual({ data: null, ui: true });
     });
 });
+
+describe("named carry-over keys (pc, track, cmap, speed)", () => {
+    it("round-trips all four", () => {
+        const state = { pointCloudsVisible: false, trackBody: "robot 1", terrainColorMap: "viridis", playbackSpeed: 0.25 };
+        const hash = serializeViewState(state);
+        expect(hash).toBe("#v=1&pc=0&track=robot%201&cmap=viridis&speed=0.25");
+        expect(parseViewState(hash)).toEqual(state);
+    });
+
+    it("leaves absent keys absent (absent != false)", () => {
+        const parsed = parseViewState("#v=1&t=1");
+        expect(parsed).not.toHaveProperty("pointCloudsVisible");
+        expect(parsed).not.toHaveProperty("trackBody");
+        expect(parsed).not.toHaveProperty("terrainColorMap");
+        expect(parsed).not.toHaveProperty("playbackSpeed");
+    });
+
+    it("drops malformed values", () => {
+        const parsed = parseViewState("#v=1&pc=yes&speed=-2&track=&cmap=");
+        expect(parsed).toEqual({});
+        expect(serializeViewState({ playbackSpeed: 0, pointCloudsVisible: "no" })).toBe("#v=1");
+    });
+});

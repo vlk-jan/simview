@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The view link (and `getViewState()`/`setViewState()`, `view_hash(...)`) now also
+  carries point-cloud visibility (`pc`), the tracked body (`track`), the terrain colour
+  map (`cmap`) and the playback speed (`speed`), so a host page can hand a complete
+  setup from one page load to the next. They are named keys, not flag bits: an absent
+  key leaves the viewer's current setting alone, and old `v=1` links decode unchanged.
+
+### Fixed
+
+- `AnimationController.setSpeed()` keeps the playback bar's speed dropdown in sync.
+- The scalar plotter no longer warns "Invalid end index" while the Analysis panel is
+  opened before the states have loaded.
+
 ## [6.1.0] - 2026-10-06
 
 ### Added

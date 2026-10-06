@@ -607,6 +607,21 @@ export class UIControls {
             if (ctrl) ctrl.setValue(state.terrainColorMode);
         }
 
+        if (typeof state.terrainColorMap === "string") {
+            const known = Array.isArray(colorMapOptions) ? colorMapOptions : Object.keys(colorMapOptions);
+            const ctrl = this.findController("colorMap");
+            if (ctrl && known.includes(state.terrainColorMap)) ctrl.setValue(state.terrainColorMap);
+        }
+
+        if (typeof state.pointCloudsVisible === "boolean") {
+            const ctrl = this.findController("showPointClouds");
+            if (ctrl) ctrl.setValue(state.pointCloudsVisible);
+        }
+
+        if (typeof state.trackBody === "string" && this.trackBodyCtrl) {
+            if (this.trackableBodyNames().includes(state.trackBody)) this.trackBodyCtrl.setValue(state.trackBody);
+        }
+
         if (state.toggles && typeof state.toggles === "object") {
             const propertyForKey = {
                 axesVisible: "showAxes",
