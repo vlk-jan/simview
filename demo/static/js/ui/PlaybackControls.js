@@ -1,4 +1,5 @@
 import { FREQ_CONFIG } from "../config.js";
+import { isEditableTarget } from "../utils/keyboard.js";
 import { isMp4RecordingSupported } from "../components/AnimationController.js";
 import {
     episodeIndexAt,
@@ -109,6 +110,7 @@ export class PlaybackControls {
         };
 
         const keydownListener = (event) => {
+            if (isEditableTarget(event)) return;
             const key = event.key;
 
             // Handle arrow keys with Alt modifier for timeline stepping

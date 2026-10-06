@@ -996,3 +996,15 @@ body {
 .terrain-profile-controls .sv-control-group select {
     max-width: 160px;
 }
+
+/* Embedded mode (#ui=0): hide all floating chrome; the loading splash stays. */
+.sv-embed .lil-gui.root,
+.sv-embed .lil-gui.autoPlace,
+.sv-embed .sv-playback,
+.sv-embed .body-state-window,
+.sv-embed .analysis-container,
+.sv-embed .sv-legend,
+.sv-embed .batch-legend-container,
+.sv-embed .sv-live-badge {
+    display: none !important;
+}

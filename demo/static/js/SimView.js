@@ -22,7 +22,8 @@ import { StateStore } from "./components/StateStore.js";
 import { WindowedField } from "./components/WindowedField.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
-import { parseViewState } from "./utils/viewState.js";
+import { parseViewState, parseStartupOptions, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
+import { mergeUiDefaults, applyViewerDomDefaults } from "./utils/viewerDefaults.js";
 
 export class SimView {
     constructor() {
@@ -52,6 +53,9 @@ export class SimView {
         // flat static files (model.json, states.json, blob/N) instead of the
         // Python backend API endpoints. Set to null in normal server mode.
         this.staticBase = null;
+        this._rafId = null;
+        this._lastDispatchedFrame = -1;
+        this._onHashChange = () => this.applyViewStateFromHash();
     }
 
     static run() {
@@ -64,7 +68,12 @@ export class SimView {
             simView.staticBase = window.__simviewStaticBase;
             console.log(`SimView: static demo mode, base='${simView.staticBase}'`);
         }
-        window.__debugSimView = simView;
+        // Startup hash keys (see parseStartupOptions): `data` wins over the global.
+        const { data, ui } = parseStartupOptions(location.hash);
+        if (data) simView.staticBase = data;
+        if (!ui) document.body.classList.add("sv-embed");
+        window.simview = simView;
+        window.__debugSimView = simView; // alias kept for e2e tests / downstream consumers
         simView.initAndAnimate();
     }
 
@@ -439,6 +448,11 @@ export class SimView {
                 }
             }
 
+            // Authoring-time UI defaults (see utils/viewerDefaults.js). After the
+            // auto-detect above so they win, and before any Body/Terrain/Controls
+            // read uiState.
+            this.uiState = mergeUiDefaults(this.uiState, model.viewerDefaults?.ui);
+
             if (Array.isArray(model.bodies)) {
                 model.bodies.forEach((bodyData) => {
                     const body = new Body(bodyData, this);
@@ -499,6 +513,7 @@ export class SimView {
                 this.batchLegend = new BatchLegend(this);
             }
             this.animationController = new AnimationController(this, model.dt);
+            applyViewerDomDefaults(this, model.viewerDefaults);
         } catch (error) {
             console.error("Error during initFromModel:", error);
             const splash = document.getElementById("loading-splash");
@@ -514,9 +529,11 @@ export class SimView {
             this.scene = new Scene(this);
             await this.loadData();
             this.applyViewStateFromHash();
+            window.addEventListener("hashchange", this._onHashChange);
             this.animate();
             const splash = document.getElementById("loading-splash");
             if (splash) splash.remove();
+            window.dispatchEvent(new CustomEvent("simview:ready", { detail: { simview: this } }));
         } catch (error) {
             console.error("Initialization failed:", error);
             const splash = document.getElementById("loading-splash");
@@ -543,6 +560,14 @@ export class SimView {
     // independently guarded.
     applyViewStateFromHash() {
         const state = parseViewState(location.hash);
+        if (state) this.setViewState(state);
+    }
+
+    /**
+     * Applies a parsed view-state object (see utils/viewState.js): batch, pause +
+     * seek when `time` is present, camera, and UI toggles. Never touches location.hash.
+     */
+    setViewState(state) {
         if (!state) return;
 
         try {
@@ -582,6 +607,53 @@ export class SimView {
         } catch (e) {
             console.warn("Failed to apply view state from URL hash:", e);
         }
+    }
+
+    /** Returns the current view state: the object "Copy view link" serialises. */
+    getViewState() {
+        const { camera, controls } = this.scene;
+        return {
+            time: this.animationController ? this.animationController.getCurrentTime() : undefined,
+            camera: {
+                position: camera.position.clone(),
+                target: controls.target.clone(),
+                fov: camera.fov,
+            },
+            batchIndex: this.batchManager ? this.batchManager.currentlyActiveBatch : undefined,
+            bodyVisualizationMode: this.uiState.bodyVisualizationMode,
+            terrainColorMode: this.uiState.terrainColorMode,
+            toggles: toggleMapFromUiState(this.uiState),
+        };
+    }
+
+    /**
+     * Moves the camera and orbit target together so the target lands on the body's
+     * current world position. Returns false if the body/position isn't available yet.
+     */
+    focusBody(name, batchIndex = this.batchManager.currentlyActiveBatch) {
+        const pos = this.bodies && this.bodies.get(name) && this.bodies.get(name).positions[batchIndex];
+        if (!pos) return false;
+        const offset = this.batchManager.getBatchOffset(batchIndex);
+        const target = new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z);
+        const { camera, controls } = this.scene;
+        camera.position.add(target.clone().sub(controls.target));
+        controls.target.copy(target);
+        controls.update();
+        return true;
+    }
+
+    /** Stops the render loop, closes the live socket, and releases the scene, UI and renderer. */
+    destroy() {
+        cancelAnimationFrame(this._rafId);
+        if (this.liveSocket) this.liveSocket.close();
+        window.removeEventListener("hashchange", this._onHashChange);
+        this.disposeOfAll();
+        if (this.scene) {
+            this.scene.renderer.dispose();
+            this.scene.renderer.domElement.remove();
+        }
+        if (window.simview === this) window.simview = null;
+        if (window.__debugSimView === this) window.__debugSimView = null;
     }
 
     disposeOfAll() {
@@ -637,12 +709,19 @@ export class SimView {
     }
 
     animate() {
-        requestAnimationFrame(this.animate);
+        this._rafId = requestAnimationFrame(this.animate);
         const now = performance.now();
         
         // 1. Update states and time
         if (this.animationController) {
             this.animationController.animate(now);
+            const index = this.animationController.getCurrentStateIndex();
+            if (index !== this._lastDispatchedFrame && this.animationController.store) {
+                this._lastDispatchedFrame = index;
+                window.dispatchEvent(
+                    new CustomEvent("simview:frame", { detail: { index, time: this.animationController.getCurrentTime() } })
+                );
+            }
         }
         
         // 2. Update UI components

@@ -169,3 +169,12 @@ export function toggleMapFromUiState(uiState) {
     });
     return toggles;
 }
+
+// Startup-only hash keys, independent of `v=1`: `data=<base url>` (static data
+// base) and `ui=0` (embedded mode, chrome hidden). Returns {data, ui} with
+// data null when absent and ui true unless explicitly "0".
+export function parseStartupOptions(hash) {
+    if (typeof hash !== "string") return { data: null, ui: true };
+    const params = new URLSearchParams(hash.replace(/^#/, ""));
+    return { data: params.get("data") || null, ui: params.get("ui") !== "0" };
+}
