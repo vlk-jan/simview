@@ -1397,8 +1397,27 @@ time, camera, batch and colour modes after load by assigning <code>iframe.src</c
 <td><code>flags</code></td>
 <td>bitmask of the boolean toggles (<code>view_hash(flags={...})</code> builds it)</td>
 </tr>
+<tr>
+<td><code>pc</code></td>
+<td>point clouds visible, <code>0</code> or <code>1</code></td>
+</tr>
+<tr>
+<td><code>track</code></td>
+<td>body to keep the camera on (a body name, or <code>None</code>)</td>
+</tr>
+<tr>
+<td><code>cmap</code></td>
+<td>terrain colour map name</td>
+</tr>
+<tr>
+<td><code>speed</code></td>
+<td>playback speed multiplier</td>
+</tr>
 </tbody>
 </table>
+<p>Every key is optional and an absent key leaves the viewer's current setting alone, so a
+fragment can carry a whole setup between page loads (<code>getViewState()</code> → <code>serializeViewState</code>
+on one page, the hash on the next) or change one thing.</p>
 <p>Two <strong>startup</strong> keys are read once, at load, and don't need <code>v=1</code>:</p>
 <table>
 <thead>
