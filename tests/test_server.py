@@ -248,18 +248,18 @@ def test_importmap_is_fully_vendored_offline(client):
     imports = importmap["imports"]
     assert imports, "importmap must declare at least one import specifier"
 
-    # index.html hardcodes every specifier as a root-relative "/static/..."
-    # path (see simview/server.py), which always resolves same-origin --
-    # unlike an absolute CDN URL (e.g. https://cdn.jsdelivr.net/...), which
-    # this guards against.
+    # index.html writes every specifier as a page-relative "./static/..."
+    # path (so the page can be served from any path), which always resolves
+    # same-origin -- unlike an absolute CDN URL (e.g.
+    # https://cdn.jsdelivr.net/...), which this guards against.
     prefix_urls = {}
     for specifier, url in imports.items():
-        assert url.startswith("/static/"), (
+        assert url.startswith("./static/"), (
             f"importmap specifier {specifier!r} does not resolve to a local "
-            f"/static/ path (got {url!r}) -- third-party libraries must be "
+            f"./static/ path (got {url!r}) -- third-party libraries must be "
             "vendored, not CDN-loaded"
         )
-        path = url
+        path = url[1:]
         # Bare-prefix specifiers (e.g. "three/addons/") map to a directory,
         # not a file -- there's nothing meaningful to fetch at the bare
         # directory URL itself, so only check specifiers mapping to an

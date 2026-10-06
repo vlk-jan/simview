@@ -3,9 +3,9 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 from typing import TYPE_CHECKING
 
-CACHE_DIR = ".simview_cache"
+from simview.view import view_hash  # stdlib-only, safe to import eagerly
 
-from simview.view import view_hash  # noqa: E402  (stdlib-only, safe eagerly)
+CACHE_DIR = ".simview_cache"
 
 try:
     __version__ = _version("simview")
