@@ -1,6 +1,7 @@
 import gzip
 import json
 import logging
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -14,6 +15,7 @@ from .columnar import (
     expand_columnar_states,
     inline_blob,
     is_columnar,
+    write_static_bundle,
 )
 from .model import (
     BodyShapeType,  # If used directly by users of SimulationData for body creation
@@ -512,11 +514,27 @@ class SimulationScene:
                 f.write("\n  ]\n}")
         logger.info("Simulation data successfully saved to %s", output_path)
 
+    def save_static(self, directory: str | Path) -> None:
+        """Write a static bundle (`model.json`, `states.json`, `blob/<id>`)
+        that the viewer's static mode (`#data=<base url>`, see
+        `simview.view_hash`) can load from any plain static file server.
+
+        Uses the same columnar layout and fallback as `save`.
+        """
+        # Reuse save() (attribute reconciliation, columnar fallback) via a
+        # temp file rather than duplicating it; ponytail: extra JSON roundtrip.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scene.json"
+            self.save(path)
+            write_static_bundle(json.loads(path.read_text()), directory)
+
     def show(
         self,
         host: str = "127.0.0.1",
         preferred_port: int = 5420,
         open_browser: bool = False,
+        view: str | None = None,
+        height: int = 600,
     ) -> ViewerHandle:
         """Serve a snapshot of this scene on a background thread and return
         immediately, instead of blocking like `SimViewLauncher`/`SimViewServer.run`.
@@ -532,6 +550,10 @@ class SimulationScene:
         Multiple concurrent `show()` calls (on the same or different scenes)
         are fine -- each gets its own server thread and port (via
         `find_free_port`).
+
+        `view` is a view-link fragment (see `simview.view_hash`) the inline
+        iframe opens with, e.g. a fixed camera or `ui=False`; `height` is the
+        iframe height in pixels.
         """
         if not self.model.is_complete:
             raise ValueError(
@@ -545,6 +567,8 @@ class SimulationScene:
             host=host,
             preferred_port=preferred_port,
             thread_name="simview-show-server",
+            view=view,
+            iframe_height=height,
         )
 
         logger.info("SimView viewer running on %s", handle.url)

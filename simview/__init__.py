@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 CACHE_DIR = ".simview_cache"
 
+from simview.view import view_hash  # noqa: E402  (stdlib-only, safe eagerly)
+
 try:
     __version__ = _version("simview")
 except PackageNotFoundError:
@@ -55,6 +57,7 @@ if TYPE_CHECKING:
 __all__ = [
     "__version__",
     "CACHE_DIR",
+    "view_hash",
     "SimulationScene",
     "ViewerHandle",
     "SimViewBody",

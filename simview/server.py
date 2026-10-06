@@ -636,9 +636,13 @@ class ViewerHandle:
         preferred_port: int = 5420,
         thread_name: str = "simview-server",
         log_level: str = "info",
+        view: str | None = None,
+        iframe_height: int = 600,
     ) -> None:
         self.host = host
         self.port = find_free_port(host, preferred_port)
+        self.view = view
+        self.iframe_height = iframe_height
 
         # Prefer uvicorn's modern sansio websocket implementation when the
         # `websockets` package is available -- the default "auto" still selects
@@ -678,6 +682,10 @@ class ViewerHandle:
     def url(self) -> str:
         return f"http://{dialable_host(self.host)}:{self.port}"
 
+    def url_for(self, view: str) -> str:
+        """`url` with a view-link fragment (see `simview.view_hash`) appended."""
+        return f"{self.url}/#{view.lstrip('#')}"
+
     def stop(self) -> None:
         """Signal the server to exit and wait for its thread to finish.
 
@@ -692,8 +700,9 @@ class ViewerHandle:
         """Jupyter calls this automatically when the handle is the result of
         a cell, embedding the viewer inline without the user having to open a
         separate browser tab."""
+        src = self.url_for(self.view) if self.view else self.url
         return (
-            f'<iframe src="{self.url}" width="100%" height="600" '
+            f'<iframe src="{src}" width="100%" height="{self.iframe_height}" '
             f'style="border:none;" allow="fullscreen"></iframe>'
         )
 

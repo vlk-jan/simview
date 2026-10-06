@@ -82,6 +82,10 @@ class LiveViewer:
 
             webbrowser.open(self._threaded.url)
 
+    @property
+    def url(self) -> str:
+        return self._threaded.url
+
     def push_state(self, time, body_states, scalar_values=None) -> None:
         """Append one frame and hand it to the sender thread for broadcast.
 

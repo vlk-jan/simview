@@ -414,3 +414,33 @@ def expand_columnar_states(states_doc: Any, batch_size: int) -> list[dict]:
         states.append(state)
 
     return states
+
+
+def write_static_bundle(data: dict, directory) -> None:
+    """Write ``{"model": ..., "states": ...}`` (inline ``__b64__`` blobs) as a
+    static bundle any file server can host for the viewer's static mode:
+    ``model.json``, ``states.json`` and raw ``blob/<id>`` files, with blob
+    references rewritten to ``/blob/<id>`` (the viewer maps these to
+    ``<base>/blob/<id>``). Stdlib-only."""
+    import json
+    from pathlib import Path
+
+    out = Path(directory)
+    (out / "blob").mkdir(parents=True, exist_ok=True)
+    count = 0
+
+    def externalize(obj):
+        nonlocal count
+        if not isinstance(obj, (dict, list)):
+            return
+        for k, v in obj.items() if isinstance(obj, dict) else enumerate(obj):
+            if is_blob(v):
+                (out / "blob" / str(count)).write_bytes(blob_bytes(v))
+                obj[k] = f"/blob/{count}"
+                count += 1
+            else:
+                externalize(v)
+
+    for name in ("model", "states"):
+        externalize(data[name])
+        (out / f"{name}.json").write_text(json.dumps(data[name]))
