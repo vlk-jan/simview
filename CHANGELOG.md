@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The JSON Format Specification page renders its field lists properly.** Nested
+  lists were indented too little for MkDocs, so everything under `episodes`, `bodies`,
+  `terrain` and a state's `bodies` collapsed into one run-on paragraph with literal
+  dashes. The Notes headings no longer run into their text, and code examples no
+  longer overflow sideways.
+- **The developer docs no longer describe code removed in 6.0.0.** The architecture
+  page dropped `InteractionControls` and gained `remote.py`, `WindowedField` and
+  `chartControls.js`; `einops` is gone from the docstrings and the bug-report
+  template.
+
 ## [6.0.1] - 2026-10-05
 
 ### Fixed
