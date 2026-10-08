@@ -336,11 +336,7 @@ export class Terrain {
 
         // PlaneGeometry ships flat (0, 0, 1) normals, so without this the
         // surface is lit as if it were level and slopes get no shading cue.
-        const normalCount = ArrayBuffer.isView(normals)
-            ? normals.length / 3
-            : Array.isArray(normals)
-              ? normals.length
-              : 0;
+        const normalCount = ArrayBuffer.isView(normals) ? normals.length / 3 : normals?.length ?? 0;
         const useSuppliedNormals = normalCount === position.count;
         const normal = geometry.attributes.normal;
         const n = new THREE.Vector3();

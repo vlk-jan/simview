@@ -63,7 +63,7 @@ export class BatchManager {
                     "Toggle 'Render All Batches' in Controls to draw them all."
             );
         }
-        this._recomputeVisibleBatches();
+        this.recomputeVisibleBatches();
 
         this.batchPalette = categoricalPalette(BATCH_PALETTE, this.simBatches);
         console.debug("Batch palette initialized:", this.batchPalette);
@@ -190,7 +190,7 @@ export class BatchManager {
         this.changeFocusOnBatchByIndex(batchIndex, previousBatch);
         // In focused mode the newly-active batch is (probably) not the one
         // currently built/drawn, so refresh before the panels read from it.
-        this._recomputeVisibleBatches();
+        this.recomputeVisibleBatches();
         this.app.bodyStateWindow.setSelectedBatch(batchIndex);
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setFocusedBatch(batchIndex);
@@ -218,14 +218,7 @@ export class BatchManager {
         if (mode !== RENDER_ALL && mode !== RENDER_FOCUSED) return;
         if (this.renderMode === mode) return;
         this.renderMode = mode;
-        this._recomputeVisibleBatches();
-    }
-
-    // Re-evaluates which batches are drawn after something other than the
-    // active batch / render mode changed the answer -- i.e. the split-screen
-    // pins below (Controls.js calls this from the Split Screen pickers).
-    refreshVisibleBatches() {
-        this._recomputeVisibleBatches();
+        this.recomputeVisibleBatches();
     }
 
     // Batches that must stay drawn even in focused mode, because a comparison
@@ -239,7 +232,7 @@ export class BatchManager {
         return pinned;
     }
 
-    _recomputeVisibleBatches() {
+    recomputeVisibleBatches() {
         const previous = this.visibleBatches;
         this.visibleBatches = visibleBatchSet(
             this.renderMode,

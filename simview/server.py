@@ -138,16 +138,6 @@ class SimViewServer:
     ):
         if sim_path is None and data is None:
             raise ValueError("Provide 'sim_path' and/or 'data'")
-        if (
-            data is None
-            and not isinstance(sim_path, (str, Path))
-            and sim_path is not None
-            and len(sim_path) > 1
-        ):
-            raise ValueError(
-                "Several 'sim_path's need a merged 'data' -- use "
-                "SimViewServer.start(), which merges them."
-            )
         # Live streaming mode (see simview.live.LiveViewer): /states reports
         # {"live": true} instead of serving a (possibly empty) states array,
         # and a /ws/states endpoint is registered to push frames as they're
@@ -179,6 +169,11 @@ class SimViewServer:
             self.sim_paths = [Path(sim_path)]
         else:
             self.sim_paths = [Path(p) for p in sim_path]
+        if data is None and len(self.sim_paths or []) > 1:
+            raise ValueError(
+                "Several 'sim_path's need a merged 'data' -- use "
+                "SimViewServer.start(), which merges them."
+            )
         # Single-file convenience accessor, used by _load_data when nothing is preloaded.
         self.sim_path = self.sim_paths[0] if self.sim_paths else None
         self._preloaded_data = data

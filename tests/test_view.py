@@ -82,11 +82,24 @@ def test_save_static(tmp_path):
 
 
 def test_key_order_matches_js():
-    from simview.view import KEY_ORDER
-
+    full = view_hash(
+        t=1,
+        cam=(1, 2, 3),
+        tgt=(0, 0, 0),
+        fov=50,
+        batch=0,
+        body_mode="mesh",
+        terrain_color_mode="height",
+        flags={},
+        point_clouds=True,
+        track="b",
+        color_map="viridis",
+        speed=1,
+    )
+    py_order = tuple(kv.split("=")[0] for kv in full[1:].split("&")[1:])
     serializer = JS.read_text().split("export function serializeViewState")[1]
     serializer = serializer.split("export function parseViewState")[0]
-    assert tuple(re.findall(r"params\.push\(`(\w+)=", serializer)) == KEY_ORDER
+    assert tuple(re.findall(r"params\.push\(`(\w+)=", serializer)) == py_order
 
 
 def test_number_and_uri_formatting_match_js():

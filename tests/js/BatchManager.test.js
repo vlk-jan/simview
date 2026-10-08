@@ -119,17 +119,17 @@ describe("BatchManager.changeFocusOnBatchByIndex", () => {
     });
 });
 
-describe("BatchManager.refreshVisibleBatches", () => {
+describe("BatchManager.recomputeVisibleBatches", () => {
     it("pins the split-screen batches in focused render mode", () => {
         const { app, manager } = makeBatchManager(40); // > 32 -> focused by default
         app.uiState = { splitScreen: true, splitBatchA: 0, splitBatchB: 5 };
         expect(manager.isBatchVisible(5)).toBe(false);
 
-        manager.refreshVisibleBatches();
+        manager.recomputeVisibleBatches();
 
         expect(manager.isBatchVisible(5)).toBe(true);
         app.uiState.splitBatchB = 7;
-        manager.refreshVisibleBatches();
+        manager.recomputeVisibleBatches();
         expect(manager.isBatchVisible(7)).toBe(true);
         expect(manager.isBatchVisible(5)).toBe(false);
     });

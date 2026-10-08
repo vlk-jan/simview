@@ -129,17 +129,9 @@ export function episodeAggregates(episodes, series, frameCount) {
 // window starts) is kept -- the earlier ones have no frames here to mark.
 export function shiftEpisodes(rawEpisodes, offset) {
     if (!Array.isArray(rawEpisodes) || !(offset > 0)) return rawEpisodes;
-    const before = rawEpisodes.filter((e) => Number(e?.startIndex) < offset);
-    // An episode starting exactly at the window start supersedes the one
-    // before it (which ended there and has no frames in this viewer).
-    const atStart = rawEpisodes.some((e) => Number(e?.startIndex) === offset);
-    const lastBefore = before.length && !atStart ? [before[before.length - 1]] : [];
-    return [
-        ...lastBefore.map((e) => ({ ...e, startIndex: 0 })),
-        ...rawEpisodes
-            .filter((e) => Number(e?.startIndex) >= offset)
-            .map((e) => ({ ...e, startIndex: e.startIndex - offset })),
-    ];
+    const shifted = rawEpisodes.map((e) => ({ ...e, startIndex: Math.max(0, Number(e?.startIndex) - offset) }));
+    const lastZero = shifted.findLastIndex((e) => e.startIndex === 0);
+    return shifted.filter((e, i) => e.startIndex > 0 || i === lastZero);
 }
 
 // Display name for an episode segment: its label if it has one, else a

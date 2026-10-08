@@ -884,17 +884,13 @@ def merge_simulation_files(
     # only one file's can apply: the first's, like its timeline and episodes.
     if models[0].get("viewerDefaults") is not None:
         merged_model["viewerDefaults"] = models[0]["viewerDefaults"]
-    ignored_defaults = [
-        label
-        for model, label in zip(models[1:], labels[1:])
-        if model.get("viewerDefaults") is not None
-    ]
-    if ignored_defaults:
-        logger.warning(
-            "Ignoring viewerDefaults from %s; the merged scene uses '%s'’s.",
-            ", ".join(f"'{label}'" for label in ignored_defaults),
-            labels[0],
-        )
+    for model, label in zip(models[1:], labels[1:]):
+        if model.get("viewerDefaults") is not None:
+            logger.warning(
+                "Ignoring viewerDefaults from '%s'; the merged scene uses '%s's.",
+                label,
+                labels[0],
+            )
     # Keep every input's run provenance (engine, checkpoint, git commit, ...)
     # instead of silently dropping it -- namespaced per source file since the
     # inputs may come from entirely different runs.

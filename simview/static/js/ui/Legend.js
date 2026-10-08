@@ -33,14 +33,7 @@ export class Legend {
         // Terrain.#updateSurfaceColor falls back to height colouring for a
         // mode it doesn't know (e.g. a view link naming a property this
         // scene lacks); label the bar the same way instead of throwing.
-        if (
-            mode !== "height" &&
-            mode !== "diff" &&
-            mode !== "features" &&
-            !this.app.terrain.properties.has(mode)
-        ) {
-            mode = "height";
-        }
+        if (!this.app.terrain.getAvailableColorModes().includes(mode)) mode = "height";
         const cmapName =
             mode === "diff" || mode === "features"
                 ? "coolwarm"

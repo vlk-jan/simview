@@ -14,22 +14,6 @@ from urllib.parse import quote
 # always-safe set (alphanumerics and "_.-~").
 _URI_SAFE = "!'()*"
 
-# Order of the `v=1` keys -- must equal the `params.push` order in viewState.js.
-KEY_ORDER = (
-    "t",
-    "cam",
-    "tgt",
-    "fov",
-    "b",
-    "bvm",
-    "tcm",
-    "flags",
-    "pc",
-    "track",
-    "cmap",
-    "speed",
-)
-
 # Bit order of the `flags` bitmask -- must equal BOOLEAN_FLAG_KEYS in viewState.js.
 BOOLEAN_FLAG_KEYS = (
     "axesVisible",
@@ -94,21 +78,21 @@ def view_hash(
     `data` (base URL of a static bundle, see `SimulationScene.save_static`) and
     `ui=False` (hide all panels) are startup options, not view state.
     """
-    values: dict[str, str] = {}
+    params = []
     if t is not None:
-        values["t"] = _num(t)
+        params.append(f"t={_num(t)}")
     if cam is not None:
-        values["cam"] = _vec3("cam", cam)
+        params.append(f"cam={_vec3('cam', cam)}")
     if tgt is not None:
-        values["tgt"] = _vec3("tgt", tgt)
+        params.append(f"tgt={_vec3('tgt', tgt)}")
     if fov is not None:
-        values["fov"] = _num(fov)
+        params.append(f"fov={_num(fov)}")
     if batch is not None:
-        values["b"] = str(int(batch))
+        params.append(f"b={int(batch)}")
     if body_mode:
-        values["bvm"] = quote(body_mode, safe=_URI_SAFE)
+        params.append(f"bvm={quote(body_mode, safe=_URI_SAFE)}")
     if terrain_color_mode:
-        values["tcm"] = quote(terrain_color_mode, safe=_URI_SAFE)
+        params.append(f"tcm={quote(terrain_color_mode, safe=_URI_SAFE)}")
     if flags is not None:
         unknown = set(flags) - set(BOOLEAN_FLAG_KEYS)
         if unknown:
@@ -116,19 +100,18 @@ def view_hash(
                 f"unknown flag(s) {sorted(unknown)}; use {BOOLEAN_FLAG_KEYS}"
             )
         mask = sum(1 << i for i, k in enumerate(BOOLEAN_FLAG_KEYS) if flags.get(k))
-        values["flags"] = str(mask)
+        params.append(f"flags={mask}")
     if point_clouds is not None:
-        values["pc"] = str(int(bool(point_clouds)))
+        params.append(f"pc={int(bool(point_clouds))}")
     if track:
-        values["track"] = quote(track, safe=_URI_SAFE)
+        params.append(f"track={quote(track, safe=_URI_SAFE)}")
     if color_map:
-        values["cmap"] = quote(color_map, safe=_URI_SAFE)
+        params.append(f"cmap={quote(color_map, safe=_URI_SAFE)}")
     if speed is not None:
         if speed <= 0:
             raise ValueError(f"speed must be positive; got {speed!r}")
-        values["speed"] = _num(speed)
+        params.append(f"speed={_num(speed)}")
 
-    params = [f"{key}={values[key]}" for key in KEY_ORDER if key in values]
     if params:
         params.insert(0, "v=1")
     if data is not None:

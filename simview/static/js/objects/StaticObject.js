@@ -162,9 +162,7 @@ export class StaticObject {
         // A singleton point cloud is one object per batch outside any batch
         // group, so a hidden batch has to be respected here (non-singleton
         // objects sit in per-batch groups, which carry it).
-        const batchManager = this.app.batchManager;
-        const batchVisible = (i) =>
-            !this.isSingleton || !batchManager?.isBatchVisible || batchManager.isBatchVisible(i);
+        const batchVisible = (i) => !this.isSingleton || this.app.batchManager.isBatchVisible(i);
         for (const [type, obj] of Object.entries(this.representations)) {
             if (obj instanceof THREE.InstancedMesh) {
                 obj.visible = type === mode;

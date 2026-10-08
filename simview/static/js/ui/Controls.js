@@ -437,7 +437,7 @@ export class UIControls {
             // In focused render mode the split batches are only drawn because
             // BatchManager pins them, so every change here must re-run its
             // visibility pass -- otherwise one half of the split stays blank.
-            const refreshPins = () => this.app.batchManager.refreshVisibleBatches();
+            const refreshPins = () => this.app.batchManager.recomputeVisibleBatches();
             const splitScreenCtrl = cameraFolder.add(cameraControls, "splitScreen").name("Split Screen");
             const splitBatchACtrl = cameraFolder.add(cameraControls, "splitBatchA", batches).name("Split Batch A").onChange(v => {
                 this.app.uiState.splitBatchA = parseInt(v);
