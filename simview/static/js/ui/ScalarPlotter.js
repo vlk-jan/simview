@@ -7,7 +7,7 @@ import {
     normalizeEpisodes,
 } from "../utils/episodes.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
-import { batchColumnsCsv, closestSeries, exportBar } from "./chartControls.js";
+import { batchColumnsCsv, closestSeries, exportBar, finiteBounds } from "./chartControls.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -35,7 +35,7 @@ export class ScalarPlotter {
         // {scalarName -> per-batch array of per-episode aggregates}, rebuilt
         // only when the episodes or the underlying series change.
         this.episodeAggregateCache = new Map();
-        this.seriesRenderCallback = null;
+        this.markerDirty = false;
         this.opacityRenderCallback = null;
         this.minRenderDelay = 1000 / FREQ_CONFIG.scalarPlotter;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
@@ -140,16 +140,7 @@ export class ScalarPlotter {
             // scalar as one whole-trajectory Float32Array.
             const series = store.getScalarSeries(scalarName, batchSize);
             this.scalarSeries.set(scalarName, series);
-
-            let min = Number.MAX_VALUE;
-            let max = Number.MIN_VALUE;
-            for (const batchSeries of series) {
-                for (const { y } of batchSeries) {
-                    min = Math.min(min, y);
-                    max = Math.max(max, y);
-                }
-            }
-            this.scalarBounds.set(scalarName, [min, max]);
+            this.scalarBounds.set(scalarName, finiteBounds(series));
         }
 
         this._initializePlots();
@@ -314,6 +305,7 @@ export class ScalarPlotter {
                         },
                     ],
                     tooltip: (u, idx) => this._tooltipHtml(u, idx, name),
+                    markerTime: () => this.times[this.currentEndIndex] ?? null,
                     hooks: {
                         draw: [
                             (u) => {
@@ -331,7 +323,16 @@ export class ScalarPlotter {
                         }
                     },
                 },
-                [[], ...new Array(this.app.batchManager.simBatches).fill([])],
+                // The whole timeline, plotted once; playback only moves the
+                // marker. NaN (a gap in the source) becomes null, uPlot's gap.
+                [
+                    this.times,
+                    ...this.scalarSeries
+                        .get(name)
+                        .map((batchSeries) =>
+                            batchSeries.map(({ y }) => (Number.isFinite(y) ? y : null))
+                        ),
+                ],
                 this.app
             );
 
@@ -365,27 +366,7 @@ export class ScalarPlotter {
             return;
         }
         this.currentEndIndex = newEndIndex;
-        const activeChart = this.charts.get(this.activeScalar);
-        if (!activeChart) {
-            console.warn(`No chart found for scalar "${this.activeScalar}".`);
-            return;
-        }
-
-        const scalarData = this.scalarSeries.get(this.activeScalar);
-        if (!scalarData) {
-            console.warn(`No data points found for scalar "${this.activeScalar}".`);
-            return;
-        }
-
-        this.seriesRenderCallback = () => {
-            const numPoints = this.currentEndIndex + 1;
-            const xValues = this.times.slice(0, numPoints);
-            const data = [xValues];
-            for (let i = 0; i < this.app.batchManager.simBatches; i++) {
-                data.push(scalarData[i].slice(0, numPoints).map((p) => p.y));
-            }
-            activeChart.setData(data, false);
-        };
+        this.markerDirty = true;
     }
 
     setFocusedBatch(batchIndex, force = false) {
@@ -437,9 +418,8 @@ export class ScalarPlotter {
         }
 
         var needRender = false;
-        if (this.seriesRenderCallback) {
-            this.seriesRenderCallback();
-            this.seriesRenderCallback = null;
+        if (this.markerDirty) {
+            this.markerDirty = false;
             needRender = true;
         }
         if (this.opacityRenderCallback) {
@@ -449,10 +429,9 @@ export class ScalarPlotter {
         }
 
         if (!needRender) return;
-        // rebuildPaths must be true: the series data changes on every frame of
-        // playback, and redrawing without rebuilding just repaints the paths
-        // built for whatever data the chart first saw.
-        activeChart.redraw(true, true);
+        // The data never changes after init, so the cached paths stay valid;
+        // strokes (focus opacity) are re-read on every draw anyway.
+        activeChart.redraw(false);
     }
 
     animate(now) {

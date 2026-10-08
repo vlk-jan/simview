@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The scalar plotter draws each series over the whole timeline, with a vertical line
+  at the current playback time, instead of only the part played so far.
+
+### Fixed
+
+- A scalar series with NaN samples (gaps in its source) no longer plots as an empty
+  chart: the y range is taken over finite values and the gaps are drawn as breaks.
+
 ## [6.1.1] - 2026-10-06
 
 ### Added

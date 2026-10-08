@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { batchColumnsCsv, closestSeries } from "../../simview/static/js/ui/chartControls.js";
+import { batchColumnsCsv, closestSeries, finiteBounds } from "../../simview/static/js/ui/chartControls.js";
 
 describe("closestSeries", () => {
     const u = { data: [[0, 1], [1, 5], [null, 3], [4, 4]] };
@@ -19,5 +19,15 @@ describe("batchColumnsCsv", () => {
         const batchManager = { simBatches: 2, getBatchName: (b) => (b === 0 ? "gt" : "") };
         const csv = batchColumnsCsv(batchManager, [0, 0.5], [[{ y: 1 }, { y: 2 }], [{ y: 3 }]]);
         expect(csv.trim().split(/\r?\n/)).toEqual(["time,gt,batch_1", "0,1,3", "0.5,2,"]);
+    });
+});
+
+describe("finiteBounds", () => {
+    it("ignores NaN gaps and handles all-negative series", () => {
+        expect(finiteBounds([[{ y: -3 }, { y: NaN }, { y: -1 }], [{ y: -2 }]])).toEqual([-3, -1]);
+    });
+
+    it("falls back to [0, 1] when nothing is finite", () => {
+        expect(finiteBounds([[{ y: NaN }]])).toEqual([0, 1]);
     });
 });
