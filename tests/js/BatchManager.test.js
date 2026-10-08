@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 
 // config.js reads window.devicePixelRatio at module load time (same stub the
@@ -81,5 +82,39 @@ describe("BatchManager.setActiveBatch", () => {
 
         expect(manager.currentlyActiveBatch).toBe(3);
         expect(app.bodyStateWindow.selectedBatch).toBe(3);
+    });
+});
+
+describe("BatchManager.changeFocusOnBatchByIndex", () => {
+    function withCamera(simBatches) {
+        const { app, manager } = makeBatchManager(simBatches);
+        delete manager.changeFocusOnBatchByIndex; // back to the real method
+        let updates = 0;
+        app.scene = {
+            camera: { position: new THREE.Vector3(3, -4, 10) },
+            controls: { target: new THREE.Vector3(3, 1, 0), update: () => updates++ },
+        };
+        return { app, manager, updates: () => updates };
+    }
+
+    it("leaves the view alone when the batch does not change", () => {
+        const { app, manager, updates } = withCamera(4);
+        manager.setActiveBatch(0);
+
+        expect(app.scene.controls.target.toArray()).toEqual([3, 1, 0]);
+        expect(app.scene.camera.position.toArray()).toEqual([3, -4, 10]);
+        expect(updates()).toBe(0);
+    });
+
+    it("moves camera and target by the offset between the two cells", () => {
+        const { app, manager } = withCamera(4);
+        const from = manager.getBatchOffset(0);
+        const to = manager.getBatchOffset(3);
+        manager.setActiveBatch(3);
+
+        const shift = [to.x - from.x, to.y - from.y, to.z - from.z];
+        expect(shift.some((v) => v !== 0)).toBe(true);
+        expect(app.scene.controls.target.toArray()).toEqual([3 + shift[0], 1 + shift[1], shift[2]]);
+        expect(app.scene.camera.position.toArray()).toEqual([3 + shift[0], -4 + shift[1], 10 + shift[2]]);
     });
 });

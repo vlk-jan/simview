@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A scalar series with NaN samples (gaps in its source) no longer plots as an empty
   chart: the y range is taken over finite values and the gaps are drawn as breaks.
+- Clicking a scalar chart (or re-selecting a batch) no longer throws the camera to the
+  batch's grid origin and off a tracked body: changing batch now shifts the view by the
+  offset between the two batches' cells, and body tracking re-centres on a batch switch.
 
 ## [6.1.1] - 2026-10-06
 

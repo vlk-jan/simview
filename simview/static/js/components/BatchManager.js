@@ -152,12 +152,19 @@ export class BatchManager {
         return { x: 0, y: 0, z: 0 };
     }
 
-    changeFocusOnBatchByIndex(batchIndex) {
+    // Moves camera and target by the offset between the two batches' grid
+    // cells, so the view keeps its place relative to the scene. Snapping the
+    // target to the cell origin instead lost the view on every chart click
+    // (which re-selects the closest batch) and broke body tracking.
+    changeFocusOnBatchByIndex(batchIndex, fromBatchIndex) {
         const { camera, controls } = this.app.scene;
-        const { x, y, z } = this.getBatchOffset(batchIndex);
-        const newCameraTarget = new THREE.Vector3(x, y, z);
-        camera.position.add(newCameraTarget.clone().sub(controls.target));
-        controls.target = newCameraTarget;
+        const to = this.getBatchOffset(batchIndex);
+        const from = this.getBatchOffset(fromBatchIndex);
+        const shift = new THREE.Vector3(to.x - from.x, to.y - from.y, to.z - from.z);
+        if (shift.lengthSq() === 0) return;
+        camera.position.add(shift);
+        controls.target.add(shift);
+        controls.update();
     }
 
     setActiveBatch(batchIndex) {
@@ -167,8 +174,9 @@ export class BatchManager {
             console.warn("Invalid batch index:", batchIndex);
             return;
         }
+        const previousBatch = this.currentlyActiveBatch;
         this.currentlyActiveBatch = batchIndex;
-        this.changeFocusOnBatchByIndex(batchIndex);
+        this.changeFocusOnBatchByIndex(batchIndex, previousBatch);
         // In focused mode the newly-active batch is (probably) not the one
         // currently built/drawn, so refresh before the panels read from it.
         this._recomputeVisibleBatches();
