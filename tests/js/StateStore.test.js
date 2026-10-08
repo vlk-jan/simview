@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { StateStore } from "../../simview/static/js/components/StateStore.js";
+import { describe, expect, it, vi } from "vitest";
+import { StateStore, firstNonMonotonicIndex } from "../../simview/static/js/components/StateStore.js";
 
 // Small hand-built fixture: T=3 frames, B=2 batches, one body "Box" with
 // bodyTransform (width 7) + velocity (width 3), contacts present on frames 0
@@ -143,5 +143,51 @@ describe("StateStore.fromColumnar getFrame memoization", () => {
         const frame1 = store.getFrame(1);
         expect(frame1).not.toBe(frame0a);
         expect(frame1.time).toBeCloseTo(0.5, 6);
+    });
+});
+
+describe("columnar blob validation", () => {
+    it("throws on a blob whose length does not match T * B * width", () => {
+        const fixture = buildColumnarFixture();
+        fixture.bodies[0].fields.velocity = new Float32Array(T * B * 3 - 1);
+        expect(() => StateStore.fromColumnar(fixture, B)).toThrow(/velocity.*expected/);
+    });
+
+    it("throws on an unknown field name", () => {
+        const fixture = buildColumnarFixture();
+        fixture.bodies[0].fields.spin = new Float32Array(T * B * 3);
+        expect(() => StateStore.fromColumnar(fixture, B)).toThrow(/Unknown columnar state field/);
+    });
+
+    it("throws on a scalar blob of the wrong length", () => {
+        const fixture = buildColumnarFixture();
+        fixture.scalars.energy = new Float32Array(T * B + 1);
+        expect(() => StateStore.fromColumnar(fixture, B)).toThrow(/scalar "energy"/);
+    });
+
+    it("skips validation for a WindowedField (it fetches its own ranges)", () => {
+        const fixture = buildColumnarFixture();
+        fixture.bodies[0].fields.velocity = { rowsAt: () => null };
+        expect(() => StateStore.fromColumnar(fixture, B)).not.toThrow();
+    });
+});
+
+describe("non-monotonic times", () => {
+    it("firstNonMonotonicIndex finds the first frame that goes back in time", async () => {
+        const times = [0, 1, 2, 1.5, 3];
+        expect(firstNonMonotonicIndex((i) => times[i], times.length)).toBe(3);
+        expect(firstNonMonotonicIndex((i) => times[i], 3)).toBe(-1);
+        expect(firstNonMonotonicIndex((i) => times[i], times.length, 4)).toBe(-1);
+    });
+
+    it("warns once when a legacy store is built or appended out of order", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const store = StateStore.fromLegacy([{ time: 0 }, { time: 1 }]);
+        expect(warn).not.toHaveBeenCalled();
+        store.append([{ time: 0.5 }]);
+        store.append([{ time: 0.25 }]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/frame 2/);
+        warn.mockRestore();
     });
 });

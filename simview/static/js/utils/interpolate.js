@@ -25,11 +25,11 @@ export function lerpVector3Row(a, b, alpha) {
 export function lerpVectorRows(rowsA, rowsB, alpha) {
     if (!rowsA || !rowsB) return rowsA || rowsB;
     const n = Math.min(rowsA.length, rowsB.length);
-    const out = new Array(rowsA.length);
+    const out = new Array(Math.max(rowsA.length, rowsB.length));
     for (let i = 0; i < n; i++) {
         out[i] = lerpVector3Row(rowsA[i], rowsB[i], alpha);
     }
-    for (let i = n; i < rowsA.length; i++) out[i] = rowsA[i];
+    for (let i = n; i < out.length; i++) out[i] = rowsA[i] ?? rowsB[i];
     return out;
 }
 
@@ -56,10 +56,10 @@ export function interpolateTransformRow(a, b, alpha) {
 export function interpolateTransformRows(rowsA, rowsB, alpha) {
     if (!rowsA || !rowsB) return rowsA || rowsB;
     const n = Math.min(rowsA.length, rowsB.length);
-    const out = new Array(rowsA.length);
+    const out = new Array(Math.max(rowsA.length, rowsB.length));
     for (let i = 0; i < n; i++) {
         out[i] = interpolateTransformRow(rowsA[i], rowsB[i], alpha);
     }
-    for (let i = n; i < rowsA.length; i++) out[i] = rowsA[i];
+    for (let i = n; i < out.length; i++) out[i] = rowsA[i] ?? rowsB[i];
     return out;
 }

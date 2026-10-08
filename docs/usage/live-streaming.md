@@ -23,7 +23,11 @@ scene.save("recording.json.gz", compress=True)
 it delegates to it directly, then hands the new frame to a background sender thread that
 broadcasts it to every connected viewer. A viewer opened after the stream has already
 started still gets the history so far (the most recent 10,000 frames on a longer run),
-replayed as a catch-up before it starts receiving new frames live. If no viewer is connected yet, pushed frames are simply
+replayed as a catch-up before it starts receiving new frames live. Every WebSocket
+`{"states": [...]}` message also carries `"frameOffset"`, the absolute index (into the
+full run, the same index space `model.episodes[].startIndex` uses) of its first frame,
+so a viewer that only received the buffered tail still places episode boundaries
+correctly. If no viewer is connected yet, pushed frames are simply
 buffered for the next one to connect. Playback in the browser follows the live frames
 automatically as long as you haven't scrubbed backward or started a loop; a small "LIVE"
 badge shows while the socket is open.

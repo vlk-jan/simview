@@ -154,7 +154,7 @@ describe("buildTerrainSeries", () => {
         expect(series[1].map((p) => p.y)).toEqual([100, 101, 102]);
     });
 
-    it("skips frames with missing or non-finite body data", () => {
+    it("emits a null gap (not a shorter series) for frames with missing or non-finite body data", () => {
         const pathsWithGaps = [
             [
                 [0, 0],
@@ -173,11 +173,18 @@ describe("buildTerrainSeries", () => {
             referenceBatch: null,
         });
 
+        // Dropping the frame instead shifted every later sample onto an
+        // earlier time in the chart and the CSV.
         expect(series[0]).toEqual([
             { x: 0, y: 0 },
+            { x: 1, y: null },
             { x: 2, y: 2 },
         ]);
-        expect(series[1]).toEqual([{ x: 0, y: 6 }]);
+        expect(series[1]).toEqual([
+            { x: 0, y: 6 },
+            { x: 1, y: null },
+            { x: 2, y: null },
+        ]);
     });
 
     it("returns an empty series for a batch with no path or grid data", () => {

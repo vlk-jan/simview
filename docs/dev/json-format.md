@@ -23,12 +23,17 @@ produces.
 - **`simBatches`** *(integer)* — number of parallel simulation instances (batches).
 - **`batchNames`** *(array[string], optional)* — display name for each batch, length
     must equal `simBatches`. Shown in the [Batch Legend](../usage/controls.md#batch-legend); falls back to
-    `"Batch <index>"` per entry if omitted, empty, or the wrong length. Renames made from
+    `"Batch <index>"` per entry if omitted, empty, or the wrong length (the Python
+    reader applies the same fallback, with a warning). Renames made from
     the Batch Legend are persisted server-side (see below) and take precedence over this
-    field on subsequent loads.
+    field on subsequent loads. `merge_simulation_files` keeps each input's own names
+    for the batches taken from it, falling back to the file stem.
 - **`scalarNames`** *(array[string])* — names of per-batch scalar time-series (e.g. `"energy"`).
-- **`dt`** *(float)* — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.
-- **`collapse`** *(boolean)* — UI hint to start with the body-state window collapsed.
+- **`dt`** *(float, optional)* — simulation timestep in seconds. Used for playback timing;
+    if omitted, `null` or invalid the viewer infers it from consecutive state times
+    (`SimulationScene.load` keeps it as `None`).
+- **`collapse`** *(boolean, optional, default `false`)* — start with the Body States
+    window collapsed. `viewerDefaults.bodyStatesOpen` (below), when present, wins over it.
 - **`metadata`** *(object, optional)* — free-form, JSON-serializable run provenance (e.g.
     engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
     read-only in `simview info` and the browser's "Scene Info" GUI folder so a scene saved
@@ -98,7 +103,7 @@ produces.
         Omitted means opaque.
     - **`visible`** *(boolean, optional)* — `false` hides the body initially. Written only
         when `false`.
-- **`staticObjects`** *(array, optional)* — non-moving geometry. Each entry has `name`,
+- **`staticObjects`** *(array, optional, default `[]`)* — non-moving geometry. Each entry has `name`,
     `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
     *(array, one per batch)* using the same shape objects as bodies.
 - **`terrain`** *(object)* — heightfield shared or per-batch:

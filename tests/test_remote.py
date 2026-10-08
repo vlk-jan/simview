@@ -105,7 +105,18 @@ def test_parse_remote_spec_rejects(spec):
 
 
 @pytest.mark.parametrize(
-    "spec", ["ssh://rci:2222/x.json", "ssh://rci", "ssh:///x.json"]
+    "spec",
+    [
+        "ssh://rci:2222/x.json",
+        "ssh://rci",
+        "ssh:///x.json",
+        # A host starting with '-' would reach ssh's argv as an option
+        # (-oProxyCommand=... runs a local command), in any of the three forms.
+        "ssh://-oProxyCommand=touch x/scene.json",
+        "[-oProxyCommand=touch x]:scene.json",
+        "-F:scene.json",
+        "-u@rci:scene.json",
+    ],
 )
 def test_parse_remote_spec_rejects_malformed_urls(spec):
     with pytest.raises(remote.RemoteError):

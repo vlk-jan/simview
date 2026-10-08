@@ -160,3 +160,44 @@ describe("WindowedField", () => {
         expect(field.rowsAt(0)).toBe(null);
     });
 });
+
+describe("WindowedField Range handling", () => {
+    it("rejects a 200 response (server ignored Range) instead of using it as the window", async () => {
+        const server = fakeBlobServer(TOTAL_FRAMES, BATCHES, WIDTH);
+        const fetchImpl = (url, options) =>
+            server.fetchImpl(url, options).then((r) => ({ ...r, status: 200, statusText: "OK" }));
+        const errors = [];
+        const originalError = console.error;
+        console.error = (e) => errors.push(e);
+        try {
+            const field = new WindowedField("/blob/tok/0", {
+                totalFrames: TOTAL_FRAMES,
+                batchCount: BATCHES,
+                width: WIDTH,
+                fetchImpl,
+            });
+            field.rowsAt(0);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(field.rowsAt(0)).toBe(null);
+            expect(String(errors[0])).toMatch(/ignored the Range/);
+        } finally {
+            console.error = originalError;
+        }
+    });
+
+    it("calls onLanded once a window arrives", async () => {
+        const server = fakeBlobServer(TOTAL_FRAMES, BATCHES, WIDTH);
+        let landed = 0;
+        const field = new WindowedField("/blob/tok/0", {
+            totalFrames: TOTAL_FRAMES,
+            batchCount: BATCHES,
+            width: WIDTH,
+            fetchImpl: server.fetchImpl,
+            onLanded: () => landed++,
+        });
+        field.rowsAt(0); // prefetches the current window and the next
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(landed).toBe(2);
+        expect(field.rowsAt(0)).not.toBe(null);
+    });
+});

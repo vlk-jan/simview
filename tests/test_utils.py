@@ -39,6 +39,18 @@ def test_find_free_port_returns_base_port_when_free():
     assert find_free_port("127.0.0.1", port) == port
 
 
+def test_find_free_port_supports_ipv6_hosts():
+    if not socket.has_ipv6:
+        pytest.skip("no IPv6")
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+            s.bind(("::1", 0))
+            port = s.getsockname()[1]
+    except OSError:
+        pytest.skip("IPv6 loopback not available")
+    assert find_free_port("::1", port) == port
+
+
 def test_find_free_port_skips_occupied_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
@@ -72,3 +84,12 @@ def test_find_free_port_raises_when_no_port_available_up_to_max(monkeypatch):
 
     with pytest.raises(OSError, match="No free port"):
         find_free_port("127.0.0.1", utils_module._MAX_PORT - 2)
+
+
+def test_load_scene_rejects_a_states_dict_that_is_not_columnar(tmp_path):
+    from simview.utils import load_scene
+
+    path = tmp_path / "scene.json"
+    path.write_text(json.dumps({"model": {"simBatches": 1}, "states": {"version": 3}}))
+    with pytest.raises(ValueError, match="columnar"):
+        load_scene(path)

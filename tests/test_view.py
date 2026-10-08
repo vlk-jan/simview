@@ -79,3 +79,22 @@ def test_save_static(tmp_path):
         [s["time"] for s in scene.states]
     )
     assert expanded[0]["bodies"][0]["name"] == scene.states[0]["bodies"][0]["name"]
+
+
+def test_key_order_matches_js():
+    from simview.view import KEY_ORDER
+
+    serializer = JS.read_text().split("export function serializeViewState")[1]
+    serializer = serializer.split("export function parseViewState")[0]
+    assert tuple(re.findall(r"params\.push\(`(\w+)=", serializer)) == KEY_ORDER
+
+
+def test_number_and_uri_formatting_match_js():
+    """fmtNum: non-finite -> "0", >= 1e21 -> exponent form; encodeURIComponent
+    leaves !'()* alone."""
+    assert view_hash(t=float("nan"), fov=float("inf")) == "#v=1&t=0&fov=0"
+    assert view_hash(t=1e21, fov=1.5e22) == "#v=1&t=1e+21&fov=1.5e+22"
+    assert view_hash(t=1e20) == "#v=1&t=100000000000000000000"
+    assert view_hash(body_mode="a!b'(c)*", track="x y") == (
+        "#v=1&bvm=a!b'(c)*&track=x%20y"
+    )

@@ -990,3 +990,93 @@ def test_merge_selection_carries_terrain_embedding(tmp_path):
     per_batch_rows = [flat[: len(flat) // 2], flat[len(flat) // 2 :]]
     assert {v for v in per_batch_rows[0]} == {1.0}
     assert {v for v in per_batch_rows[1]} == {10.0}
+
+
+# --- Regressions ---------------------------------------------------------------
+
+
+def _save_json(scene, path, edit=None):
+    scene.save(path)
+    doc = json.loads(path.read_text())
+    if edit:
+        edit(doc)
+    path.write_text(json.dumps(doc))
+
+
+def test_merge_treats_a_null_property_bound_as_unknown(tmp_path):
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    _save_json(build_scene(1), path_a)
+
+    def null_min(doc):
+        doc["model"]["terrain"]["properties"]["friction"]["min"] = None
+
+    _save_json(build_scene(1), path_b, null_min)
+
+    friction = merge_simulation_files([path_a, path_b])["model"]["terrain"][
+        "properties"
+    ]["friction"]
+    assert friction["min"] is None
+    assert friction["max"] == pytest.approx(0.5)
+
+
+def test_merge_singleton_vs_batched_static_object_raises(tmp_path):
+    from simview.model import BodyShapeType, SimViewStaticObject
+
+    scene_a, scene_b = build_scene(1), build_scene(1)
+    scene_a.model.add_static_object(
+        SimViewStaticObject.create_singleton(
+            "Wall", BodyShapeType.BOX, hx=1, hy=1, hz=1
+        )
+    )
+    scene_b.model.add_static_object(
+        SimViewStaticObject.create_batched(
+            "Wall", BodyShapeType.BOX, [{"hx": 1, "hy": 1, "hz": 1}]
+        )
+    )
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    with pytest.raises(ValueError, match="'Wall' is singleton in 'a.json'"):
+        merge_simulation_files([path_a, path_b])
+
+
+def test_merge_rejects_unsorted_state_times(tmp_path):
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    _save_json(build_scene(1), path_a)
+    scene_b = build_custom_scene(times=[0.2, 0.0, 0.1], zs=[20.0, 0.0, 10.0])
+    scene_b.save(path_b, columnar=False)
+    with pytest.raises(ValueError, match="not non-decreasing"):
+        merge_simulation_files([path_a, path_b])
+
+
+def test_merge_accepts_a_flat_plain_height_grid(tmp_path):
+    """json-format.md: 'a single flat array is also accepted and treated as
+    one batch'; terrain queries already did, merge rejected it."""
+    paths = [tmp_path / "a.json", tmp_path / "b.json"]
+
+    def flatten(doc):
+        doc["model"]["terrain"]["heightData"] = [0.0] * 16
+
+    for path in paths:
+        _save_json(build_scene(1), path, flatten)
+
+    merged = merge_simulation_files(paths)
+    assert merged["model"]["terrain"]["heightData"] == [[0.0] * 16, [0.0] * 16]
+
+
+def test_merge_keeps_input_batch_names_and_first_viewer_defaults(tmp_path, caplog):
+    scene_a = build_scene(2)
+    scene_a.model.batch_names = ["gt", "sim"]
+    scene_a.model.viewer_defaults = {"ui": {"trailsVisible": True}}
+    scene_b = build_scene(1)
+    scene_b.model.viewer_defaults = {"ui": {"trailsVisible": False}}
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    with caplog.at_level("WARNING", logger="simview.merge"):
+        merged = merge_simulation_files([path_a, path_b], ["1", None])
+
+    assert merged["model"]["batchNames"] == ["sim", "b"]
+    assert merged["model"]["viewerDefaults"] == {"ui": {"trailsVisible": True}}
+    assert "Ignoring viewerDefaults from 'b.json'" in caplog.text

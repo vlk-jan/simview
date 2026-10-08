@@ -54,11 +54,23 @@ function fakeApp({
 }
 
 // Stubs the raycaster so tests control intersection results directly instead
-// of doing real THREE geometry math (which needs a real camera/scene).
+// of doing real THREE geometry math (which needs a real camera/scene). Both
+// the body pass and the terrain pass go through intersectObjects; the
+// terrain pass is recognised by its argument being the terrain's patches.
 function stubRaycaster(controller, { objectHits = [], terrainHits = [] } = {}) {
+    const patches = new Set(controller.app.terrain?.group?.children ?? []);
     controller.raycaster.setFromCamera = () => {};
-    controller.raycaster.intersectObjects = () => objectHits;
-    controller.raycaster.intersectObject = () => terrainHits;
+    controller.raycaster.intersectObjects = (objs) =>
+        objs.some((o) => patches.has(o)) ? terrainHits : objectHits;
+}
+
+// A terrain stub whose group holds one patch per hit object (or that
+// object's batch group when it has one), the way Terrain.js lays them out.
+function fakeTerrain(surfaceObjs, extra = {}) {
+    return {
+        group: { children: surfaceObjs.map((o) => o.parent ?? o) },
+        ...extra,
+    };
 }
 
 describe("InteractionController.onClick", () => {
@@ -118,13 +130,12 @@ describe("InteractionController.onClick", () => {
     it("clicking terrain in 'features' mode calls setFeatureQueryAt instead of showing the props tooltip", () => {
         const surfaceObj = { name: "surface", parent: { name: "batch1", parent: null } };
         const calls = [];
-        const terrain = {
-            group: {},
+        const terrain = fakeTerrain([surfaceObj], {
             setFeatureQueryAt(x, y, batchIndex) {
                 calls.push([x, y, batchIndex]);
                 return true;
             },
-        };
+        });
         const app = fakeApp({ terrain, terrainColorMode: "features" });
         const controller = new InteractionController(app);
         stubRaycaster(controller, {
@@ -140,14 +151,13 @@ describe("InteractionController.onClick", () => {
     it("clicking terrain in a non-'features' mode does not call setFeatureQueryAt", () => {
         const surfaceObj = { name: "surface", parent: null };
         let called = false;
-        const terrain = {
-            group: {},
+        const terrain = fakeTerrain([surfaceObj], {
             setFeatureQueryAt() {
                 called = true;
                 return true;
             },
             getPropertiesAt: () => null, // no props -> showTerrainTooltip bails out early
-        };
+        });
         const app = fakeApp({ terrain, terrainColorMode: "height" });
         const controller = new InteractionController(app);
         stubRaycaster(controller, {
@@ -228,15 +238,16 @@ describe("InteractionController.onClick", () => {
 
     it("proceeds (probe only) when probe is active even if pointColorMode is 'pca'", () => {
         const surfaceObj = { name: "surface", parent: null };
-        const terrain = { group: {}, getPropertiesAt: () => null };
+        const terrain = fakeTerrain([surfaceObj], { getPropertiesAt: () => null });
         const app = fakeApp({ terrain, terrainProbe: true, pointColorMode: "pca" });
         const controller = new InteractionController(app);
         let raycastCalled = false;
+        stubRaycaster(controller, {
+            terrainHits: [{ object: surfaceObj, point: { x: 0, y: 0, z: 0 } }],
+        });
         controller.raycaster.setFromCamera = () => {
             raycastCalled = true;
         };
-        controller.raycaster.intersectObjects = () => [];
-        controller.raycaster.intersectObject = () => [{ object: surfaceObj, point: { x: 0, y: 0, z: 0 } }];
 
         controller.onClick({ clientX: 0, clientY: 0 });
 
@@ -270,5 +281,60 @@ describe("InteractionController.onClick", () => {
         controller.onClick({ clientX: 20, clientY: 20 });
 
         expect(body.recolorCalls).toEqual([]);
+    });
+});
+
+describe("InteractionController.onClick ignores what isn't on screen", () => {
+    it("leaves hidden body objects and hidden bodies out of the raycast", () => {
+        const shown = { isPoints: true, visible: true, userData: { bodyName: "a" } };
+        const hidden = { isPoints: true, visible: false, userData: { bodyName: "a" } };
+        const bodyA = { getObject3D: () => ({ visible: true, children: [shown, hidden] }) };
+        const bodyB = { getObject3D: () => ({ visible: false, children: [{ isMesh: true, visible: true }] }) };
+        const app = fakeApp({ bodies: new Map([["a", bodyA], ["b", bodyB]]) });
+        const controller = new InteractionController(app);
+        let arg = null;
+        controller.raycaster.setFromCamera = () => {};
+        controller.raycaster.intersectObjects = (objs) => {
+            arg = arg ?? objs;
+            return [];
+        };
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(arg).toEqual([shown]);
+    });
+
+    it("raycasts only the visible terrain patches", () => {
+        const shownPatch = { name: "batch0", visible: true };
+        const hiddenPatch = { name: "batch1", visible: false };
+        const terrain = { group: { children: [shownPatch, hiddenPatch] }, getPropertiesAt: () => null };
+        const app = fakeApp({ terrain, pointColorMode: "pca" });
+        const controller = new InteractionController(app);
+        const args = [];
+        controller.raycaster.setFromCamera = () => {};
+        controller.raycaster.intersectObjects = (objs) => {
+            args.push(objs);
+            return [];
+        };
+
+        controller.onClick({ clientX: 0, clientY: 0 });
+
+        expect(args[1]).toEqual([shownPatch]);
+    });
+
+    it("ignores a click whose target is not the renderer canvas (UI panels over the view)", () => {
+        const canvas = { addEventListener() {}, removeEventListener() {} };
+        const app = fakeApp({ terrain: fakeTerrain([]) });
+        app.scene.renderer = { domElement: canvas };
+        const controller = new InteractionController(app);
+        let raycasts = 0;
+        controller.raycaster.setFromCamera = () => raycasts++;
+        controller.raycaster.intersectObjects = () => [];
+
+        controller.onClick({ clientX: 0, clientY: 0, target: { tagName: "INPUT" } });
+        expect(raycasts).toBe(0);
+
+        controller.onClick({ clientX: 0, clientY: 0, target: canvas });
+        expect(raycasts).toBe(1);
     });
 });

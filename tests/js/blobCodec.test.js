@@ -70,3 +70,12 @@ describe("decodeStatesChunk", () => {
         expect(chunk).toEqual([{ time: 0 }]);
     });
 });
+
+describe("decodeStateField partial rows", () => {
+    it("throws on a float count that is not a multiple of the width (mirrors Python)", () => {
+        const bin = new Uint8Array(new Float32Array([1, 2, 3, 4, 5, 6, 7, 8]).buffer);
+        let s = "";
+        for (const b of bin) s += String.fromCharCode(b);
+        expect(() => decodeStateField("__b64__" + btoa(s), 7)).toThrow(/not a multiple/);
+    });
+});

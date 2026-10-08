@@ -162,12 +162,55 @@ def _resolve_frame(
     return resolved
 
 
+def pose_resolver(model_data: dict, states_data: list):
+    """`(all_names, resolve)` for walking `states_data` in world space:
+    `all_names` is every body name/name-group in the states plus any
+    rigidly-attached body (constant `localTransform`, never written into the
+    states) resolvable from them, and `resolve(state, batch_idx)` maps each
+    body name to its absolute-world `[x, y, z, w, qx, qy, qz]` row for that
+    frame (parent chains composed; bodies without a pose that frame are left
+    out). Shared by `simview diff` and `simview terrain --along-body`."""
+    batch_size = int(model_data.get("simBatches") or 1)
+    all_names = collect_body_names(states_data)
+    meta = _build_body_meta(model_data, all_names)
+    topo_order = _topo_sort_bodies(meta)
+    seen_keys = {body_key(name) for name in all_names}
+    for name in topo_order:
+        if meta[name]["localTransform"] is not None and body_key(name) not in seen_keys:
+            seen_keys.add(body_key(name))
+            all_names.append(name)
+
+    def resolve(state: dict, batch_idx: int) -> dict[str, list[float]]:
+        return _resolve_frame(
+            meta, topo_order, bodies_by_name(state.get("bodies")), batch_size, batch_idx
+        )
+
+    return all_names, resolve
+
+
 def _quat_angle_deg(qa: list[float], qb: list[float]) -> float:
     """Angular distance in degrees between two [w, x, y, z] quaternions,
-    robust to the double-cover ambiguity (q and -q are the same rotation)."""
+    robust to the double-cover ambiguity (q and -q are the same rotation).
+    NaN in either quaternion gives NaN, never a spurious 0."""
     dot = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3]
+    if math.isnan(dot):
+        return math.nan
     dot = max(-1.0, min(1.0, abs(dot)))
     return math.degrees(2 * math.acos(dot))
+
+
+def _nan_aware_stats(values: list[float]) -> dict:
+    """`series_stats` over the finite entries of `values` (NaN for all of
+    mean/min/max when every entry is NaN), with `final` the raw last value
+    and `nan_count` how many entries were NaN."""
+    finite = [v for v in values if not math.isnan(v)]
+    stats = series_stats(finite)
+    if values and not finite:
+        stats = {"mean": math.nan, "min": math.nan, "max": math.nan, "final": None}
+    if values:
+        stats["final"] = values[-1]
+    stats["nan_count"] = len(values) - len(finite)
+    return stats
 
 
 def _resolve_batches(model_data: dict, batch_a: int, batch_b: int) -> int:
@@ -191,7 +234,9 @@ def _first_exceeding(
     if threshold is None:
         return None
     for frame_idx, value in zip(frame_indices, values):
-        if value > threshold:
+        # A NaN error (NaN pose in either batch) counts as exceeding: it's
+        # never "within threshold".
+        if value > threshold or math.isnan(value):
             return frame_idx
     return None
 
@@ -230,27 +275,19 @@ def compute_trajectory_diff(
     per-axis toggle -- see `static/js/utils/errorMath.js`'s
     `positionAxisError`) and matching `"err_x"`/`"err_y"`/`"err_z"` entries
     in `summary` (mean/max/final of the *signed* value, so directional bias
-    is visible). Raises `ValueError` on invalid batch indices, `every < 1`,
-    an unmatched/ambiguous `body`, or a scene with no diffable bodies.
+    is visible). A NaN pose yields a NaN error for that frame: summary
+    mean/min/max skip NaN entries (`nan_count` says how many), and a NaN
+    error counts as exceeding any threshold. Raises `ValueError` on invalid
+    batch indices, `every < 1`, an unmatched/ambiguous `body`, or a scene
+    with no diffable bodies.
     """
-    batch_size = _resolve_batches(model_data, batch_a, batch_b)
+    _resolve_batches(model_data, batch_a, batch_b)
     if every < 1:
         raise ValueError(f"every must be >= 1; got {every}")
 
-    all_names = collect_body_names(states_data)
-    seen_keys = {body_key(name) for name in all_names}
+    all_names, resolve = pose_resolver(model_data, states_data)
     if not all_names:
         raise ValueError("no bodies found in the scene's states to diff")
-
-    meta = _build_body_meta(model_data, all_names)
-    topo_order = _topo_sort_bodies(meta)
-    # Rigidly-attached children carry a constant localTransform and so never
-    # appear in the states at all -- they're only diffable now that poses are
-    # resolved through the parent chain.
-    for name in topo_order:
-        if meta[name]["localTransform"] is not None and body_key(name) not in seen_keys:
-            seen_keys.add(body_key(name))
-            all_names.append(name)
 
     target_names = resolve_body(all_names, body)
 
@@ -273,11 +310,10 @@ def compute_trajectory_diff(
     for idx, state in enumerate(states_data):
         if idx % every != 0:
             continue
-        raw_by_name = bodies_by_name(state.get("bodies"))
         # Resolved once per frame for the whole scene rather than per body:
         # a child's world pose needs its ancestors' poses anyway.
-        rows_a = _resolve_frame(meta, topo_order, raw_by_name, batch_size, batch_a)
-        rows_b = _resolve_frame(meta, topo_order, raw_by_name, batch_size, batch_b)
+        rows_a = resolve(state, batch_a)
+        rows_b = resolve(state, batch_b)
 
         for name in target_names:
             key = body_key(name)
@@ -302,8 +338,8 @@ def compute_trajectory_diff(
         frame_indices = out["frame_indices"]
         summary = {
             "frame_count": len(frame_indices),
-            "position_error": series_stats(out["position_error"]),
-            "orientation_error_deg": series_stats(out["orientation_error_deg"]),
+            "position_error": _nan_aware_stats(out["position_error"]),
+            "orientation_error_deg": _nan_aware_stats(out["orientation_error_deg"]),
             "first_frame_exceeding_pos_threshold": _first_exceeding(
                 frame_indices, out["position_error"], pos_threshold
             ),
@@ -323,7 +359,7 @@ def compute_trajectory_diff(
         body_out["summary"] = summary
         for axis in axes:
             body_out[axis] = out[axis]
-            summary[axis] = series_stats(out[axis])
+            summary[axis] = _nan_aware_stats(out[axis])
         bodies_out[body_label(name)] = body_out
 
     return {

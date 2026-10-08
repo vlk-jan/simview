@@ -127,3 +127,16 @@ def test_concurrent_shows_get_independent_ports():
             handle_b.stop()
     finally:
         handle_a.stop()
+
+
+def test_show_declares_attributes_the_states_carry():
+    """Only save() reconciled availableAttributes, so a body fed velocity
+    without declaring it showed no arrows under show()/LiveViewer."""
+    scene = build_scene(batch_size=1)
+    scene.model.bodies["Box"].available_attributes = None
+    handle = scene.show(preferred_port=6030)
+    try:
+        model = httpx.get(f"{handle.url}/model", timeout=5.0).json()
+    finally:
+        handle.stop()
+    assert model["bodies"][0]["availableAttributes"] == ["velocity"]

@@ -41,6 +41,27 @@ def _encoding_of(value: Any) -> str:
     return "blob" if is_blob(value) else "plain"
 
 
+def _field_shape_reason(value: Any, width: int, batch_size: int) -> str | None:
+    """Why `columnarize_states` would reject this per-body field value (its
+    float count must be `batch_size * width`; a flat list only for a
+    single batch), or None if it's fine. Counts floats without decoding
+    plain lists into arrays."""
+    if is_blob(value):
+        count = len(blob_bytes(value)) // 4
+    elif isinstance(value, list):
+        if value and not isinstance(value[0], list):
+            if batch_size != 1:
+                return "is a flat list but the scene has more than one batch"
+            count = len(value)
+        else:
+            count = sum(len(row) if isinstance(row, list) else 1 for row in value)
+    else:
+        return f"is a {type(value).__name__}, not a list or blob"
+    if count != batch_size * width:
+        return f"has {count} floats; expected {batch_size * width}"
+    return None
+
+
 def _summarize_terrain(terrain: dict) -> dict:
     dims = terrain.get("dimensions") or {}
     bounds = terrain.get("bounds") or {}
@@ -141,6 +162,12 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
         except ValueError as e:
             warnings.append(f"columnar states document is malformed: {e}")
             states = []
+    elif not isinstance(states, list):
+        warnings.append(
+            "'states' is neither a per-frame array nor a columnar document "
+            f"(got {type(states).__name__})"
+        )
+        states = []
 
     frame_count = len(states)
     dt_from_model = model.get("dt") if model else None
@@ -221,6 +248,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
     body_encodings_by_field: dict = {}
     body_frames_present: dict = {}
     body_contacts_frames: dict = {}
+    body_shape_reported: set = set()
 
     for idx, state in enumerate(states):
         bodies = state.get("bodies") or []
@@ -253,6 +281,16 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
             for field in fields:
                 encodings = body_encodings_by_field[key].setdefault(field, set())
                 encodings.add(_encoding_of(body[field]))
+                # Same row-shape rule columnarize_states applies, checked
+                # cheaply (float counts only) so the verdict matches.
+                shape_reason = _field_shape_reason(
+                    body[field], STATE_FIELD_WIDTHS[field], batch_size
+                )
+                if shape_reason and (key, field) not in body_shape_reported:
+                    body_shape_reported.add((key, field))
+                    reasons.append(
+                        f"body '{name}' field '{field}' in frame {idx} {shape_reason}"
+                    )
 
             if "contacts" in body:
                 body_contacts_frames.setdefault(key, []).append(idx)
@@ -373,7 +411,7 @@ def summarize_scene(path: str | Path) -> dict:
         warnings.append("'states' key missing from file")
 
     size_bytes = path.stat().st_size
-    if size_bytes > _LARGE_FILE_BYTES:
+    if size_bytes > _LARGE_FILE_BYTES and not gzipped:
         warnings.append(
             f"file is large ({human_bytes(size_bytes)}); consider gzip compression"
         )

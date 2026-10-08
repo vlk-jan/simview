@@ -955,6 +955,14 @@ body {
     color: var(--sv-muted);
     flex: none;
 }
+.batch-legend-notice {
+    color: var(--sv-muted);
+    font-size: 11px;
+    padding: 4px 8px 6px;
+}
+.batch-legend-notice:empty {
+    display: none;
+}
 .batch-legend-name {
     flex: 1;
     min-width: 0;

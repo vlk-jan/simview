@@ -19,11 +19,12 @@ providing a skimmable terminal rendering of the same data.
 import math
 from typing import Any, NamedTuple
 
-from simview.columnar import blob_floats, body_key, decode_transform_row
+from simview.columnar import blob_floats
+from simview.diff import pose_resolver
 from simview.utils import (
     body_label,
     cap,
-    collect_body_names,
+    iter_names,
     resolve_body,
     series_stats,
     write_csv,
@@ -168,9 +169,15 @@ def _grid_index_range(
         return 0, shape - 1
     f_lo = (lo - min_b) / (max_b - min_b) * (shape - 1)
     f_hi = (hi - min_b) / (max_b - min_b) * (shape - 1)
-    start = max(0, math.ceil(min(f_lo, f_hi)))
-    end = min(shape - 1, math.floor(max(f_lo, f_hi)))
-    return int(start), int(end)
+    f_lo, f_hi = min(f_lo, f_hi), max(f_lo, f_hi)
+    if f_hi < 0 or f_lo > shape - 1:
+        return 1, 0  # no overlap: empty range for the caller to reject
+    start, end = math.ceil(f_lo), math.floor(f_hi)
+    if start > end:
+        # The range lies strictly inside one cell: return that cell's corners
+        # rather than claiming it doesn't overlap the terrain.
+        start, end = math.floor(f_lo), math.ceil(f_hi)
+    return int(max(0, start)), int(min(shape - 1, end))
 
 
 def _grid_coord(index: int, min_b: float, max_b: float, shape: int) -> float:
@@ -374,9 +381,15 @@ def query_along_body(
 ) -> dict:
     """Bilinearly-interpolated terrain value(s) sampled along `body`'s
     trajectory in batch `batch`, for every `every`-th state where `body` has
-    a decodable `bodyTransform`. Answers "what terrain is under this body's
+    a resolvable world pose. Answers "what terrain is under this body's
     path" -- e.g. sampling a DRIFT-style scene's friction/stiffness under
     the robot's driven path, per batch.
+
+    Positions are in **world space**, resolved through the parent chain like
+    `simview diff` (see `simview.diff.pose_resolver`), so an articulated
+    child is sampled where it actually is and a rigidly-attached body (a
+    constant `localTransform`, never written into the states) can be queried
+    too.
 
     `body` is required and resolved the same way as `simview.diff`'s
     `--body`: match the full label (e.g. `"wheel_fl+wheel_fr"`) or any
@@ -395,9 +408,10 @@ def query_along_body(
     if every < 1:
         raise ValueError(f"every must be >= 1; got {every}")
 
-    all_names = collect_body_names(states_data)
+    all_names, resolve = pose_resolver(model_data, states_data)
     target_name = resolve_body(all_names, body)[0]
-    key = body_key(target_name)
+    # A grouped ("A+B") entry shares one pose; its first member carries it.
+    lookup_name = next(iter_names(target_name))
 
     grids = {
         layer: _decode_grid(
@@ -416,14 +430,9 @@ def query_along_body(
     for idx, state in enumerate(states_data):
         if idx % every != 0:
             continue
-        entry = next(
-            (e for e in state.get("bodies") or [] if body_key(e.get("name")) == key),
-            None,
-        )
-        if entry is None or "bodyTransform" not in entry:
+        row = resolve(state, batch).get(lookup_name)
+        if row is None:
             continue
-
-        row = decode_transform_row(entry["bodyTransform"], batch_size, batch)
         x, y = row[0], row[1]
         frame_indices.append(idx)
         times.append(state.get("time"))

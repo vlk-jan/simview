@@ -340,3 +340,80 @@ describe("Body trails", () => {
         expect(body.trails.length).toBe(0);
     });
 });
+
+// --- Per-batch visibility in focused render mode ---------------------------
+
+function focusedApp(simBatches, visibleBatches) {
+    const app = trailApp(simBatches);
+    app.batchManager.isBatchVisible = (i) => visibleBatches.has(i);
+    app.batchManager.getColorForBatch = () => 0xffffff;
+    return app;
+}
+
+describe("Body per-batch visibility", () => {
+    it("toggleContactPoints keeps a hidden batch's markers hidden", () => {
+        const visible = new Set([0, 1]);
+        const app = focusedApp(2, visible);
+        const body = new Body(
+            { ...makePointcloudBodyData(), availableAttributes: ["contacts"] },
+            app
+        );
+        expect(body.contactPoints[1]).toBeDefined();
+
+        visible.delete(1); // focus moved away from batch 1
+        body.refreshBatchVisibility();
+        body.toggleContactPoints(true);
+
+        expect(body.contactPoints[0].visible).toBe(true);
+        expect(body.contactPoints[1].visible).toBe(false);
+    });
+
+    it("draws trails only for visible batches", () => {
+        const visible = new Set([0]);
+        const body = new Body(makePointcloudBodyData(), focusedApp(2, visible));
+        for (let s = 0; s < 3; s++) {
+            body.appendHistoryPointAt(s, { bodyTransform: [[s, 0, 0, 1, 0, 0, 0], [s, 1, 0, 1, 0, 0, 0]] });
+            body.finalizeTrails();
+        }
+        expect(body.trails[0].visible).toBe(true);
+        expect(body.trails[1].visible).toBe(false);
+
+        body.toggleTrails(true);
+        expect(body.trails[1].visible).toBe(false);
+
+        visible.add(1);
+        body.refreshBatchVisibility();
+        expect(body.trails[1].visible).toBe(true);
+    });
+});
+
+describe("Body state robustness", () => {
+    it("treats a NaN vector like a zero one instead of propagating NaN into the arrow", () => {
+        const app = fakeApp(1);
+        app.uiState.attributeVisible = { velocity: true };
+        const body = new Body(
+            { ...makePointcloudBodyData(), availableAttributes: ["velocity"] },
+            app
+        );
+        const arrow = body.bodyVectors[0].get("velocity");
+        body.updateAttribute("velocity", [NaN, 0, 0], 0);
+        expect(Number.isFinite(arrow.line.scale.y)).toBe(true);
+        expect(Number.isFinite(arrow.quaternion.x)).toBe(true);
+    });
+
+    it("clears the previous frame's contact markers on a frame without contacts", () => {
+        const body = new Body(
+            { ...makePointcloudBodyData(), availableAttributes: ["contacts"] },
+            fakeApp(1)
+        );
+        body.updateState({ contacts: [[0, 2]] });
+        expect(Array.from(body.contactPointSizes[0]).filter((s) => s > 0)).toHaveLength(2);
+
+        body.updateState({ contacts: null }); // columnar store's "none this frame"
+        expect(Array.from(body.contactPointSizes[0]).every((s) => s === 0)).toBe(true);
+
+        body.updateState({ contacts: [[1]] });
+        body.updateState({}); // legacy store omits the key entirely
+        expect(Array.from(body.contactPointSizes[0]).every((s) => s === 0)).toBe(true);
+    });
+});

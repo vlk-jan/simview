@@ -7,6 +7,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Live WebSocket `states` messages carry a `frameOffset` (absolute index of the first
+  frame in the message), so a viewer that connects after the catch-up buffer has
+  wrapped places episode boundaries correctly instead of shifting them by the dropped
+  frames.
+- `SimulationScene.reconcile_available_attributes()` (previously an internal step of
+  `save()`); `show()` and `LiveViewer` now call it too, so arrows and contact markers
+  for attributes that were never declared with `available_attributes` appear in the
+  live/`show()` viewer exactly as they do after save-then-view.
+- The Batch Legend reports when a rename could not be persisted (no file to write to
+  under `show()`/`LiveViewer`/`render`, or the request failed) instead of silently
+  keeping the new name.
+- `/batch-names` answers `{"ok": true, "persisted": bool}`; the sidecar is keyed by the
+  batch selection (`file.json#1`) as well as the path.
+
+### Changed
+
+- `SimViewModel.from_dict` no longer requires `dt`, `collapse` or `staticObjects`
+  (matching the viewer and the format doc); a wrong-length `batchNames` is warned
+  about and dropped instead of rejected.
+- `create_terrain` auto-computed normals use the real node spacing `extent / (W - 1)`
+  (they were tilted by `W / (W - 1)`), and `grid_res` now means the distance between
+  adjacent nodes, so the extent is `(W - 1) * grid_res`.
+- `merge_simulation_files` keeps each input's own `batchNames` for its selected
+  batches (file stem only as a fallback) and carries the first file's `viewerDefaults`.
+- The terrain surface is shaded with the file's per-vertex `normals` (recomputed when
+  absent) instead of flat `(0, 0, 1)` normals, so slopes get a lighting cue.
+- Video recording stops after exactly one loop of content at any playback speed.
+- A view-link hash change only pauses playback when it carries `t`.
+
+### Fixed
+
+- `save()` wrote `availableAttributes` in `set` order (hash-randomised per process),
+  so identical scenes saved in two processes could fail to merge with "defines
+  different bodies"; the order is now the attribute declaration order.
+- `save_static` externalised the per-frame `__b64__` fields of a legacy-layout scene
+  into `/blob/` files the viewer never fetches, leaving every body at a NaN pose.
+- Every `/static/*` asset returned 500 when the package was installed through a
+  symlinked path (HPC homes, macOS `/tmp`, symlinked venvs).
+- Live broadcast raised "Set changed size during iteration" and dropped the frame for
+  the remaining clients whenever a tab connected or disconnected mid-send.
+- `simview --host ::1` (any IPv6 host) failed with "No free port found".
+- The explicit `simview view FILE` form treated `view` as a file path.
+- Playback assumed the timeline starts at `t = 0`: a recording whose first timestamp
+  is 100 s spent 100 s on frame 0 per loop and mapped the progress bar wrongly.
+- The scalar chart froze at the catch-up chunk in live mode and warned "Invalid end
+  index" on every later frame.
+- Episode aggregates threw `RangeError` for an episode longer than ~125k frames.
+- A NaN cell in a terrain property (or diff) layer fired a blocking `alert()` from the
+  vendored colour-map library and aborted the recolour; non-finite cells are now drawn
+  neutral grey.
+- Split screen in focused render mode showed a blank half until the active batch was
+  changed, because the split batches were never pinned visible.
+- Terrain-profile curves and CSV shifted left after a frame with a non-finite position;
+  the gap is now plotted as a break.
+- `add_state` accepted per-batch rows that did not match `batch_size` (and a
+  position/orientation count mismatch silently dropped rows); both now raise.
+- `simview terrain --body` sampled parented bodies in parent-local coordinates and
+  could not find rigidly attached (`local_transform`) bodies at all.
+- A 1-D `contacts` tensor in a single-batch scene was written flat instead of
+  per-batch, and merge then concatenated the index lists; an empty list raised.
+- `simview diff` reported 0° orientation error for a NaN pose and never tripped
+  `--fail-on-exceed` on NaN; stats are NaN-aware and NaN counts as exceeding.
+- Merge: `null` property bounds crashed with `TypeError`, a singleton-vs-batched
+  static object crashed with `KeyError`, a flat plain `heightData` list was rejected,
+  and a non-monotonic `time` list resampled silently wrong (now a clear error).
+- `simview info` claimed a legacy file was columnar-repackable when its blob widths
+  were wrong, crashed on a non-columnar `states` dict, and suggested gzip for an
+  already-gzipped file; `--save-merged` into a missing directory now creates it.
+- An `--area` box lying inside a single terrain cell was rejected as non-overlapping.
+- `view_hash` now matches the viewer's serialiser byte for byte for non-finite and
+  very large numbers and for `!'()*` in names, and the sync test parses the key order
+  out of `viewState.js` so drift is caught.
+- Model validation: primitive shape parameters must be present and positive, terrain
+  normal/property/embedding grids must match the heightmap, static objects loaded via
+  `from_dict` are checked for duplicate names and `shapes` length, episode
+  `start_index` past the last frame is rejected at save time, and unknown keys in a
+  loaded state body are ignored with a warning instead of raising.
+- Server: blobs registered before a columnar bail-out were kept in memory for the
+  server's lifetime; a ragged per-frame row crashed load instead of falling back to the
+  legacy layout; a blob whose byte length is not a multiple of 4 raised `struct.error`
+  instead of `ValueError`; `bytes=5-3` answered 416 instead of ignoring the header;
+  the batch-names fingerprint was taken at rename time instead of load time;
+  `extract_blobs` rewrote `metadata`/`batchNames` strings starting with `__b64__`;
+  `ViewerHandle` left its server thread running after a startup timeout; a stalled
+  live broadcast was not cancelled on timeout; `SimViewServer(sim_path=[a, b])`
+  without `data=` silently served only `a`.
+- `ssh://-oProxyCommand=...` and `[-o...]:path` host forms reached `ssh` as options;
+  a host starting with `-` is now rejected in every spec form.
+- Viewer: `model.collapse` is honoured (it was written by Python and read by nobody);
+  a `tcm=` colour mode the scene lacks no longer throws inside the legend and aborts
+  the rest of the view state; the legend and surface agree on a `min == max` range;
+  per-batch nested `embeddingData` lists are accepted; a frame without `contacts`
+  clears the previous frame's markers; contact markers, point arrays and trails are no
+  longer drawn for hidden batches; probe/similarity clicks no longer hit hidden
+  batches or fire through UI panels; Shift+Arrow no longer also rotates the camera;
+  a NaN vector hides its arrow instead of reaching `ArrowHelper`; the REC button no
+  longer sticks on STOP when recording cannot start; a negative or zero speed is
+  rejected; a paused scrub into a not-yet-fetched field window re-renders when it
+  lands; the live "waiting for first state" splash stays until the first frame; a
+  missing terrain reports "Terrain data is missing" instead of a `TypeError`.
+- Viewer data checks: columnar blobs are validated against `T * B * width` and known
+  field names, a partial trailing row throws like Python does, a window fetch requires
+  a 206 response, non-monotonic times are warned about once, and interpolation keeps
+  extra rows from whichever side is longer.
+- Error metrics with a NaN frame plot a gap and print "-" instead of NaN scales;
+  recomputation is coalesced to one pass per animation frame while the panel is open.
+- `SimView.destroy()` now disposes the scene's resize/keyboard listeners and
+  OrbitControls; terrain and static-object disposal release their GPU resources.
+
 ## [6.1.2] - 2026-10-08
 
 ### Changed

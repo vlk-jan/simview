@@ -7,7 +7,12 @@ import socket
 from pathlib import Path
 from typing import Any
 
-from simview.columnar import body_key, expand_columnar_states, is_columnar
+from simview.columnar import (
+    COLUMNAR_VERSION,
+    body_key,
+    expand_columnar_states,
+    is_columnar,
+)
 
 # gzip magic bytes (RFC 1952): every gzip member starts with these two bytes,
 # regardless of the file extension used on disk.
@@ -26,10 +31,18 @@ def find_free_port(host: str, base_port: int) -> int:
     port is free up to the maximum valid port number (65535), rather than
     looping forever.
     """
+    # Resolve the family once ("::1"/"::" need AF_INET6; AF_INET would fail on
+    # every port and report "no free port").
+    try:
+        family, _, _, _, sockaddr = socket.getaddrinfo(
+            host, base_port, type=socket.SOCK_STREAM
+        )[0]
+    except socket.gaierror as e:
+        raise OSError(f"Cannot resolve host {host!r}: {e}") from e
     for port in range(base_port, _MAX_PORT + 1):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        with socket.socket(family, socket.SOCK_STREAM) as s:
             try:
-                s.bind((host, port))
+                s.bind((sockaddr[0], port, *sockaddr[2:]))
             except OSError:
                 continue
         if port != base_port:
@@ -183,4 +196,9 @@ def load_scene(path: str | Path) -> tuple[dict, list]:
         raise ValueError("scene file has no 'states' section")
     if is_columnar(states):
         states = expand_columnar_states(states, int(model.get("simBatches") or 1))
+    if not isinstance(states, list):
+        raise ValueError(
+            "scene file 'states' must be a per-frame list or a columnar "
+            f"(version {COLUMNAR_VERSION}) object"
+        )
     return model, states

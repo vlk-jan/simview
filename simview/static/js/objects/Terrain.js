@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { TERRAIN_CONFIG, THEME } from "../config.js";
 import { getCallableFromColorMapName } from "./colormap.js";
+import { toFlatFloat32Array } from "./utils.js";
 
 export class Terrain {
     constructor(terrainData, app) {
@@ -52,10 +53,9 @@ export class Terrain {
     // similarity color mode. Unlike normals (fixed width=3), K is
     // data-driven -- inferred from the flat blob length, the same implicit-
     // width convention Body.js uses for point embeddings -- rather than
-    // shipped explicitly. Real producers always blob-encode this (so it
-    // always arrives as a flat Float32Array), so unlike
-    // #normalizeVectorField this doesn't need to handle hand-authored
-    // nested-list-of-vectors input.
+    // shipped explicitly. Blob-encoded data arrives as one flat Float32Array;
+    // hand-authored JSON as the per-batch nested list json-format.md
+    // documents (`array[array[float]]`, each batch's cells flattened).
     #initEmbeddingData(embeddingData) {
         const resolution = this.dimensions.resolutionX * this.dimensions.resolutionY;
         if (embeddingData instanceof Float32Array) {
@@ -69,6 +69,14 @@ export class Terrain {
         ) {
             this.embeddingDim = embeddingData.length / resolution;
             this.embeddingData = [embeddingData]; // flat number array => single batch
+        } else if (
+            Array.isArray(embeddingData) &&
+            embeddingData.length > 0 &&
+            Array.isArray(embeddingData[0])
+        ) {
+            const batches = embeddingData.map(toFlatFloat32Array);
+            this.embeddingDim = batches[0].length / resolution;
+            this.embeddingData = batches;
         } else {
             this.embeddingDim = 0;
             this.embeddingData = null;
@@ -191,11 +199,12 @@ export class Terrain {
         if (this.isSingleton) {
             singletonSurfaceGeometry = this.#createSurfaceGeometryFromHeightData(
                 heightData[0],
-                0
+                0,
+                normals?.[0]
             );
             singletonNormals = this.#createNormalVectors(
                 heightData[0],
-                normals[0]
+                normals?.[0]
             );
         }
 
@@ -207,7 +216,7 @@ export class Terrain {
 
             const surfaceGeometry = this.isSingleton
                 ? singletonSurfaceGeometry
-                : this.#createSurfaceGeometryFromHeightData(heightData[i], i);
+                : this.#createSurfaceGeometryFromHeightData(heightData[i], i, normals?.[i]);
 
             const surfaceMesh = new THREE.Mesh(surfaceGeometry, surfaceMaterial);
             surfaceMesh.name = "surface";
@@ -221,7 +230,7 @@ export class Terrain {
 
             const surfaceNormals = this.isSingleton
                 ? singletonNormals.clone()
-                : this.#createNormalVectors(heightData[i], normals[i]);
+                : this.#createNormalVectors(heightData[i], normals?.[i]);
 
             surfaceNormals.name = "normals";
             batchGroup.add(surfaceNormals);
@@ -277,12 +286,26 @@ export class Terrain {
         return normalizedHeight;
     }
 
+    // Reads normal `dataIndex` of a per-batch normals field, which is either
+    // a flat Float32Array (blob) or a nested list of [x, y, z].
+    static #normalAt(normals, dataIndex) {
+        if (ArrayBuffer.isView(normals)) {
+            const base = dataIndex * 3;
+            return [normals[base], normals[base + 1], normals[base + 2]];
+        }
+        return normals[dataIndex];
+    }
+
     /**
      *
      * @param {array} heightData - Height data for the terrain, a flattened array
+     * @param {number} batchIndex
+     * @param {array} [normals] - This batch's per-vertex normals (flat or
+     *   nested, see #normalAt); shading falls back to computed normals when
+     *   they're absent or the wrong length.
      * @returns
      */
-    #createSurfaceGeometryFromHeightData(heightData, batchIndex) {
+    #createSurfaceGeometryFromHeightData(heightData, batchIndex, normals) {
         const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY, maxX, maxY } = this.bounds;
         // Create a plane geometry with the right number of segments
@@ -311,6 +334,17 @@ export class Terrain {
             this.app.uiState.terrainColorMap
         );
 
+        // PlaneGeometry ships flat (0, 0, 1) normals, so without this the
+        // surface is lit as if it were level and slopes get no shading cue.
+        const normalCount = ArrayBuffer.isView(normals)
+            ? normals.length / 3
+            : Array.isArray(normals)
+              ? normals.length
+              : 0;
+        const useSuppliedNormals = normalCount === position.count;
+        const normal = geometry.attributes.normal;
+        const n = new THREE.Vector3();
+
         for (let i = 0; i < position.count; i++) {
             // Convert vertex index to grid coordinates
             const col = i % resolutionX;
@@ -320,7 +354,16 @@ export class Terrain {
             const dataIndex = row * resolutionX + col;
             // Set Z coordinate (height)
             position.setZ(i, heightData[dataIndex]);
+            if (useSuppliedNormals) {
+                // Supplied normals aren't guaranteed unit length (scene.py
+                // writes (-dz/dx, -dz/dy, 1) as-is).
+                n.fromArray(Terrain.#normalAt(normals, dataIndex)).normalize();
+                if (!Number.isFinite(n.x + n.y + n.z)) n.set(0, 0, 1);
+                normal.setXYZ(i, n.x, n.y, n.z);
+            }
         }
+        if (useSuppliedNormals) normal.needsUpdate = true;
+        else geometry.computeVertexNormals();
 
         // Apply colors
         this.#updateSurfaceColor(batchIndex, geometry, callableColormap);
@@ -351,6 +394,8 @@ export class Terrain {
             Math.floor(resolutionX / TERRAIN_CONFIG.skipNormalCells)
         ); // Adaptive skip factor based on resolution
 
+        if (!normals) return normalVectors; // nothing shipped: no arrows to draw
+
         // Sample normals at regular intervals
         for (let row = 0; row < resolutionY; row += skipFactor) {
             for (let col = 0; col < resolutionX; col += skipFactor) {
@@ -362,15 +407,7 @@ export class Terrain {
                     const y = minY + row * (sizeY / (resolutionY - 1));
                     const z = heightData[dataIndex];
 
-                    // Get normal data
-                    let nx, ny, nz;
-                    if (normals instanceof Float32Array) {
-                        nx = normals[dataIndex * 3];
-                        ny = normals[dataIndex * 3 + 1];
-                        nz = normals[dataIndex * 3 + 2];
-                    } else {
-                        [nx, ny, nz] = normals[dataIndex];
-                    }
+                    const [nx, ny, nz] = Terrain.#normalAt(normals, dataIndex);
 
                     const origin = new THREE.Vector3(x, y, z);
                     const direction = new THREE.Vector3(nx, ny, nz);
@@ -730,10 +767,11 @@ export class Terrain {
                     }
                 }
             });
-            if (this.app && this.app.scene) {
-                this.app.scene.removeObject3D(batchGroup);
-            }
         }
+        // The batch groups are children of this.group, which is what SimView
+        // actually added to the scene -- removing them individually from the
+        // scene was a no-op and left disposed geometry still rendering.
+        this.group.parent?.remove(this.group);
 
         geometries.forEach((g) => g.dispose());
         materials.forEach((m) => m.dispose());

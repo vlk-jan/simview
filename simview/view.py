@@ -1,12 +1,34 @@
 """Build shareable view-link hashes (stdlib-only).
 
 Mirrors `serializeViewState` in `static/js/utils/viewState.js` byte for byte
-(tests/test_view.py checks `BOOLEAN_FLAG_KEYS` against the JS array), plus the
-startup-only keys `data=<base url>` (static mode) and `ui=0` (hide panels).
+(tests/test_view.py checks `BOOLEAN_FLAG_KEYS`, the key order and the number
+formatting against the JS source), plus the startup-only keys `data=<base
+url>` (static mode) and `ui=0` (hide panels).
 """
 
+import math
 from collections.abc import Mapping, Sequence
 from urllib.parse import quote
+
+# Characters JS's encodeURIComponent leaves alone beyond Python quote()'s
+# always-safe set (alphanumerics and "_.-~").
+_URI_SAFE = "!'()*"
+
+# Order of the `v=1` keys -- must equal the `params.push` order in viewState.js.
+KEY_ORDER = (
+    "t",
+    "cam",
+    "tgt",
+    "fov",
+    "b",
+    "bvm",
+    "tcm",
+    "flags",
+    "pc",
+    "track",
+    "cmap",
+    "speed",
+)
 
 # Bit order of the `flags` bitmask -- must equal BOOLEAN_FLAG_KEYS in viewState.js.
 BOOLEAN_FLAG_KEYS = (
@@ -26,8 +48,15 @@ BOOLEAN_FLAG_KEYS = (
 
 
 def _num(n: float) -> str:
-    # JS: Number(n.toFixed(6)).toString()
-    s = f"{float(n):.6f}".rstrip("0").rstrip(".")
+    # JS fmtNum: non-finite -> "0", else Number(n.toFixed(6)).toString().
+    n = float(n)
+    if not math.isfinite(n):
+        return "0"
+    if abs(n) >= 1e21:
+        # toFixed/toString switch to exponent form here; repr() prints the
+        # same shortest round-trip digits with the same "e+NN" exponent.
+        return repr(n)
+    s = f"{n:.6f}".rstrip("0").rstrip(".")
     return "0" if s in ("", "-0") else s
 
 
@@ -65,21 +94,21 @@ def view_hash(
     `data` (base URL of a static bundle, see `SimulationScene.save_static`) and
     `ui=False` (hide all panels) are startup options, not view state.
     """
-    params = []
+    values: dict[str, str] = {}
     if t is not None:
-        params.append(f"t={_num(t)}")
+        values["t"] = _num(t)
     if cam is not None:
-        params.append(f"cam={_vec3('cam', cam)}")
+        values["cam"] = _vec3("cam", cam)
     if tgt is not None:
-        params.append(f"tgt={_vec3('tgt', tgt)}")
+        values["tgt"] = _vec3("tgt", tgt)
     if fov is not None:
-        params.append(f"fov={_num(fov)}")
+        values["fov"] = _num(fov)
     if batch is not None:
-        params.append(f"b={int(batch)}")
+        values["b"] = str(int(batch))
     if body_mode:
-        params.append(f"bvm={quote(body_mode, safe='')}")
+        values["bvm"] = quote(body_mode, safe=_URI_SAFE)
     if terrain_color_mode:
-        params.append(f"tcm={quote(terrain_color_mode, safe='')}")
+        values["tcm"] = quote(terrain_color_mode, safe=_URI_SAFE)
     if flags is not None:
         unknown = set(flags) - set(BOOLEAN_FLAG_KEYS)
         if unknown:
@@ -87,21 +116,23 @@ def view_hash(
                 f"unknown flag(s) {sorted(unknown)}; use {BOOLEAN_FLAG_KEYS}"
             )
         mask = sum(1 << i for i, k in enumerate(BOOLEAN_FLAG_KEYS) if flags.get(k))
-        params.append(f"flags={mask}")
+        values["flags"] = str(mask)
     if point_clouds is not None:
-        params.append(f"pc={int(bool(point_clouds))}")
+        values["pc"] = str(int(bool(point_clouds)))
     if track:
-        params.append(f"track={quote(track, safe='')}")
+        values["track"] = quote(track, safe=_URI_SAFE)
     if color_map:
-        params.append(f"cmap={quote(color_map, safe='')}")
+        values["cmap"] = quote(color_map, safe=_URI_SAFE)
     if speed is not None:
         if speed <= 0:
             raise ValueError(f"speed must be positive; got {speed!r}")
-        params.append(f"speed={_num(speed)}")
+        values["speed"] = _num(speed)
+
+    params = [f"{key}={values[key]}" for key in KEY_ORDER if key in values]
     if params:
         params.insert(0, "v=1")
     if data is not None:
-        params.append(f"data={quote(data, safe='')}")
+        params.append(f"data={quote(data, safe=_URI_SAFE)}")
     if ui is False:
         params.append("ui=0")
     return "#" + "&".join(params)

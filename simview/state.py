@@ -94,6 +94,22 @@ class SimViewBodyState:
         the viewer and :func:`merge_simulation_files` decode these
         transparently. Set ``binary=False`` to emit plain JSON lists."""
         self.body_name = body_name
+        pos_shape, ori_shape = tuple(position.shape), tuple(orientation.shape)
+        if (
+            len(pos_shape) not in (1, 2)
+            or pos_shape[-1] != 3
+            or len(ori_shape) not in (1, 2)
+            or ori_shape[-1] != 4
+            or pos_shape[:-1] != ori_shape[:-1]
+        ):
+            raise ValueError(
+                f"Body '{body_name}': position must be (3,) or (B, 3) and "
+                f"orientation (4,) or (B, 4) with the same B; got {pos_shape} "
+                f"and {ori_shape}."
+            )
+        # Number of per-batch rows this state carries (1 for a flat vector);
+        # SimulationScene.add_state checks it against the model's batch size.
+        self.batch_rows = pos_shape[0] if len(pos_shape) == 2 else 1
         self.position = position.tolist()
         self.orientation = orientation.tolist()
         self.binary = binary
@@ -135,11 +151,17 @@ class SimViewBodyState:
         if isinstance(contacts, np.ndarray):
             if np.issubdtype(contacts.dtype, np.complexfloating):
                 raise ValueError(f"Unsupported contact tensor dtype: {contacts.dtype}")
+            if contacts.ndim == 1:
+                # A single batch's mask/indices: the wire shape is always
+                # per-batch, so wrap it rather than emit a flat list.
+                contacts = contacts[None]
             if contacts.dtype == np.bool_ or np.issubdtype(contacts.dtype, np.floating):
                 # Boolean mask (floats treated as a mask of non-zero entries)
                 return [np.nonzero(c)[0].tolist() for c in contacts]
             return contacts.tolist()  # integer dtype: assume indices
         else:  # list of tensors/arrays or list of lists
+            if not contacts:
+                return []
             first = contacts[0]
             if isinstance(first, (torch.Tensor, np.ndarray)):
                 return [SimViewBodyState._process_contacts(c) for c in contacts]

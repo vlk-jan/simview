@@ -55,9 +55,14 @@ class LiveViewer:
                 "(e.g. terrain might be missing)."
             )
         self.scene = scene
+        scene.reconcile_available_attributes()
         self.server = SimViewServer(
             data={"model": scene.model.to_json(), "states": []}, live=True
         )
+        # Frames already in the scene are neither served nor buffered, but
+        # episode startIndex values index the full scene.states, so the live
+        # frame indices must start after them.
+        self.server.frames_pushed = len(scene.states)
 
         self._threaded = ViewerHandle(
             self.server.app,
@@ -101,8 +106,9 @@ class LiveViewer:
         self.scene.add_state(time, body_states, scalar_values=scalar_values)
         frame = self.scene.states[before]
 
-        self.server.frame_buffer.append(frame)
-        self._enqueue(frame)
+        index = self.server.frames_pushed
+        self.server.push_frame(frame)
+        self._enqueue((index, frame))
 
     def mark_episode(self, label: str | None = None, start_index: int | None = None):
         """Mark the start of an episode at the current point in the stream.
@@ -146,7 +152,7 @@ class LiveViewer:
         """
         return self._dropped_frames
 
-    def _enqueue(self, frame: dict) -> None:
+    def _enqueue(self, frame: tuple[int, dict]) -> None:
         """Queue one frame for the sender thread, decimating under backpressure.
 
         When the queue is full (a slow or hung browser tab), the *oldest*
@@ -187,12 +193,12 @@ class LiveViewer:
         happens, instead of in the caller's simulation loop.
         """
         while True:
-            frame = self._send_queue.get()
-            if frame is _STOP_SENTINEL:
+            item = self._send_queue.get()
+            if item is _STOP_SENTINEL:
                 return
-            self._broadcast(frame)
+            self._broadcast(*item)
 
-    def _broadcast(self, frame: dict) -> None:
+    def _broadcast(self, index: int, frame: dict) -> None:
         loop = self.server.loop
         if loop is None:
             # Startup blocks until uvicorn's Server.started is set, which
@@ -205,10 +211,15 @@ class LiveViewer:
             return
 
         future = asyncio.run_coroutine_threadsafe(
-            self.server.broadcast_frame(frame), loop
+            self.server.broadcast_frame(frame, index), loop
         )
         try:
             future.result(timeout=_BROADCAST_TIMEOUT)
+        except TimeoutError:
+            # Cancel it, or the stalled broadcast keeps running on the loop and
+            # interleaves with the next frame's (out-of-order delivery).
+            future.cancel()
+            logger.warning("Timed out broadcasting live state frame; skipped.")
         except Exception:
             logger.exception("Error broadcasting live state frame")
 

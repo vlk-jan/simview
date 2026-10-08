@@ -201,3 +201,96 @@ describe("AnimationController discrete stepping stays index-snapped under interp
         expect(ac.currentTime).toBe(1);
     });
 });
+
+describe("AnimationController timeline that does not start at t=0", () => {
+    function makeController(times) {
+        const app = makeApp({ smoothInterpolation: false });
+        app.bodyStateWindow = { forceRedraw() {}, animate() {} };
+        const ac = new AnimationController(app);
+        ac.store = fakeStore(times.map((time) => ({ time, bodies: [] })));
+        ac._syncTimeline();
+        ac.playbackControls = { updateElements() {}, animate() {}, recordButton: { click: () => ac.stopRecording() } };
+        return ac;
+    }
+
+    it("plays through every frame instead of parking on frame 0 for firstTime seconds", () => {
+        const ac = makeController([100, 101, 102, 103, 104]);
+        expect(ac.firstTime).toBe(100);
+        expect(ac.totalTime).toBe(4);
+        ac.goToTime(0); // clamps to the first frame, not to t=0
+        expect(ac.currentTime).toBe(100);
+        ac.play();
+        ac.lastUpdateTime = 0;
+        const indices = [];
+        for (let ms = 1000; ms <= 8000; ms += 1000) {
+            ac.animate(ms);
+            indices.push(ac.currentStateIndex);
+        }
+        expect(indices).toEqual([1, 2, 3, 0, 1, 2, 3, 0]);
+    });
+
+    it("goToTime clamps to [firstTime, lastTime]", () => {
+        const ac = makeController([100, 101, 102]);
+        ac.goToTime(500);
+        expect(ac.currentTime).toBe(102);
+        expect(ac.currentStateIndex).toBe(2);
+    });
+
+    it("recording stops after one loop of content regardless of playback speed", () => {
+        const ac = makeController([0, 1, 2, 3, 4]); // totalTime 4 s
+        ac.isRecording = true;
+        ac._recordedSeconds = 0;
+        ac.setSpeed(2);
+        ac.play();
+        ac.lastUpdateTime = 0;
+        ac.animate(1000); // 2 s of content
+        ac.captureFrame(1000);
+        expect(ac.isRecording).toBe(true);
+        ac.animate(2000); // 4 s of content: one loop
+        ac.captureFrame(2000);
+        expect(ac.isRecording).toBe(false);
+    });
+
+    it("setSpeed rejects non-positive and non-finite speeds", () => {
+        const ac = makeController([0, 1]);
+        ac.setSpeed(-1);
+        ac.setSpeed(0);
+        ac.setSpeed(NaN);
+        expect(ac.playbackSpeed).toBe(1);
+        ac.setSpeed(0.5);
+        expect(ac.playbackSpeed).toBe(0.5);
+    });
+
+    it("startRecording returns false (and does not flip state) when the canvas can't be captured", () => {
+        const ac = makeController([0, 1]);
+        ac.app.scene = { renderer: { domElement: {} } };
+        const errors = [];
+        const originalError = console.error;
+        console.error = (e) => errors.push(e);
+        try {
+            expect(ac.startRecording()).toBe(false);
+        } finally {
+            console.error = originalError;
+        }
+        expect(ac.isRecording).toBe(false);
+        expect(ac.isPlaying).toBe(false);
+    });
+
+    it("onWindowLanded re-renders the current frame while paused", () => {
+        const app = makeApp({ smoothInterpolation: true });
+        const ac = new AnimationController(app);
+        ac.store = fakeStore([
+            { time: 0, bodies: [{ name: "a", bodyTransform: transformRow(0) }] },
+            { time: 1, bodies: [{ name: "a", bodyTransform: transformRow(10) }] },
+        ]);
+        ac._syncTimeline();
+        ac.currentTime = 0.5;
+        ac.updateScene();
+        expect(app._body.calls).toHaveLength(1);
+        ac.onWindowLanded();
+        expect(app._body.calls).toHaveLength(2); // memo dropped, frame re-resolved
+        ac.play();
+        ac.onWindowLanded();
+        expect(app._body.calls).toHaveLength(2); // playing: the next tick handles it
+    });
+});

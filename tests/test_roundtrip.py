@@ -488,3 +488,62 @@ def test_invalid_property_bounds_raise_value_error(bounds, message):
     in the viewer, so it has to be rejected here rather than shipped."""
     with pytest.raises(ValueError, match=message):
         _terrain_with_bounds({"friction": bounds})
+
+
+def test_from_dict_tolerates_optional_dt_collapse_and_static_objects():
+    """json-format.md calls these optional and the viewer tolerates them."""
+    d = build_scene(batch_size=1).model.to_json()
+    for key in ("dt", "collapse", "staticObjects"):
+        del d[key]
+    model = SimViewModel.from_dict(d)
+    assert model.dt is None
+    assert model.collapse is False
+    assert model.static_objects == {}
+    assert model.to_json()["dt"] is None
+
+
+def test_from_dict_validates_static_objects_like_authoring():
+    d = build_scene(batch_size=1).model.to_json()
+    wall = SimViewStaticObject.create_singleton(
+        "Wall", BodyShapeType.BOX, hx=1.0, hy=1.0, hz=1.0
+    ).to_json()
+    with pytest.raises(ValueError, match="already exists"):
+        SimViewModel.from_dict({**d, "staticObjects": [wall, wall]})
+    pillars = SimViewStaticObject.create_batched(
+        "Pillars", BodyShapeType.CYLINDER, [{"radius": 0.1, "height": 1.0}] * 3
+    ).to_json()
+    with pytest.raises(ValueError, match="must match batch size"):
+        SimViewModel.from_dict({**d, "staticObjects": [pillars]})
+
+
+def test_terrain_create_rejects_grids_that_do_not_match_the_heightmap():
+    heights = torch.zeros(1, 4, 4)
+    good = torch.zeros(1, 3, 4, 4)
+    with pytest.raises(ValueError, match="normals grid"):
+        SimViewTerrain.create(heights, torch.zeros(1, 3, 2, 2), (0, 1), (0, 1), True)
+    with pytest.raises(ValueError, match="property 'f' grid"):
+        SimViewTerrain.create(
+            heights, good, (0, 1), (0, 1), True, properties={"f": torch.zeros(1, 2, 2)}
+        )
+    with pytest.raises(ValueError, match="embedding_map grid"):
+        SimViewTerrain.create(
+            heights, good, (0, 1), (0, 1), True, embedding_map=torch.zeros(1, 2, 2, 2)
+        )
+
+
+def test_primitive_shape_params_must_be_present_and_positive():
+    with pytest.raises(ValueError, match="hy to be a positive"):
+        SimViewBody.create_box("b", hx=0.5, hy=-1.0, hz=0.5)
+    with pytest.raises(ValueError, match="radius"):
+        SimViewBody.create("s", BodyShapeType.SPHERE)
+    with pytest.raises(ValueError, match="height"):
+        SimViewBody.create("c", BodyShapeType.CYLINDER, radius=0.1, height=0)
+
+
+def test_batch_names_of_the_wrong_length_are_dropped_with_a_warning(caplog):
+    d = build_scene(batch_size=2).model.to_json()
+    d["batchNames"] = ["only one"]
+    with caplog.at_level("WARNING", logger="simview.model"):
+        model = SimViewModel.from_dict(d)
+    assert model.batch_names is None
+    assert "Ignoring batch_names" in caplog.text

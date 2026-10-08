@@ -14,9 +14,9 @@ logger = logging.getLogger("simview.cli")
 
 _logging_configured = False
 
-# Subcommands with their own scoped flags. "view" (bare `simview <file>...`)
-# has no keyword of its own -- see main()'s routing.
-_SUBCOMMANDS = ("info", "diff", "terrain", "render", "clear")
+# Subcommands with their own scoped flags. "view" also works bare
+# (`simview <file>...`) -- see main()'s routing.
+_SUBCOMMANDS = ("view", "info", "diff", "terrain", "render", "clear")
 
 
 def _configure_logging() -> None:
@@ -287,7 +287,13 @@ def save_merged(
     payload = json.dumps(merged).encode("utf-8")
     if out_path.suffix == ".gz":
         payload = gzip.compress(payload, compresslevel=1)
-    out_path.write_bytes(payload)
+    try:
+        # Like SimulationScene.save: create missing parent directories.
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(payload)
+    except OSError as e:
+        logger.error("Error: cannot write merged scene to '%s': %s", out_path, e)
+        sys.exit(1)
     logger.info("Merged scene written to %s", out_path)
 
 
@@ -638,9 +644,9 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # No subcommand keyword names the bare `simview <file>...` view form, so
-    # anything that isn't a known subcommand (or -h/--help, which the top-level
-    # parser should still handle itself) is routed to the hidden "view" one.
+    # The bare `simview <file>...` view form has no keyword, so anything that
+    # isn't a known subcommand (or -h/--help, which the top-level parser
+    # should still handle itself) is routed to "view".
     if argv[0] not in _SUBCOMMANDS and argv[0] not in ("-h", "--help"):
         argv = ["view", *argv]
 

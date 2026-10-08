@@ -82,3 +82,15 @@ describe("maxWithIndex", () => {
         expect(maxWithIndex(undefined)).toEqual({ value: 0, index: -1 });
     });
 });
+
+describe("rmse / maxWithIndex skip NaN frames", () => {
+    it("rmse averages only the finite entries", () => {
+        expect(rmse([3, NaN, 4])).toBeCloseTo(Math.sqrt(12.5), 10);
+        expect(rmse([NaN, Infinity])).toBe(0);
+    });
+
+    it("maxWithIndex ignores NaN/Infinity and reports index -1 when nothing is finite", () => {
+        expect(maxWithIndex([NaN, 1, 5, Infinity, 2])).toEqual({ value: 5, index: 2 });
+        expect(maxWithIndex([NaN])).toEqual({ value: 0, index: -1 });
+    });
+});

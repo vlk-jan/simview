@@ -36,7 +36,7 @@ time, camera, batch and colour modes after load by assigning `iframe.src`'s hash
 | Key | Meaning |
 | --- | --- |
 | `v=1` | view-state version; required for the keys below |
-| `t` | playback time in seconds (pauses playback and seeks) |
+| `t` | playback time in seconds (pauses playback and seeks; the only key that pauses) |
 | `cam`, `tgt` | camera position and orbit target, `x,y,z` |
 | `fov` | camera field of view in degrees |
 | `b` | focused batch index |

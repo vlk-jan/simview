@@ -657,3 +657,45 @@ def test_format_along_diff_text_truncates_long_series():
     result = query_along_body_diff(model, states, body="Box", batch_a=0, batch_b=1)
     text = format_along_diff_text(result)
     assert "more frame(s)" in text
+
+
+def test_query_area_inside_a_single_cell_returns_that_cell():
+    """ceil(lo) > floor(hi) for a box strictly inside one cell used to be
+    reported as 'does not overlap the terrain extent'."""
+    result = query_area(_model(), bounds=(0.1, 0.4, 0.1, 0.4))
+    assert result["x_coords"] == pytest.approx([0.0, 1.0])
+    assert result["y_coords"] == pytest.approx([0.0, 1.0])
+    with pytest.raises(ValueError, match="does not overlap"):
+        query_area(_model(), bounds=(5.0, 6.0, 0.0, 1.0))
+
+
+def test_query_along_body_samples_parented_bodies_in_world_space():
+    """An articulated child's wire pose is parent-relative, and a rigidly
+    attached body has no wire pose at all; both are sampled where they are."""
+    model = _model()
+    model["bodies"] = [
+        {"name": "Chassis", "shape": {}},
+        {"name": "Arm", "shape": {}, "parent": "Chassis"},
+        {
+            "name": "Wheel",
+            "shape": {},
+            "parent": "Chassis",
+            "localTransform": [0.5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        },
+    ]
+    identity = [1.0, 0.0, 0.0, 0.0]
+    states = [
+        {
+            "time": 0.0,
+            "bodies": [
+                {"name": "Chassis", "bodyTransform": [1.5, 0.0, 0.0] + identity},
+                {"name": "Arm", "bodyTransform": [0.0, 0.0, 0.0] + identity},
+            ],
+        }
+    ]
+    arm = query_along_body(model, states, "Arm")
+    assert arm["x"] == pytest.approx([1.5])
+    assert arm["layers"]["height"]["values"] == pytest.approx([1.5])
+    wheel = query_along_body(model, states, "Wheel")
+    assert wheel["x"] == pytest.approx([2.0])
+    assert wheel["layers"]["height"]["values"] == pytest.approx([2.0])

@@ -47,7 +47,7 @@ export function batchColumnsCsv(batchManager, times, seriesPerBatch) {
         const row = [t];
         for (let b = 0; b < batchCount; b++) {
             const point = seriesPerBatch[b] && seriesPerBatch[b][idx];
-            row.push(point ? point.y : "");
+            row.push(point && point.y != null ? point.y : "");
         }
         return row;
     });

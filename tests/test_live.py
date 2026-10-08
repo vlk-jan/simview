@@ -64,8 +64,8 @@ def test_states_endpoint_reports_live(live_client):
 
 def test_websocket_catchup_replays_buffered_frames(live_client):
     server, client = live_client
-    server.frame_buffer.append({"time": 0.0, "bodies": []})
-    server.frame_buffer.append({"time": 0.1, "bodies": []})
+    server.push_frame({"time": 0.0, "bodies": []})
+    server.push_frame({"time": 0.1, "bodies": []})
 
     with client.websocket_connect("/ws/states") as ws:
         message = json.loads(ws.receive_text())
@@ -73,8 +73,26 @@ def test_websocket_catchup_replays_buffered_frames(live_client):
             "states": [
                 {"time": 0.0, "bodies": []},
                 {"time": 0.1, "bodies": []},
-            ]
+            ],
+            "frameOffset": 0,
         }
+
+
+def test_websocket_catchup_offsets_frames_once_the_buffer_has_wrapped():
+    """Episode startIndex values are absolute; a late viewer only gets the
+    buffered tail, so each chunk says where in the full run it starts."""
+    server = SimViewServer(
+        data={"model": _minimal_model_data(), "states": []},
+        live=True,
+        frame_buffer_size=3,
+    )
+    for i in range(10):
+        server.push_frame({"time": float(i), "bodies": []})
+
+    with TestClient(server.app) as client, client.websocket_connect("/ws/states") as ws:
+        message = json.loads(ws.receive_text())
+    assert message["frameOffset"] == 7
+    assert [f["time"] for f in message["states"]] == [7.0, 8.0, 9.0]
 
 
 def test_websocket_catchup_is_chunked_for_long_histories(live_client):
@@ -82,7 +100,7 @@ def test_websocket_catchup_is_chunked_for_long_histories(live_client):
     server, client = live_client
     total = _CATCHUP_CHUNK_SIZE * 2 + 7
     for i in range(total):
-        server.frame_buffer.append({"time": i * 0.1, "bodies": []})
+        server.push_frame({"time": i * 0.1, "bodies": []})
 
     with client.websocket_connect("/ws/states") as ws:
         received = []
@@ -105,7 +123,7 @@ def test_frame_buffer_is_bounded():
         frame_buffer_size=3,
     )
     for i in range(10):
-        server.frame_buffer.append({"time": float(i), "bodies": []})
+        server.push_frame({"time": float(i), "bodies": []})
 
     # Oldest frames are forgotten rather than growing without limit.
     assert [frame["time"] for frame in server.frame_buffer] == [7.0, 8.0, 9.0]
@@ -116,14 +134,14 @@ def test_websocket_receives_frame_pushed_after_connect(live_client):
 
     with client.websocket_connect("/ws/states") as ws:
         frame = {"time": 0.2, "bodies": []}
-        server.frame_buffer.append(frame)
+        server.push_frame(frame)
         future = asyncio.run_coroutine_threadsafe(
-            server.broadcast_frame(frame), server.loop
+            server.broadcast_frame(frame, 0), server.loop
         )
         future.result(timeout=5.0)
 
         message = json.loads(ws.receive_text())
-        assert message == {"states": [frame]}
+        assert message == {"states": [frame], "frameOffset": 0}
 
 
 def test_broadcast_drops_dead_connection_without_raising(live_client):
@@ -137,11 +155,70 @@ def test_broadcast_drops_dead_connection_without_raising(live_client):
     server.ws_clients.add(dead)
 
     async def _run():
-        await server.broadcast_frame({"time": 0.0, "bodies": []})
+        await server.broadcast_frame({"time": 0.0, "bodies": []}, 0)
 
     asyncio.run(_run())
 
     assert dead not in server.ws_clients
+
+
+def test_broadcast_survives_clients_joining_and_leaving_mid_send(live_client):
+    """send_text yields; a connect/disconnect meanwhile must not break the
+    iteration and drop the frame for the clients not yet reached."""
+    server, _client = live_client
+    received = []
+
+    class _Socket:
+        def __init__(self, on_send=None):
+            self.on_send = on_send
+
+        async def send_text(self, _msg):
+            await asyncio.sleep(0)
+            if self.on_send:
+                self.on_send()
+            received.append(self)
+
+    leaver = _Socket()
+    mutator = _Socket(
+        on_send=lambda: (
+            server.ws_clients.discard(leaver),
+            server.ws_clients.add(_Socket()),
+        )
+    )
+    sockets = [mutator, _Socket(), _Socket(), _Socket()]
+    server.ws_clients.update(sockets)
+    server.ws_clients.add(leaver)
+
+    asyncio.run(server.broadcast_frame({"time": 0.0, "bodies": []}, 0))
+
+    assert set(sockets) <= set(received)
+
+
+def test_broadcast_timeout_cancels_the_stalled_send(monkeypatch):
+    """A broadcast that outlives its timeout is cancelled, so it can't keep
+    running and interleave with the next frame's."""
+    from concurrent.futures import Future
+
+    from simview import live as live_module
+
+    viewer = LiveViewer.__new__(LiveViewer)
+    viewer.server = SimViewServer(
+        data={"model": _minimal_model_data(), "states": []}, live=True
+    )
+    loop = asyncio.new_event_loop()
+    viewer.server.loop = loop
+    stalled = Future()
+    monkeypatch.setattr(live_module, "_BROADCAST_TIMEOUT", 0.01)
+    monkeypatch.setattr(
+        live_module.asyncio,
+        "run_coroutine_threadsafe",
+        lambda coro, loop: (coro.close(), stalled)[1],
+    )
+
+    viewer._broadcast(0, {"time": 0.0, "bodies": []})
+    loop.close()
+
+    assert stalled.cancelled()
 
 
 # --- Full integration: real background thread + real socket -----------------
@@ -214,7 +291,7 @@ def test_push_state_does_not_block_on_a_stalled_broadcast():
         first_broadcast = threading.Event()
 
         # Wedge the sender thread inside its very first broadcast.
-        def _stalled_broadcast(frame: dict) -> None:
+        def _stalled_broadcast(index: int, frame: dict) -> None:
             first_broadcast.set()
             release.wait(timeout=10.0)
 
@@ -248,7 +325,7 @@ def test_full_queue_drops_oldest_frames_but_keeps_recording():
         release = threading.Event()
         first_broadcast = threading.Event()
 
-        def _stalled_broadcast(frame: dict) -> None:
+        def _stalled_broadcast(index: int, frame: dict) -> None:
             first_broadcast.set()
             release.wait(timeout=10.0)
 
@@ -277,7 +354,7 @@ def test_stop_flushes_queued_frames_before_shutting_down():
     live = LiveViewer(scene, preferred_port=5994, open_browser=False)
     sent: list[dict] = []
 
-    def _record(frame: dict) -> None:
+    def _record(index: int, frame: dict) -> None:
         sent.append(frame)
 
     live._broadcast = _record

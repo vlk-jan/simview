@@ -416,3 +416,47 @@ def test_unknown_parent_raises():
     }
     with pytest.raises(ValueError, match="unknown parent"):
         compute_trajectory_diff(model, _articulated_states(), batch_a=0, batch_b=1)
+
+
+def test_nan_pose_yields_nan_errors_that_exceed_any_threshold():
+    """A NaN quaternion used to acos(min(1, nan)) -> 0 deg, and a NaN
+    position error never tripped --fail-on-exceed."""
+    nan = float("nan")
+    states = [
+        {
+            "time": 0.0,
+            "bodies": [
+                {
+                    "name": "Box",
+                    "bodyTransform": [
+                        _transform([0, 0, 0], [1.0, 0.0, 0.0, 0.0]),
+                        _transform([nan, 0, 0], [nan, 0.0, 0.0, 0.0]),
+                    ],
+                }
+            ],
+        },
+        {
+            "time": 0.1,
+            "bodies": [
+                {
+                    "name": "Box",
+                    "bodyTransform": [
+                        _transform([0, 0, 0], [1.0, 0.0, 0.0, 0.0]),
+                        _transform([0.5, 0, 0], [1.0, 0.0, 0.0, 0.0]),
+                    ],
+                }
+            ],
+        },
+    ]
+    result = compute_trajectory_diff(
+        _model(), states, 0, 1, pos_threshold=10.0, rot_threshold_deg=10.0
+    )
+    box = result["bodies"]["Box"]
+    assert math.isnan(box["orientation_error_deg"][0])
+    assert math.isnan(box["position_error"][0])
+    summary = box["summary"]
+    assert summary["position_error"]["max"] == pytest.approx(0.5)
+    assert summary["position_error"]["nan_count"] == 1
+    assert summary["first_frame_exceeding_pos_threshold"] == 0
+    assert summary["first_frame_exceeding_rot_threshold"] == 0
+    assert "nan" in format_diff_text(result)

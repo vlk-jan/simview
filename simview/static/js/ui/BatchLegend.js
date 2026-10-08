@@ -85,7 +85,24 @@ export class BatchLegend {
         this._buildRows();
     }
 
+    // Transient one-line notice under the rows (e.g. "rename not saved"),
+    // cleared after a few seconds. Non-blocking: the rename itself already
+    // took effect locally.
+    showNotice(text, ms = 5000) {
+        if (!this.notice) {
+            this.notice = document.createElement("div");
+            this.notice.className = "batch-legend-notice";
+            this.container.appendChild(this.notice);
+        }
+        this.notice.textContent = text;
+        clearTimeout(this._noticeTimer);
+        this._noticeTimer = setTimeout(() => {
+            this.notice.textContent = "";
+        }, ms);
+    }
+
     dispose() {
+        clearTimeout(this._noticeTimer);
         if (this.container && this.container.parentElement) {
             this.container.parentElement.removeChild(this.container);
         }

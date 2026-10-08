@@ -83,6 +83,12 @@ def _validate_not_rigid(name: str | list[str], model: SimViewModel) -> None:
             )
 
 
+def _batch_rows(value) -> int:
+    """Per-batch row count of a processed state field (a nested list is one
+    row per batch; a flat vector is one row)."""
+    return len(value) if value and isinstance(value[0], list) else 1
+
+
 def _as_tbk(value, T: int, B: int, k: int, field: str, body: str) -> np.ndarray:
     """Normalize a per-body trajectory field to shape (T, B, k), float32.
 
@@ -128,7 +134,7 @@ class SimulationScene:
         self,
         batch_size: int,
         scalar_names: list[str],
-        dt: float,
+        dt: float | None,
         collapse: bool = False,
         terrain: SimViewTerrain | None = None,
         bodies: dict[str, SimViewBody] | None = None,
@@ -258,9 +264,22 @@ class SimulationScene:
         """
         Adds a new state (snapshot in time) to the simulation data.
         """
+        B = self.model.batch_size
         for state in body_states:
             _validate_body_name(state.body_name, self.model)
             _validate_not_rigid(state.body_name, self.model)
+            label = _name_label(state.body_name)
+            if state.batch_rows != B:
+                raise ValueError(
+                    f"{label}: position/orientation have {state.batch_rows} "
+                    f"batch row(s); expected {B} (the model's batch_size)."
+                )
+            for attr, value in state.optional_attrs.items():
+                rows = len(value) if attr == "contacts" else _batch_rows(value)
+                if rows != B:
+                    raise ValueError(
+                        f"{label}.{attr} has {rows} batch row(s); expected {B}."
+                    )
 
         if self.model.scalar_names:
             if scalar_values is None:
@@ -289,6 +308,11 @@ class SimulationScene:
                     raise TypeError(
                         f"Scalar value for '{k}' must be a torch.Tensor, "
                         "numpy.ndarray, or a list."
+                    )
+                if len(processed_scalars[k]) != B:
+                    raise ValueError(
+                        f"Scalar '{k}' has {len(processed_scalars[k])} value(s); "
+                        f"expected one per batch ({B})."
                     )
         else:
             processed_scalars = {}
@@ -421,6 +445,55 @@ class SimulationScene:
                 state[name] = arr[t].tolist()
             self.states.append(state)
 
+    def _check_episodes_in_range(self) -> None:
+        """Every episode must start at a frame this scene actually has."""
+        for episode in self.model.episodes or []:
+            if episode.start_index >= len(self.states):
+                raise ValueError(
+                    f"Episode starts at frame {episode.start_index} but the scene "
+                    f"has only {len(self.states)} state(s)."
+                )
+
+    def reconcile_available_attributes(self) -> None:
+        """Set each body's `available_attributes` to the optional attributes
+        its states actually carry (an attribute may be absent from earlier
+        frames but present later). The viewer only builds contact markers and
+        vector arrows for declared attributes, so `save()` and `show()` both
+        call this before serializing the model. Unknown per-body keys (e.g.
+        from a hand-edited file) are ignored with a warning.
+        """
+        if not self.states:
+            return
+        known = {attr.value for attr in OptionalBodyStateAttribute}
+        provided_by_body: dict[str, set[str]] = {}
+        warned: set[str] = set()
+        for state in self.states:
+            for body_data in state.get("bodies", []):
+                name = body_data.get("name")
+                if not name:
+                    continue
+                keys = set(body_data) - {"name", "bodyTransform"}
+                for unknown in keys - known - warned:
+                    warned.add(unknown)
+                    logger.warning(
+                        "Ignoring unknown per-body state field '%s' on '%s'.",
+                        unknown,
+                        _name_label(name),
+                    )
+                for n in iter_names(name):
+                    provided_by_body.setdefault(n, set()).update(keys & known)
+
+        for name, body in self.model.bodies.items():
+            if name in provided_by_body:
+                # Enum declaration order, so the written list is deterministic
+                # across processes (a set's order is hash-seed dependent).
+                attrs = [
+                    attr
+                    for attr in OptionalBodyStateAttribute
+                    if attr.value in provided_by_body[name]
+                ]
+                body.available_attributes = attrs or None
+
     def save(
         self,
         filepath: str | Path,
@@ -456,29 +529,8 @@ class SimulationScene:
             raise ValueError(
                 "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
             )
-
-        # Reconcile available_attributes with actual data across all states
-        # (an attribute may be absent from earlier frames but present later)
-        if self.states:
-            provided_attrs_by_body = {}
-            for state in self.states:
-                for body_data in state.get("bodies", []):
-                    name = body_data.get("name")
-                    if name:
-                        # Everything in the body's dict other than name and bodyTransform is an optional attribute
-                        provided = set(body_data.keys()) - {"name", "bodyTransform"}
-                        for n in iter_names(name):
-                            provided_attrs_by_body.setdefault(n, set()).update(provided)
-
-            for name, body in self.model.bodies.items():
-                if name in provided_attrs_by_body:
-                    provided = provided_attrs_by_body[name]
-                    if provided:
-                        body.available_attributes = [
-                            OptionalBodyStateAttribute(k) for k in provided
-                        ]
-                    else:
-                        body.available_attributes = None
+        self._check_episodes_in_range()
+        self.reconcile_available_attributes()
 
         output_path = Path(filepath)
         if compress and output_path.suffix != ".gz":
@@ -567,6 +619,8 @@ class SimulationScene:
                 "Cannot show scene: the simulation model is not complete "
                 "(e.g. terrain might be missing)."
             )
+        self._check_episodes_in_range()
+        self.reconcile_available_attributes()
 
         data = {"model": self.model.to_json(), "states": self.states}
         handle = ViewerHandle(
@@ -605,8 +659,9 @@ class SimulationScene:
                 normals are automatically computed from the heightmap gradients.
             x_lim (tuple[float, float] | None): (min, max) coordinates for the X axis.
             y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
-            grid_res (float | None): Grid resolution. If x_lim and y_lim are omitted,
-                they will be automatically inferred assuming the grid is centered at 0.
+            grid_res (float | None): Spacing between adjacent grid nodes. If x_lim
+                and y_lim are omitted they are inferred so the nodes sit `grid_res`
+                apart, centered at 0 (a W-wide grid spans `(W - 1) * grid_res`).
             properties (dict[str, torch.Tensor] | None): Optional arbitrary named
                 per-cell scalar maps (2D or 3D, like `heightmap`), e.g.
                 `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
@@ -631,13 +686,16 @@ class SimulationScene:
             if grid_res is None:
                 raise ValueError("Must provide either (x_lim, y_lim) or grid_res")
             H_dim, W_dim = heightmap.shape[-2:]
-            x_lim = x_lim or (-W_dim * grid_res / 2.0, W_dim * grid_res / 2.0)
-            y_lim = y_lim or (-H_dim * grid_res / 2.0, H_dim * grid_res / 2.0)
+            half_x, half_y = (W_dim - 1) * grid_res / 2.0, (H_dim - 1) * grid_res / 2.0
+            x_lim = x_lim or (-half_x, half_x)
+            y_lim = y_lim or (-half_y, half_y)
 
         if normals is None:
+            # The W nodes span the full extent (viewer, terrain.py), so the
+            # node spacing is extent / (W - 1), not extent / W.
             H_dim, W_dim = heightmap.shape[-2:]
-            res_x = (x_lim[1] - x_lim[0]) / W_dim
-            res_y = (y_lim[1] - y_lim[0]) / H_dim
+            res_x = (x_lim[1] - x_lim[0]) / max(W_dim - 1, 1)
+            res_y = (y_lim[1] - y_lim[0]) / max(H_dim - 1, 1)
             dzdy, dzdx = torch.gradient(heightmap, spacing=(res_y, res_x), dim=(-2, -1))
             nx = -dzdx
             ny = -dzdy

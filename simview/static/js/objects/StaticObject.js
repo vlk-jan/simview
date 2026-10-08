@@ -159,11 +159,17 @@ export class StaticObject {
 
     /** Update visualization mode (mesh, wireframe, points) */
     updateVisualizationMode(mode) {
+        // A singleton point cloud is one object per batch outside any batch
+        // group, so a hidden batch has to be respected here (non-singleton
+        // objects sit in per-batch groups, which carry it).
+        const batchManager = this.app.batchManager;
+        const batchVisible = (i) =>
+            !this.isSingleton || !batchManager?.isBatchVisible || batchManager.isBatchVisible(i);
         for (const [type, obj] of Object.entries(this.representations)) {
             if (obj instanceof THREE.InstancedMesh) {
                 obj.visible = type === mode;
             } else if (Array.isArray(obj)) {
-                obj.forEach((o) => (o.visible = type === mode));
+                obj.forEach((o, i) => (o.visible = type === mode && batchVisible(i)));
             }
         }
     }
@@ -184,6 +190,20 @@ export class StaticObject {
             } else if (this.group.parent) {
                 this.group.parent.remove(this.group);
             }
+            // Geometry/materials are shared between the mesh and wireframe
+            // of a batch, so dedupe before disposing.
+            const geometries = new Set();
+            const materials = new Set();
+            this.group.traverse((child) => {
+                if (child.geometry) geometries.add(child.geometry);
+                if (child.material) {
+                    (Array.isArray(child.material) ? child.material : [child.material]).forEach(
+                        (m) => materials.add(m)
+                    );
+                }
+            });
+            geometries.forEach((g) => g.dispose());
+            materials.forEach((m) => m.dispose());
 
             this.group = null;
             this.representations = { mesh: [], wireframe: [], points: [] };

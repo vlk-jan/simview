@@ -7,6 +7,7 @@ import {
     nextEpisodeStart,
     normalizeEpisodes,
     previousEpisodeStart,
+    shiftEpisodes,
 } from "../../simview/static/js/utils/episodes.js";
 
 const EPISODES = [
@@ -168,5 +169,44 @@ describe("episodeLabel", () => {
 
     it("names the implicit pre-first-episode segment distinctly", () => {
         expect(episodeLabel({ index: -1, label: null })).toBe("(before first episode)");
+    });
+});
+
+describe("episodeAggregates on a long episode", () => {
+    it("does not overflow the call stack past ~125k frames", async () => {
+        const n = 200000;
+        const series = Array.from({ length: n }, (_, i) => ({ x: i, y: i % 7 }));
+        const [agg] = episodeAggregates([{ startIndex: 0, label: null }], series, n);
+        expect(agg.count).toBe(n);
+        expect(agg.min).toBe(0);
+        expect(agg.max).toBe(6);
+        expect(agg.final).toBe((n - 1) % 7);
+    });
+});
+
+describe("shiftEpisodes (live catch-up window)", () => {
+    const raw = [
+        { startIndex: 0, label: "a" },
+        { startIndex: 5000, label: "b" },
+        { startIndex: 12000, label: "c" },
+        { startIndex: 20000, label: "d" },
+    ];
+
+    it("rebases onto the window and keeps the episode in progress at its start", () => {
+        expect(shiftEpisodes(raw, 10000)).toEqual([
+            { startIndex: 0, label: "b" },
+            { startIndex: 2000, label: "c" },
+            { startIndex: 10000, label: "d" },
+        ]);
+    });
+
+    it("is the identity for offset 0 / a stream from the start", () => {
+        expect(shiftEpisodes(raw, 0)).toBe(raw);
+        expect(shiftEpisodes(raw, undefined)).toBe(raw);
+    });
+
+    it("keeps an episode starting exactly at the window start at 0", () => {
+        expect(shiftEpisodes(raw, 5000)[0]).toEqual({ startIndex: 0, label: "b" });
+        expect(shiftEpisodes(raw, 5000)).toHaveLength(3);
     });
 });

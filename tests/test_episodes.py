@@ -169,3 +169,10 @@ def test_live_mark_episode_updates_the_model_and_broadcasts():
         ]
         # ...and the scene itself records them, so save() keeps them.
         assert [e.start_index for e in scene.model.episodes or []] == [1]
+
+
+def test_save_rejects_an_episode_starting_past_the_last_frame(tmp_path):
+    scene = build_scene(batch_size=1)  # 3 states
+    scene.mark_episode(start_index=5)
+    with pytest.raises(ValueError, match="frame 5"):
+        scene.save(tmp_path / "s.json")

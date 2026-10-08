@@ -89,14 +89,19 @@ def parse_remote_spec(spec: str) -> tuple[str, str] | None:
     host, sep, path = spec.partition(":")
     if not sep or not path or not _HOST_RE.match(host):
         return None
-    return host, path
+    return _normalize_host(host), path
 
 
 def _normalize_host(host: str) -> str:
-    """Strip the brackets off an IPv6 literal -- ssh(1) wants '::1', not '[::1]'."""
+    """Strip the brackets off an IPv6 literal -- ssh(1) wants '::1', not '[::1]'.
+
+    Rejects a host starting with '-': it would reach ssh's argv as an option
+    (`-oProxyCommand=...` runs a local command)."""
     user, at, addr = host.rpartition("@")
     if addr.startswith("[") and addr.endswith("]"):
         addr = addr[1:-1]
+    if addr.startswith("-") or user.startswith("-"):
+        raise RemoteError(f"Invalid remote host {host!r}: must not start with '-'.")
     return f"{user}{at}{addr}"
 
 

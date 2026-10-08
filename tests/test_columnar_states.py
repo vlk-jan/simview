@@ -5,6 +5,8 @@ The on-disk JSON format and merge.py are unaffected -- this only covers the
 repack the server does at load time before serving `/states`.
 """
 
+import json
+
 import pytest
 
 pytest.importorskip("torch")
@@ -257,6 +259,64 @@ def test_inconsistent_body_presence_falls_back_to_legacy_array(tmp_path):
     body = resp.json()
     assert isinstance(body, list)
     assert len(body) == 3
+
+
+def test_bail_out_after_body_fields_registers_no_blobs(tmp_path):
+    """A scalar mismatch is detected after the body blobs are built; those
+    must not be left registered (unreferenced, never freed) in the server."""
+    scene = _make_scene(batch_size=2, scalar_names=["energy"])
+    scene.create_body(
+        body_name="A", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+    )
+    for t in range(3):
+        scene.add_state(
+            time=t * 0.1,
+            body_states=[
+                SimViewBodyState(
+                    "A", torch.zeros(2, 3), torch.tensor([[1.0, 0, 0, 0]] * 2)
+                )
+            ],
+            scalar_values={"energy": [1.0, 2.0]},
+        )
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file, columnar=False)
+    doc = json.loads(sim_file.read_text())
+    doc["states"][1]["energy"] = 1.0  # a float where [B] was expected
+    sim_file.write_text(json.dumps(doc))
+
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+    assert isinstance(client.get("/states").json(), list)
+    # Only the model's own blobs (terrain) may be registered -- none from the
+    # abandoned states repack.
+    assert len(server.blobs) == client.get("/model").text.count("/blob/")
+
+
+def test_ragged_rows_fall_back_to_legacy_instead_of_crashing(tmp_path):
+    scene = _make_scene(batch_size=2)
+    scene.create_body(
+        body_name="A", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+    )
+    for t in range(2):
+        scene.add_state(
+            time=t * 0.1,
+            body_states=[
+                SimViewBodyState(
+                    "A",
+                    torch.zeros(2, 3),
+                    torch.tensor([[1.0, 0, 0, 0]] * 2),
+                    binary=False,
+                )
+            ],
+        )
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file, columnar=False)
+    doc = json.loads(sim_file.read_text())
+    doc["states"][1]["bodies"][0]["bodyTransform"][1] = [0.0] * 6  # ragged
+    sim_file.write_text(json.dumps(doc))
+
+    server = SimViewServer(sim_path=sim_file)  # must not raise
+    assert isinstance(TestClient(server.app).get("/states").json(), list)
 
 
 # --- (f) grouped body names (name as list) work ------------------------------------

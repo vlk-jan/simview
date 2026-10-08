@@ -36,8 +36,7 @@ export class PlaybackControls {
                 this.animationController.stopRecording();
                 this.recordButton.textContent = "⚫ REC";
                 this.recordButton.classList.remove("is-recording");
-            } else {
-                this.animationController.startRecording();
+            } else if (this.animationController.startRecording()) {
                 this.recordButton.textContent = "⬛ STOP";
                 this.recordButton.classList.add("is-recording");
             }
@@ -100,7 +99,9 @@ export class PlaybackControls {
             const rect = this.progressBarContainer.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const progress = x / rect.width;
-            const targetTime = progress * this.animationController.getTotalTime();
+            const targetTime =
+                this.animationController.getFirstTime() +
+                progress * this.animationController.getTotalTime();
 
             if (event.altKey) {
                 this.animationController.pause();
@@ -344,10 +345,13 @@ export class PlaybackControls {
     }
 
     updateElements() {
-        const currentTime = this.animationController.getCurrentTime().toFixed(2);
-        const totalTime = this.animationController.getTotalTime().toFixed(2);
-        this.frameCounter.textContent = `${currentTime} / ${totalTime} s`;
-        const progress = currentTime / totalTime;
+        // Elapsed since the first frame, so a timeline starting at t=100 still
+        // reads 0.00 at its start and fills the bar from the left.
+        const ac = this.animationController;
+        const elapsed = ac.getCurrentTime() - ac.getFirstTime();
+        const totalTime = ac.getTotalTime();
+        this.frameCounter.textContent = `${elapsed.toFixed(2)} / ${totalTime.toFixed(2)} s`;
+        const progress = totalTime > 0 ? elapsed / totalTime : 0;
         this.progressBar.style.width = `${(progress * 100).toFixed(1)}%`;
         this.#updateEpisodeLabel();
         this.lastRenderTime = Number.NEGATIVE_INFINITY;

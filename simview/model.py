@@ -66,6 +66,14 @@ class OptionalBodyStateAttribute(StrEnum):
     TORQUE = "torque"
 
 
+# Primitive shape parameters that must be present and strictly positive.
+_REQUIRED_POSITIVE_SHAPE_PARAMS = {
+    BodyShapeType.BOX: ("hx", "hy", "hz"),
+    BodyShapeType.SPHERE: ("radius",),
+    BodyShapeType.CYLINDER: ("radius", "height"),
+}
+
+
 @dataclass
 class TerrainProperty:
     """One arbitrary named per-cell scalar field over the terrain grid (e.g.
@@ -211,6 +219,22 @@ class SimViewTerrain:
                 f"Normals must have 3 channels (shape[1] == 3); got shape={tuple(normals.shape)}."
             )
         B, Dy, Dx = heightmap.shape
+        grids = {
+            "normals": tuple(normals.shape[2:]),
+            **{
+                f"property '{name}'": tuple(p.shape[1:])
+                for name, p in (properties or {}).items()
+                if p.ndim == 3  # wrong ndim is reported below
+            },
+        }
+        if embedding_map is not None and embedding_map.ndim == 4:
+            grids["embedding_map"] = tuple(embedding_map.shape[2:])
+        for label, grid in grids.items():
+            if grid != (Dy, Dx):
+                raise ValueError(
+                    f"Terrain {label} grid {grid} does not match the heightmap "
+                    f"grid {(Dy, Dx)}."
+                )
         min_x, max_x = x_lim
         min_y, max_y = y_lim
         min_z = heightmap.min().item()
@@ -348,6 +372,18 @@ class SimViewBody:
                     shape_dict[key] = value.item()
             else:
                 shape_dict[key] = value
+        for key in _REQUIRED_POSITIVE_SHAPE_PARAMS.get(body_type, ()):
+            value = shape_dict.get(key)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(
+                    f"{body_type.value} shape requires {key} to be a positive "
+                    f"number; got {value!r}."
+                )
         return shape_dict
 
     @staticmethod
@@ -638,7 +674,9 @@ def _validate_parent_ref(name: str, parent: str | None, known_bodies: dict) -> N
 class SimViewModel:
     batch_size: int
     scalar_names: list[str]
-    dt: float
+    # None means "not known"; the viewer then infers it from consecutive
+    # state times.
+    dt: float | None
     collapse: bool
     terrain: SimViewTerrain | None = None
     bodies: dict[str, SimViewBody] = field(default_factory=dict)
@@ -666,9 +704,14 @@ class SimViewModel:
                     f"viewer_defaults must be JSON-serializable: {e}"
                 ) from e
         if self.batch_names is not None and len(self.batch_names) != self.batch_size:
-            raise ValueError(
-                f"batch_names length ({len(self.batch_names)}) must match batch size ({self.batch_size})"
+            # Same fallback the viewer applies ("Batch <index>"), so a file it
+            # opens fine still loads here.
+            logger.warning(
+                "Ignoring batch_names: %d name(s) for %d batch(es).",
+                len(self.batch_names),
+                self.batch_size,
             )
+            self.batch_names = None
         _validate_episodes(self.episodes)
 
     def add_body(self, body: SimViewBody) -> None:
@@ -727,11 +770,8 @@ class SimViewModel:
         try:
             batch_size = d["simBatches"]
             scalar_names = d["scalarNames"]
-            dt = d["dt"]
-            collapse = d["collapse"]
             terrain_dict = d["terrain"]
             body_dicts = d["bodies"]
-            static_object_dicts = d["staticObjects"]
         except KeyError as e:
             raise ValueError(f"Model dict is missing required key: {e}") from e
 
@@ -743,19 +783,15 @@ class SimViewModel:
             _validate_parent_ref(body.name, body.parent, bodies)
             bodies[body.name] = body
 
-        static_objects = {}
-        for static_object_dict in static_object_dicts:
-            static_object = SimViewStaticObject.from_dict(static_object_dict)
-            static_objects[static_object.name] = static_object
-
-        return cls(
+        # dt/collapse/staticObjects are optional on the wire (the viewer
+        # tolerates all three), so a hand-written file loads here too.
+        model = cls(
             batch_size=batch_size,
             scalar_names=scalar_names,
-            dt=dt,
-            collapse=collapse,
+            dt=d.get("dt"),
+            collapse=bool(d.get("collapse", False)),
             terrain=SimViewTerrain.from_dict(terrain_dict),
             bodies=bodies,
-            static_objects=static_objects,
             batch_names=d.get("batchNames"),
             metadata=d.get("metadata"),
             episodes=(
@@ -765,6 +801,11 @@ class SimViewModel:
             ),
             viewer_defaults=d.get("viewerDefaults"),
         )
+        # Via add_static_object so duplicate names and a batched object's
+        # shapes count are checked exactly as when authoring.
+        for static_object_dict in d.get("staticObjects") or []:
+            model.add_static_object(SimViewStaticObject.from_dict(static_object_dict))
+        return model
 
     @property
     def is_complete(self) -> bool:

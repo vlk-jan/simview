@@ -118,3 +118,57 @@ describe("BatchManager.changeFocusOnBatchByIndex", () => {
         expect(app.scene.camera.position.toArray()).toEqual([3 + shift[0], -4 + shift[1], 10 + shift[2]]);
     });
 });
+
+describe("BatchManager.refreshVisibleBatches", () => {
+    it("pins the split-screen batches in focused render mode", () => {
+        const { app, manager } = makeBatchManager(40); // > 32 -> focused by default
+        app.uiState = { splitScreen: true, splitBatchA: 0, splitBatchB: 5 };
+        expect(manager.isBatchVisible(5)).toBe(false);
+
+        manager.refreshVisibleBatches();
+
+        expect(manager.isBatchVisible(5)).toBe(true);
+        app.uiState.splitBatchB = 7;
+        manager.refreshVisibleBatches();
+        expect(manager.isBatchVisible(7)).toBe(true);
+        expect(manager.isBatchVisible(5)).toBe(false);
+    });
+});
+
+describe("BatchManager._persistBatchNames", () => {
+    const realFetch = globalThis.fetch;
+    function withFetch(response) {
+        globalThis.fetch = async () => response;
+    }
+
+    it("tells the legend once when the server cannot persist renames", async () => {
+        const { app, manager } = makeBatchManager(2);
+        const notices = [];
+        app.batchLegend.showNotice = (t) => notices.push(t);
+        withFetch({ ok: true, json: async () => ({ ok: true, persisted: false }) });
+        try {
+            await manager._persistBatchNames();
+            await manager._persistBatchNames();
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+        expect(notices).toHaveLength(1);
+    });
+
+    it("tells the legend when the request fails", async () => {
+        const { app, manager } = makeBatchManager(2);
+        const notices = [];
+        app.batchLegend.showNotice = (t) => notices.push(t);
+        withFetch({ ok: false, status: 500 });
+        try {
+            await manager._persistBatchNames();
+            globalThis.fetch = async () => {
+                throw new Error("offline");
+            };
+            await manager._persistBatchNames();
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+        expect(notices).toHaveLength(2);
+    });
+});

@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import json
 import logging
+import os
 import secrets
 import threading
 import time
@@ -38,8 +39,8 @@ _ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 # Subdirectories of simview/static that hold vendored, version-pinned third-party
 # libraries. These never change for a given release, so they get a long-lived,
 # immutable cache header. Everything else under /static (our own JS/CSS/textures)
-# is cache-busted via the ?v= query param in index.html instead, so it only needs
-# a short revalidation window.
+# gets a short revalidation window and relies on StaticFiles' ETag/Last-Modified
+# instead (see the mount() call below).
 _IMMUTABLE_STATIC_DIRS = ("lib/",)
 
 # Live mode: how many recent frames to keep for replaying to viewers that
@@ -85,7 +86,11 @@ def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
     except ValueError:
         return None
 
-    if start < 0 or start >= size or end < start:
+    if end < start:
+        # RFC 9110 §14.1.1: last-pos < first-pos makes the whole Range header
+        # invalid, to be ignored (full 200), not a 416.
+        return None
+    if start < 0 or start >= size:
         raise _RangeNotSatisfiable
     return start, min(end, size - 1)
 
@@ -109,7 +114,12 @@ class CacheControlStaticFiles(StaticFiles):
         # here even though the base class types it as Optional for callers that
         # use `packages=` instead.
         assert self.directory is not None
-        rel_path = Path(full_path).relative_to(self.directory).as_posix()
+        # Starlette hands us the realpath of the file; resolve our directory
+        # the same way or a symlinked install (HPC homes, macOS /tmp, a
+        # symlinked venv) makes relative_to raise and every asset 500.
+        rel_path = (
+            Path(full_path).relative_to(os.path.realpath(self.directory)).as_posix()
+        )
         if rel_path.startswith(_IMMUTABLE_STATIC_DIRS):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
@@ -124,9 +134,20 @@ class SimViewServer:
         data: dict | None = None,
         live: bool = False,
         frame_buffer_size: int = _LIVE_FRAME_BUFFER_MAXLEN,
+        batch_selections: Sequence[str | Sequence[int] | None] | None = None,
     ):
         if sim_path is None and data is None:
             raise ValueError("Provide 'sim_path' and/or 'data'")
+        if (
+            data is None
+            and not isinstance(sim_path, (str, Path))
+            and sim_path is not None
+            and len(sim_path) > 1
+        ):
+            raise ValueError(
+                "Several 'sim_path's need a merged 'data' -- use "
+                "SimViewServer.start(), which merges them."
+            )
         # Live streaming mode (see simview.live.LiveViewer): /states reports
         # {"live": true} instead of serving a (possibly empty) states array,
         # and a /ws/states endpoint is registered to push frames as they're
@@ -135,7 +156,7 @@ class SimViewServer:
         # push_state's broadcast, running on the caller's thread, never races
         # a client connecting/disconnecting on the server thread.
         self.live = live
-        self.loop = None
+        self.loop: asyncio.AbstractEventLoop | None = None
         self.ws_clients: set[WebSocket] = set()
         # Recent frames (live mode only), replayed as the catch-up messages to
         # a client connecting after the run started. Mirrors scene.states,
@@ -145,6 +166,13 @@ class SimViewServer:
         # longer than the cap the oldest frames are forgotten, so a late viewer
         # replays the most recent window instead of the entire history.
         self.frame_buffer: deque[dict] = deque(maxlen=frame_buffer_size)
+        # Absolute index (in the producer's scene.states) of the next frame to
+        # enter frame_buffer, so a catch-up can tell the viewer where its
+        # window starts -- episode startIndex values are absolute too.
+        self.frames_pushed = 0
+        self._batch_selections = (
+            None if batch_selections is None else [str(s) for s in batch_selections]
+        )
         if sim_path is None:
             self.sim_paths: list[Path] | None = None
         elif isinstance(sim_path, (str, Path)):
@@ -205,13 +233,15 @@ class SimViewServer:
     def _names_sidecar_path(self) -> Path | None:
         """Where custom batch names get persisted, so they survive a server restart.
 
-        Keyed by a hash of all input paths (not just the first) so that merging the
-        same file with different partners doesn't collide on one sidecar."""
+        Keyed by a hash of all input paths (not just the first) and their batch
+        selections, so that merging the same file with different partners or
+        different `#` subsets doesn't collide on one sidecar."""
         if not self.sim_paths:
             return None
-        key = hashlib.sha1(
-            "|".join(str(p.resolve()) for p in self.sim_paths).encode()
-        ).hexdigest()[:10]
+        parts = [str(p.resolve()) for p in self.sim_paths]
+        if self._batch_selections:
+            parts.append("#".join(self._batch_selections))
+        key = hashlib.sha1("|".join(parts).encode()).hexdigest()[:10]
         return (
             self.sim_paths[0].parent
             / f".{self.sim_paths[0].stem}.{key}.batchnames.json"
@@ -257,6 +287,9 @@ class SimViewServer:
         if preloaded and model_data is not None:
             model_data = copy.deepcopy(model_data)
 
+        # Taken once, at load: the sidecar must describe the batches that were
+        # actually loaded, not whatever the file is by the time of a rename.
+        self._fingerprint = self._source_fingerprint()
         names_path = self._names_sidecar_path()
         if model_data is not None and names_path and names_path.is_file():
             try:
@@ -270,7 +303,7 @@ class SimViewServer:
                 sim_batches = int(model_data.get("simBatches", 1))
                 stale = (
                     saved_fingerprint is not None
-                    and saved_fingerprint != self._source_fingerprint()
+                    and saved_fingerprint != self._fingerprint
                 )
                 if stale:
                     logger.info(
@@ -307,8 +340,16 @@ class SimViewServer:
 
         self.model_data = model_data
 
-        if self.model_data is not None:
-            extract_blobs(self.model_data)
+        if model_data is not None:
+            # Free-form strings (metadata, names) are never blobs: a user
+            # string that happens to start with __b64__ must survive as-is.
+            keep = {
+                k: model_data.pop(k)
+                for k in ("metadata", "batchNames")
+                if k in model_data
+            }
+            extract_blobs(model_data)
+            model_data.update(keep)
 
         if is_columnar(states_data):
             # The file is already columnar (SimulationScene.save's default) --
@@ -446,19 +487,20 @@ class SimViewServer:
             )
 
             names_path = self._names_sidecar_path()
+            persisted = False
             if names_path:
                 try:
-                    payload = {
-                        "names": names,
-                        "source_mtime": self._source_fingerprint(),
-                    }
+                    payload = {"names": names, "source_mtime": self._fingerprint}
                     names_path.write_text(json.dumps(payload))
+                    persisted = True
                 except OSError as e:
                     logger.warning(
                         "Failed to persist batch names to %s: %s", names_path, e
                     )
 
-            return {"ok": True}
+            # persisted=False: in-memory scenes (show()/LiveViewer/render) have
+            # no file to key a sidecar on, so the rename lasts this server only.
+            return {"ok": True, "persisted": persisted}
 
         if self.live:
             # Only registered in live mode: LiveViewer.push_state broadcasts
@@ -496,14 +538,26 @@ class SimViewServer:
         """
         replayed = 0
         while True:
-            pending = list(self.frame_buffer)[replayed:]
+            buffered = list(self.frame_buffer)
+            pending = buffered[replayed:]
             if not pending:
                 self.ws_clients.add(websocket)
                 return
+            # Absolute index of buffered[0]: everything pushed minus what the
+            # (bounded) buffer still holds.
+            offset = self.frames_pushed - len(buffered) + replayed
             for start in range(0, len(pending), _CATCHUP_CHUNK_SIZE):
                 chunk = pending[start : start + _CATCHUP_CHUNK_SIZE]
-                await websocket.send_text(json.dumps({"states": chunk}))
+                await websocket.send_text(
+                    json.dumps({"states": chunk, "frameOffset": offset + start})
+                )
             replayed += len(pending)
+
+    def push_frame(self, frame: dict) -> None:
+        """Record one new frame for catch-up (live mode). Returns nothing; the
+        caller broadcasts it separately via `broadcast_frame`."""
+        self.frame_buffer.append(frame)
+        self.frames_pushed += 1
 
     def set_episodes(self, episodes: list[dict]) -> None:
         """Replace the served model's episode boundaries (live mode).
@@ -534,7 +588,10 @@ class SimViewServer:
         if not self.ws_clients:
             return
         dead = []
-        for client in self.ws_clients:
+        # Snapshot: send_text yields, and a client connecting/disconnecting
+        # meanwhile mutates the set, which would raise mid-iteration and drop
+        # the frame for everyone not yet reached.
+        for client in list(self.ws_clients):
             try:
                 await client.send_text(message)
             except Exception:
@@ -542,14 +599,17 @@ class SimViewServer:
         for client in dead:
             self.ws_clients.discard(client)
 
-    async def broadcast_frame(self, frame: dict) -> None:
+    async def broadcast_frame(self, frame: dict, frame_index: int) -> None:
         """Send one newly-pushed frame to every connected /ws/states client.
 
+        `frame_index` is the frame's absolute index (see `frames_pushed`).
         Must run on self.loop (the server thread's event loop) -- LiveViewer
         schedules this via asyncio.run_coroutine_threadsafe from its sender
         thread rather than calling it directly.
         """
-        await self._broadcast_text(json.dumps({"states": [frame]}))
+        await self._broadcast_text(
+            json.dumps({"states": [frame], "frameOffset": frame_index})
+        )
 
     def run(
         self,
@@ -599,7 +659,9 @@ class SimViewServer:
             from simview.merge import merge_simulation_files
 
             server = SimViewServer(
-                data=merge_simulation_files(paths, batch_selections), sim_path=paths
+                data=merge_simulation_files(paths, batch_selections),
+                sim_path=paths,
+                batch_selections=batch_selections,
             )
         else:
             server = SimViewServer(sim_path=paths[0])
@@ -673,6 +735,9 @@ class ViewerHandle:
             if not self._thread.is_alive():
                 raise RuntimeError("SimView server thread died during startup.")
             if time.monotonic() > deadline:
+                # Don't leave a server that may bind a moment later squatting
+                # on the port for the rest of the process.
+                self._uvicorn_server.should_exit = True
                 raise TimeoutError(
                     f"SimView server did not start within {_START_TIMEOUT}s."
                 )

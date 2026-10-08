@@ -170,3 +170,84 @@ describe("Terrain diff overlay helpers", () => {
         expect(terrain.getDiffMaxAbsDelta()).toBe(0);
     });
 });
+
+describe("Terrain surface shading normals", () => {
+    function dataWithNormals(normals) {
+        const data = makeTerrainData(false);
+        data.normals = normals;
+        return data;
+    }
+
+    it("writes the supplied normals (normalized, row-inverted like the heights) into the geometry", () => {
+        // Per-cell normal (dataIndex, 0, 1), deliberately unnormalized.
+        const perBatch = [];
+        for (let d = 0; d < RESOLUTION * RESOLUTION; d++) perBatch.push(d, 0, 1);
+        const terrain = new Terrain(
+            dataWithNormals(new Float32Array([...perBatch, ...perBatch])),
+            fakeApp(2)
+        );
+        const normal = terrain.group.getObjectByName("batch0").getObjectByName("surface")
+            .geometry.attributes.normal;
+        // Vertex 0 is the top-left of the plane, i.e. data row 1, col 0 -> dataIndex 2.
+        const len = Math.hypot(2, 0, 1);
+        expect(normal.getX(0)).toBeCloseTo(2 / len);
+        expect(normal.getZ(0)).toBeCloseTo(1 / len);
+        // Vertex 2 is data row 0, col 0 -> dataIndex 0 -> (0, 0, 1).
+        expect(normal.getX(2)).toBeCloseTo(0);
+        expect(normal.getZ(2)).toBeCloseTo(1);
+    });
+
+    it("computes normals from the heightfield when none are supplied", () => {
+        const data = makeTerrainData(false);
+        delete data.normals;
+        const terrain = new Terrain(data, fakeApp(2));
+        const normal = terrain.group.getObjectByName("batch0").getObjectByName("surface")
+            .geometry.attributes.normal;
+        // Heights ramp 0..3 across the 1x1 extent, so a flat (0, 0, 1)
+        // normal -- PlaneGeometry's default -- would mean nothing was computed.
+        expect(Math.abs(normal.getZ(0))).toBeLessThan(0.99);
+    });
+});
+
+describe("Terrain robustness", () => {
+    it("colours a NaN property cell neutral grey without hitting js-colormaps' alert()", () => {
+        globalThis.alert = () => {
+            throw new Error("alert() must not fire");
+        };
+        try {
+            const data = makeTerrainData(false);
+            data.properties.friction.data = new Float32Array([0.3, NaN, 0.3, 0.3, ...FRICTION_B]);
+            const app = fakeApp(2);
+            app.uiState.terrainColorMode = "friction";
+            const terrain = new Terrain(data, app);
+            const color = terrain.group.getObjectByName("batch0").getObjectByName("surface")
+                .geometry.attributes.color;
+            // dataIndex 1 (row 0, col 1) is vertex 3 after the row inversion.
+            expect(color.getX(3)).toBeCloseTo(0.5);
+            expect(color.getY(3)).toBeCloseTo(0.5);
+            expect(color.getZ(3)).toBeCloseTo(0.5);
+        } finally {
+            delete globalThis.alert;
+        }
+    });
+
+    it("accepts hand-authored embeddingData as a per-batch nested list", () => {
+        const data = makeTerrainData(false);
+        const K = 2;
+        const perBatch = Array.from({ length: RESOLUTION * RESOLUTION * K }, (_, i) => i);
+        data.embeddingData = [perBatch, perBatch.map((v) => -v)];
+        const terrain = new Terrain(data, fakeApp(2));
+        expect(terrain.embeddingDim).toBe(K);
+        expect(terrain.embeddingData.length).toBe(2);
+        expect(terrain.getAvailableColorModes()).toContain("features");
+    });
+
+    it("dispose removes the terrain group from its parent", () => {
+        const terrain = new Terrain(makeTerrainData(false), fakeApp(2));
+        const parent = { children: [], remove(o) { this.removed = o; } };
+        terrain.group.parent = parent;
+        terrain.dispose();
+        expect(parent.removed).toBeDefined();
+        expect(terrain.group).toBeNull();
+    });
+});

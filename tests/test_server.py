@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("torch")
 
 from conftest import build_scene
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from simview.server import SimViewServer
@@ -307,6 +308,108 @@ def test_cached_scene_bytes_correct_after_batch_names_mutation(tmp_path):
     # simBatches and other fields must still be intact after the cached bytes
     # were re-serialized in place.
     assert after["simBatches"] == 2
+
+
+def test_batch_names_response_reports_persistence(tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+
+    on_disk = TestClient(SimViewServer(sim_path=sim_file).app)
+    assert on_disk.post("/batch-names", json={"names": ["a", "b"]}).json() == {
+        "ok": True,
+        "persisted": True,
+    }
+    # In-memory scenes (show()/LiveViewer/render) have no sidecar to write.
+    in_memory = TestClient(
+        SimViewServer(data={"model": scene.model.to_json(), "states": scene.states}).app
+    )
+    assert in_memory.post("/batch-names", json={"names": ["a", "b"]}).json() == {
+        "ok": True,
+        "persisted": False,
+    }
+
+
+def test_batch_names_sidecar_is_keyed_by_batch_selection(tmp_path):
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    data = {"model": scene.model.to_json(), "states": scene.states}
+
+    a = SimViewServer(data=data, sim_path=[sim_file], batch_selections=["0"])
+    b = SimViewServer(data=data, sim_path=[sim_file], batch_selections=["1"])
+    assert a._names_sidecar_path() != b._names_sidecar_path()
+
+
+def test_batch_names_fingerprint_is_taken_at_load_time(tmp_path):
+    """A file regenerated between load and rename must invalidate the sidecar
+    on the next load: the names described the *old* batches."""
+    scene = build_scene(batch_size=2)
+    sim_file = tmp_path / "sim.json"
+    scene.save(sim_file)
+    server = SimViewServer(sim_path=sim_file)
+    client = TestClient(server.app)
+
+    scene.save(sim_file)
+    os.utime(sim_file, (1, 1))  # "regenerated" after load
+    assert client.post("/batch-names", json={"names": ["a", "b"]}).status_code == 200
+
+    reloaded = TestClient(SimViewServer(sim_path=sim_file).app).get("/model").json()
+    assert reloaded.get("batchNames") != ["a", "b"]
+
+
+def test_multiple_sim_paths_without_merged_data_is_rejected(tmp_path):
+    scene = build_scene(batch_size=2)
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    scene.save(a)
+    scene.save(b)
+    with pytest.raises(ValueError):
+        SimViewServer(sim_path=[a, b])
+
+
+def test_metadata_strings_starting_with_blob_prefix_are_not_rewritten():
+    scene = build_scene(batch_size=2)
+    data = {"model": scene.model.to_json(), "states": scene.states}
+    data["model"]["metadata"] = {"note": "__b64__not a blob"}
+    data["model"]["batchNames"] = ["__b64__x", "y"]
+    model = TestClient(SimViewServer(data=data).app).get("/model").json()
+    assert model["metadata"] == {"note": "__b64__not a blob"}
+    assert model["batchNames"] == ["__b64__x", "y"]
+
+
+def test_static_files_served_through_a_symlinked_install(tmp_path):
+    """Starlette realpaths the file; our Cache-Control subclass must compare
+    against the realpath'd directory too, or every asset 500s."""
+    from simview.server import STATIC, CacheControlStaticFiles
+
+    link = tmp_path / "static_link"
+    link.symlink_to(STATIC)
+    app = FastAPI()
+    app.mount("/static", CacheControlStaticFiles(directory=str(link)))
+    resp = TestClient(app).get("/static/js/main.js")
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "public, max-age=60"
+
+
+def test_viewer_handle_startup_timeout_tells_the_server_to_exit(monkeypatch):
+    import threading
+
+    import simview.server as server_module
+
+    started = threading.Event()
+    servers = []
+
+    def _never_starts(self):
+        servers.append(self)
+        started.wait(5)
+
+    monkeypatch.setattr(server_module.uvicorn.Server, "run", _never_starts)
+    monkeypatch.setattr(server_module, "_START_TIMEOUT", 0.05)
+    with pytest.raises(TimeoutError):
+        server_module.ViewerHandle(FastAPI())
+    started.set()
+    # The handle never came back, so this is the only way the port gets freed.
+    assert servers[0].should_exit
 
 
 def test_start_applies_batch_selection_to_a_single_file(monkeypatch, tmp_path):

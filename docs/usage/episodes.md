@@ -67,8 +67,9 @@ with LiveViewer(scene, open_browser=True) as live:
 ```
 
 Connected viewers update immediately; a viewer that connects later picks the
-boundaries up with the model. Like `push_state`, `mark_episode` never blocks
-your loop on the network.
+boundaries up with the model (boundaries older than its catch-up window simply
+fall before the start of its timeline). Like `push_state`, `mark_episode`
+never blocks your loop on the network.
 
 ## Merging
 

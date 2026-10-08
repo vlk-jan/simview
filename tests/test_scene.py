@@ -489,3 +489,88 @@ def test_scene_metadata_set_after_construction_reaches_to_json():
 def test_scene_default_metadata_is_none():
     scene = _base_scene(batch_size=1)
     assert scene.model.metadata is None
+
+
+# --- Validation regressions ---------------------------------------------------
+
+
+def test_available_attributes_are_written_in_declaration_order(tmp_path):
+    """Reconciliation used a set, so the written order was hash-seed
+    dependent and identical scenes saved in two processes failed to merge."""
+    scene = _base_scene(batch_size=1, available_attributes=())
+    attrs = {
+        "torque": torch.zeros(1, 3),
+        "force": torch.zeros(1, 3),
+        "angular_velocity": torch.zeros(1, 3),
+        "velocity": torch.zeros(1, 3),
+        "contacts": [[0]],
+    }
+    attrs["angularVelocity"] = attrs.pop("angular_velocity")
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    scene.add_state(0.0, [SimViewBodyState("Box", torch.zeros(1, 3), quat, attrs)])
+    scene.save(tmp_path / "s.json")
+
+    assert scene.model.bodies["Box"].available_attributes == [
+        "contacts",
+        "velocity",
+        "angularVelocity",
+        "force",
+        "torque",
+    ]
+
+
+def test_add_state_rejects_rows_that_do_not_match_batch_size():
+    scene = _base_scene(batch_size=2, scalar_names=["e"])
+    quat2 = torch.tensor([[1.0, 0.0, 0.0, 0.0]] * 2)
+    ok = SimViewBodyState("Box", torch.zeros(2, 3), quat2)
+
+    one_row = SimViewBodyState("Box", torch.zeros(3), torch.tensor([1.0, 0, 0, 0]))
+    with pytest.raises(ValueError, match="1 batch row"):
+        scene.add_state(0.0, [one_row], {"e": [0.0, 0.0]})
+
+    bad_vel = SimViewBodyState(
+        "Box", torch.zeros(2, 3), quat2, {"velocity": torch.zeros(3, 3)}
+    )
+    with pytest.raises(ValueError, match="velocity has 3 batch row"):
+        scene.add_state(0.0, [bad_vel], {"e": [0.0, 0.0]})
+
+    with pytest.raises(ValueError, match="Scalar 'e' has 5"):
+        scene.add_state(0.0, [ok], {"e": [0.0] * 5})
+
+
+def test_body_state_rejects_mismatched_position_and_orientation_rows():
+    with pytest.raises(ValueError, match="same B"):
+        SimViewBodyState("Box", torch.zeros(2, 3), torch.tensor([[1.0, 0, 0, 0]]))
+    with pytest.raises(ValueError, match="orientation"):
+        SimViewBodyState("Box", torch.zeros(3), torch.zeros(3))
+
+
+def test_auto_normals_use_node_spacing():
+    """W nodes span the extent, so the spacing is extent / (W - 1): a ramp
+    rising 1 per column over x in [0, 3] has slope 1 -> nx = -1/sqrt(2)."""
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    heights = torch.arange(4, dtype=torch.float32).repeat(4, 1)  # +1 per column
+    scene.create_terrain(heightmap=heights, x_lim=(0, 3), y_lim=(0, 3))
+    terrain = scene.model.terrain
+    assert terrain is not None
+    nx, ny, nz = blob_floats(terrain.normals)[:3]
+    assert (nx, ny, nz) == pytest.approx((-(2**-0.5), 0.0, 2**-0.5), abs=1e-6)
+
+    # grid_res is the node spacing: 4 nodes 1 apart span 3, centred at 0.
+    scene2 = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    scene2.create_terrain(heightmap=heights, grid_res=1.0)
+    assert scene2.model.terrain is not None
+    assert (scene2.model.terrain.min_x, scene2.model.terrain.max_x) == (-1.5, 1.5)
+
+
+def test_save_ignores_unknown_state_body_keys(tmp_path, caplog):
+    scene = _base_scene(batch_size=1, available_attributes=())
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    scene.add_state(0.0, [SimViewBodyState("Box", torch.zeros(1, 3), quat)])
+    scene.states[0]["bodies"][0]["mass"] = 3.0  # hand-edited / third-party key
+
+    with caplog.at_level("WARNING", logger="simview.scene"):
+        scene.save(tmp_path / "s.json")
+
+    assert "unknown per-body state field 'mass'" in caplog.text
+    assert scene.model.bodies["Box"].available_attributes is None

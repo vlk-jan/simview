@@ -112,7 +112,10 @@ name them with `--body` like any other body.
 Add `--fail-on-exceed` to make `simview diff` machine-checkable in a script
 or CI job: it requires at least one of `--pos-threshold`/`--rot-threshold-deg`,
 and exits non-zero if any diffed body's trajectory exceeds it (after
-printing the normal output, so you still get the report either way):
+printing the normal output, so you still get the report either way). A frame
+whose pose is NaN in either batch (e.g. a body never initialised there) has a
+NaN error: the summary's mean/min/max skip such frames (`nan_count` says how
+many) and the frame counts as exceeding any threshold:
 
 ```bash
 simview diff scene.json --batches 0 1 --pos-threshold 0.1 --fail-on-exceed

@@ -96,6 +96,7 @@ export class BatchManager {
         // Static demo mode: no backend available to persist batch names.
         // The rename still takes effect locally for the current session.
         if (this.app.staticBase) return;
+        const notify = (text) => this.app.batchLegend?.showNotice?.(text);
         try {
             const response = await fetch("/batch-names", {
                 method: "POST",
@@ -104,9 +105,19 @@ export class BatchManager {
             });
             if (!response.ok) {
                 console.warn("Failed to persist batch names:", response.status);
+                notify(`Rename not saved (server returned ${response.status})`);
+                return;
+            }
+            // The server answers persisted:false when it has no scene file to
+            // write a sidecar next to (scene.show(), LiveViewer, render).
+            const body = await response.json().catch(() => ({}));
+            if (body && body.persisted === false && !this._notifiedNotPersisted) {
+                this._notifiedNotPersisted = true;
+                notify("Renames apply to this session only (no scene file to save them to)");
             }
         } catch (e) {
             console.warn("Failed to persist batch names:", e);
+            notify("Rename not saved (server unreachable)");
         }
     }
 
@@ -207,6 +218,13 @@ export class BatchManager {
         if (mode !== RENDER_ALL && mode !== RENDER_FOCUSED) return;
         if (this.renderMode === mode) return;
         this.renderMode = mode;
+        this._recomputeVisibleBatches();
+    }
+
+    // Re-evaluates which batches are drawn after something other than the
+    // active batch / render mode changed the answer -- i.e. the split-screen
+    // pins below (Controls.js calls this from the Split Screen pickers).
+    refreshVisibleBatches() {
         this._recomputeVisibleBatches();
     }
 

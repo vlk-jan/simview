@@ -93,6 +93,10 @@ def blob_floats(value: Any) -> list[float]:
         if not value.startswith(BLOB_PREFIX):
             raise ValueError(f"expected a {BLOB_PREFIX} blob, got {value[:32]!r}")
         raw = blob_bytes(value)
+        if len(raw) % 4:
+            raise ValueError(
+                f"blob has {len(raw)} bytes, not a multiple of 4 (float32)"
+            )
         return list(struct.unpack(f"<{len(raw) // 4}f", raw))
 
     flat: list[float] = []
@@ -154,7 +158,12 @@ def _decode_state_field_rows(value, width: int, batch_size: int):
             raise StatesShapeMismatch(f"unexpected string value for field: {value!r}")
         flat = np.frombuffer(blob_bytes(value), dtype="<f4")
     else:
-        arr = np.asarray(value, dtype="<f4")
+        try:
+            arr = np.asarray(value, dtype="<f4")
+        except (ValueError, TypeError) as e:
+            # Ragged / non-numeric rows: not repackable, keep the legacy layout
+            # (as documented) rather than crash the server at load.
+            raise StatesShapeMismatch(f"field value is not a numeric array: {e}")
         if arr.ndim == 1:
             if batch_size != 1:
                 raise StatesShapeMismatch(
@@ -291,9 +300,12 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
 
         T = len(states_data)
 
-        bodies_payload = []
+        # Stack everything first; register_blob only once nothing can still
+        # bail out, so a late mismatch doesn't leave orphaned blobs behind in
+        # the server (they're never referenced, never freed).
+        body_blobs: list[tuple[object, dict[str, bytes]]] = []
         for key in body_order:
-            fields_payload = {}
+            raw_fields = {}
             for field, per_frame_rows in body_rows[key].items():
                 if len(per_frame_rows) != T:
                     raise StatesShapeMismatch(
@@ -303,17 +315,17 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
                 stacked = np.ascontiguousarray(
                     np.stack(per_frame_rows, axis=0), dtype="<f4"
                 )  # (T, B, k)
-                fields_payload[field] = register_blob(stacked.tobytes())
-            entry = {"name": body_name_value[key], "fields": fields_payload}
-            if key in any_contacts:
-                entry["contacts"] = body_contacts[key]
-            bodies_payload.append(entry)
+                raw_fields[field] = stacked.tobytes()
+            body_blobs.append((key, raw_fields))
 
-        scalars_payload = {}
+        scalar_blobs: dict[str, bytes] = {}
         for name in model_data.get("scalarNames") or []:
             per_frame = []
             for state in states_data:
-                row = np.asarray(state[name], dtype="<f4")
+                try:
+                    row = np.asarray(state[name], dtype="<f4")
+                except (ValueError, TypeError) as e:
+                    raise StatesShapeMismatch(f"scalar '{name}' is not numeric: {e}")
                 if row.ndim == 0:
                     row = row.reshape(1)
                 if row.shape != (batch_size,):
@@ -323,14 +335,7 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
                     )
                 per_frame.append(row)
             stacked = np.ascontiguousarray(np.stack(per_frame, axis=0), dtype="<f4")
-            scalars_payload[name] = register_blob(stacked.tobytes())
-
-        return {
-            "version": COLUMNAR_VERSION,
-            "times": times,
-            "bodies": bodies_payload,
-            "scalars": scalars_payload,
-        }
+            scalar_blobs[name] = stacked.tobytes()
     except StatesShapeMismatch as e:
         logger.warning(
             "States data is not columnar-repackable, keeping the legacy "
@@ -338,6 +343,23 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
             e,
         )
         return None
+
+    bodies_payload = []
+    for key, raw_fields in body_blobs:
+        entry = {
+            "name": body_name_value[key],
+            "fields": {f: register_blob(raw) for f, raw in raw_fields.items()},
+        }
+        if key in any_contacts:
+            entry["contacts"] = body_contacts[key]
+        bodies_payload.append(entry)
+
+    return {
+        "version": COLUMNAR_VERSION,
+        "times": times,
+        "bodies": bodies_payload,
+        "scalars": {n: register_blob(raw) for n, raw in scalar_blobs.items()},
+    }
 
 
 def expand_columnar_states(states_doc: Any, batch_size: int) -> list[dict]:
@@ -441,6 +463,11 @@ def write_static_bundle(data: dict, directory) -> None:
             else:
                 externalize(v)
 
+    externalize(data["model"])
+    # The viewer only resolves /blob/ URLs in the model and a columnar states
+    # object; a legacy per-frame array's inline __b64__ fields are decoded
+    # in place, so they must stay inline.
+    if is_columnar(data["states"]):
+        externalize(data["states"])
     for name in ("model", "states"):
-        externalize(data[name])
         (out / f"{name}.json").write_text(json.dumps(data[name]))

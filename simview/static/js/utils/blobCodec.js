@@ -19,6 +19,13 @@ export const STATE_FIELD_WIDTHS = {
 export function decodeStateField(str, width) {
     const bytes = Uint8Array.from(atob(str.slice(7)), (c) => c.charCodeAt(0)); // strip "__b64__"
     const floats = new Float32Array(bytes.buffer);
+    if (floats.length % width !== 0) {
+        // Mirrors Python's _decode_state_field_rows: a partial trailing row
+        // means a corrupt/mis-sized field, not something to silently truncate.
+        throw new Error(
+            `Binary state field has ${floats.length} floats, not a multiple of width ${width}`
+        );
+    }
     return Array.from({ length: floats.length / width }, (_, r) =>
         Array.from(floats.subarray(r * width, (r + 1) * width))
     );

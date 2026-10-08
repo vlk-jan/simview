@@ -340,6 +340,14 @@ def test_open_ended_and_suffix_ranges_fall_back_to_the_whole_blob(tmp_path):
         assert suffix.content == whole
 
 
+def test_inverted_range_is_ignored_not_416(tmp_path):
+    # RFC 9110 §14.1.1: last-pos < first-pos invalidates the header -> 200.
+    with _columnar_client(tmp_path) as client:
+        url = _blob_url(client)
+        response = client.get(url, headers={"Range": "bytes=5-3"})
+        assert response.status_code == 200
+
+
 def test_range_past_the_end_is_unsatisfiable(tmp_path):
     with _columnar_client(tmp_path) as client:
         url = _blob_url(client)
@@ -381,3 +389,38 @@ def test_unusable_range_headers_fall_back_to_the_whole_blob(tmp_path, header):
 
         assert response.status_code == 200
         assert response.content == whole
+
+
+def test_blob_floats_rejects_a_byte_length_that_is_not_float32_aligned():
+    from simview.columnar import blob_floats
+
+    with pytest.raises(ValueError):  # not struct.error -- callers catch ValueError
+        blob_floats(inline_blob(b"\x00" * 57))
+
+
+def test_static_bundle_keeps_legacy_states_inline(tmp_path):
+    """The viewer only fetches /blob/ URLs from the model and a columnar
+    states object; a legacy array's per-frame blobs must stay inline."""
+    from simview.columnar import write_static_bundle
+
+    scene = build_scene(batch_size=1)
+    scene.create_body(
+        body_name="Late", shape_type=BodyShapeType.BOX, hx=0.5, hy=0.5, hz=0.5
+    )
+    # A body first appearing after frame 0 isn't columnarizable -> legacy.
+    scene.add_state(
+        time=9.0,
+        body_states=[
+            SimViewBodyState("Late", torch.zeros(1, 3), torch.tensor([[1.0, 0, 0, 0]]))
+        ],
+        scalar_values={"energy": [0.0]},
+    )
+    src = tmp_path / "scene.json"
+    scene.save(src)
+    doc = _read(src)
+    assert isinstance(doc["states"], list)
+
+    write_static_bundle(doc, tmp_path / "bundle")
+    states = _read(tmp_path / "bundle" / "states.json")
+    transforms = [b["bodyTransform"] for s in states for b in s["bodies"]]
+    assert transforms and all(t.startswith("__b64__") for t in transforms)

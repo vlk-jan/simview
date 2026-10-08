@@ -27,3 +27,12 @@ def test_unknown_optional_attribute_raises():
     quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]] * 2)
     with pytest.raises(ValueError, match="Unknown optional attribute"):
         SimViewBodyState("Box", pos, quat, {"not_a_real_attr": torch.zeros(2, 3)})
+
+
+def test_single_batch_contacts_are_wrapped_per_batch():
+    """The wire shape is per-batch, so a 1-D input must not come out flat."""
+    assert SimViewBodyState._process_contacts(torch.tensor([1, 2, 3])) == [[1, 2, 3]]
+    assert SimViewBodyState._process_contacts(torch.tensor([True, False, True])) == [
+        [0, 2]
+    ]
+    assert SimViewBodyState._process_contacts([]) == []

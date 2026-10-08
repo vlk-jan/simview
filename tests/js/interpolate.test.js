@@ -116,8 +116,9 @@ describe("interpolateTransformRows", () => {
         const a = [transformFor([0, 0, 0], new THREE.Quaternion())];
         const b = [transformFor([10, 0, 0], new THREE.Quaternion()), transformFor([99, 99, 99], new THREE.Quaternion())];
         const result = interpolateTransformRows(a, b, 0.5);
-        expect(result).toHaveLength(1);
+        expect(result).toHaveLength(2);
         expect(result[0][0]).toBeCloseTo(5, 10);
+        expect(result[1]).toBe(b[1]); // rowsB's extra row, untouched
     });
 });
 
@@ -145,5 +146,21 @@ describe("lerpVectorRows", () => {
     it("returns the defined side when the other is missing", () => {
         expect(lerpVectorRows(null, [[1, 2, 3]], 0.5)).toEqual([[1, 2, 3]]);
         expect(lerpVectorRows([[1, 2, 3]], undefined, 0.5)).toEqual([[1, 2, 3]]);
+    });
+});
+
+describe("row-count mismatch passes extras through from the longer array", () => {
+    it("lerpVectorRows keeps rowsB's extra rows", () => {
+        const a = [[0, 0, 0]];
+        const b = [[2, 2, 2], [9, 9, 9]];
+        expect(lerpVectorRows(a, b, 0.5)).toEqual([[1, 1, 1], [9, 9, 9]]);
+        expect(lerpVectorRows(b, a, 0.5)).toEqual([[1, 1, 1], [9, 9, 9]]);
+    });
+
+    it("interpolateTransformRows keeps rowsB's extra rows", () => {
+        const a = [IDENTITY];
+        const b = [IDENTITY, [5, 5, 5, 1, 0, 0, 0]];
+        expect(interpolateTransformRows(a, b, 0.5)).toHaveLength(2);
+        expect(interpolateTransformRows(a, b, 0.5)[1]).toEqual([5, 5, 5, 1, 0, 0, 0]);
     });
 });

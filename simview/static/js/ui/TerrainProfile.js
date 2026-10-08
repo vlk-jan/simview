@@ -2,7 +2,13 @@ import { FREQ_CONFIG, THEME } from "../config.js";
 import { downloadCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
-import { batchColumnsCsv, closestSeries, exportBar, selectGroup } from "./chartControls.js";
+import {
+    batchColumnsCsv,
+    closestSeries,
+    exportBar,
+    finiteBounds,
+    selectGroup,
+} from "./chartControls.js";
 
 const LAYER_LABELS = { height: "Height" };
 
@@ -207,18 +213,9 @@ export class TerrainProfile {
         if (this.fullSeries.length === 0 || this.times.length === 0) return;
 
         const numBatches = this.app.batchManager.simBatches;
-        let min = Number.POSITIVE_INFINITY;
-        let max = Number.NEGATIVE_INFINITY;
-        for (const batchSeries of this.fullSeries) {
-            for (const { y } of batchSeries) {
-                if (y < min) min = y;
-                if (y > max) max = y;
-            }
-        }
-        if (!Number.isFinite(min) || !Number.isFinite(max)) {
-            min = 0;
-            max = 1;
-        }
+        // Gap frames are `y: null` (see terrainSample.js); finiteBounds skips
+        // them where `null < min` would have coerced to 0.
+        let [min, max] = finiteBounds(this.fullSeries);
         const limOffset = 1e-2;
         min -= limOffset;
         max += limOffset;

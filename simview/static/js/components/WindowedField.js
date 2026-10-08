@@ -17,13 +17,16 @@ import {
 // playback loop can't await, and every windowable field is an *optional*
 // per-body attribute the viewer already tolerates missing from a frame (see
 // Body.updateState). A miss therefore just means the arrow keeps its previous
-// value for the frame or two until the window lands, rather than an error.
+// value for the frame or two until the window lands, rather than an error --
+// while playing. Paused (a scrub into a non-resident window), nothing would
+// re-render, so `onLanded` is called whenever a window arrives.
 export class WindowedField {
-    constructor(url, { totalFrames, batchCount, width, fetchImpl = null }) {
+    constructor(url, { totalFrames, batchCount, width, fetchImpl = null, onLanded = null }) {
         this.url = url;
         this.totalFrames = totalFrames;
         this.batchCount = batchCount;
         this.width = width;
+        this.onLanded = onLanded;
         // Wrapped rather than stored bare: calling a plain `fetch` reference
         // as a method would invoke it with `this` set to this object, which
         // browsers reject outright ("Illegal invocation").
@@ -106,12 +109,23 @@ export class WindowedField {
                             `${response.status} ${response.statusText}`
                     );
                 }
+                // A 200 means something between us and the server (a proxy,
+                // a static host) ignored the Range header and sent the whole
+                // blob -- reading it as the window would show frames from the
+                // start of the trajectory for every window but the first.
+                if (response.status !== 206) {
+                    throw new Error(
+                        `Server ignored the Range request for window ${windowIndex} of ${this.url} ` +
+                            `(status ${response.status}, expected 206)`
+                    );
+                }
                 return response.arrayBuffer();
             })
             .then((buffer) => {
                 this._windows.set(windowIndex, new Float32Array(buffer)); // little-endian "<f4"
                 this._touch(windowIndex);
                 this._evict();
+                if (this.onLanded) this.onLanded();
             })
             .catch((error) => {
                 // Non-fatal by design: the field is optional per frame, so a

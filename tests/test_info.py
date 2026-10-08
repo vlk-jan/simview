@@ -278,3 +278,42 @@ def test_summarize_scene_json_roundtrip(tmp_path):
     summary = summarize_scene(path)
 
     assert json.loads(json.dumps(summary)) == summary
+
+
+def test_summarize_scene_flags_wrong_row_width_as_not_repackable(tmp_path):
+    """info never decoded blobs, so it called a file eligible that
+    columnarize_states refuses (7 floats where 2 batches x 7 are needed)."""
+    model = _minimal_model(batch_size=2)
+    states = [
+        {
+            "time": t * 0.1,
+            "bodies": [{"name": "Box", "bodyTransform": _blob([0, 0, 0, 1, 0, 0, 0])}],
+        }
+        for t in range(2)
+    ]
+    summary = summarize_scene(_write_scene(tmp_path, model, states))
+    assert summary["states"]["columnar"]["eligible"] is False
+    assert any(
+        "has 7 floats; expected 14" in r
+        for r in summary["states"]["columnar"]["reasons"]
+    )
+
+
+def test_summarize_scene_non_columnar_states_dict_warns_instead_of_crashing(
+    tmp_path,
+):
+    summary = summarize_scene(_write_scene(tmp_path, _minimal_model(), {"version": 3}))
+    assert summary["states"]["frame_count"] == 0
+    assert any("neither a per-frame array" in w for w in summary["warnings"])
+    format_text(summary)
+
+
+def test_summarize_scene_gzip_hint_only_for_uncompressed_files(tmp_path, monkeypatch):
+    import simview.info as info_mod
+
+    monkeypatch.setattr(info_mod, "_LARGE_FILE_BYTES", 10)
+    model = _minimal_model()
+    plain = summarize_scene(_write_scene(tmp_path, model, _basic_states()))
+    gz = summarize_scene(_write_scene(tmp_path, model, _basic_states(), gz=True))
+    assert any("gzip" in w for w in plain["warnings"])
+    assert not any("gzip" in w for w in gz["warnings"])

@@ -20,6 +20,12 @@ describe("batchColumnsCsv", () => {
         const csv = batchColumnsCsv(batchManager, [0, 0.5], [[{ y: 1 }, { y: 2 }], [{ y: 3 }]]);
         expect(csv.trim().split(/\r?\n/)).toEqual(["time,gt,batch_1", "0,1,3", "0.5,2,"]);
     });
+
+    it("writes a null gap point as a blank cell", () => {
+        const batchManager = { simBatches: 1, getBatchName: () => "a" };
+        const csv = batchColumnsCsv(batchManager, [0, 1], [[{ y: 1 }, { y: null }]]);
+        expect(csv.trim().split(/\r?\n/)).toEqual(["time,a", "0,1", "1,"]);
+    });
 });
 
 describe("finiteBounds", () => {

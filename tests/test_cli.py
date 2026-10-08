@@ -1349,3 +1349,42 @@ def test_batch_spec_loses_to_an_existing_file_with_a_hash_in_its_name(
 
     assert calls[0]["sim_path"] == [path_a, path_b]
     assert calls[0]["batch_selections"] == [None, None]
+
+
+def test_explicit_view_subcommand_launches_the_viewer(monkeypatch, tmp_path):
+    """`simview view FILE` (as advertised by -h) treated 'view' as a file."""
+    sim_file = tmp_path / "sim.json"
+    build_scene(batch_size=1).save(sim_file)
+    calls = []
+    monkeypatch.setattr(
+        cli.SimViewServer, "start", staticmethod(lambda **kw: calls.append(kw))
+    )
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "view", str(sim_file)])
+    cli.main()
+    assert calls[0]["sim_path"] == sim_file
+
+
+def test_save_merged_creates_missing_parent_directories(monkeypatch, tmp_path):
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    build_scene(batch_size=1).save(path_a)
+    build_scene(batch_size=1).save(path_b)
+    out_path = tmp_path / "new" / "dir" / "merged.json"
+    monkeypatch.setattr(cli.SimViewServer, "start", staticmethod(_fail_if_called))
+    monkeypatch.setattr(
+        cli.sys,
+        "argv",
+        ["simview", str(path_a), str(path_b), "--save-merged", str(out_path)],
+    )
+    cli.main()
+    assert json.loads(out_path.read_text())["model"]["simBatches"] == 2
+
+
+def test_info_on_a_non_columnar_states_dict_reports_instead_of_tracebacking(
+    capsys, monkeypatch, tmp_path
+):
+    sim_file = tmp_path / "sim.json"
+    model = build_scene(batch_size=1).model.to_json()
+    sim_file.write_text(json.dumps({"model": model, "states": {"version": 3}}))
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(sim_file)])
+    cli.main()
+    assert "neither a per-frame array" in capsys.readouterr().out

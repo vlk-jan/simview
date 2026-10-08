@@ -10,6 +10,8 @@ const LEGACY_ALIASES = {
     terrain: "terrain",
 };
 
+export const NO_DATA_COLOR = new THREE.Color(0.5, 0.5, 0.5);
+
 /**
  * Resolves a colormap name (matplotlib-style, from js-colormaps.js, or one of
  * a few hand-rolled fallbacks) to a callable `(value in [0,1]) => THREE.Color`.
@@ -25,7 +27,16 @@ export function getCallableFromColorMapName(cmapName) {
     }
     if (colorMapOptions.includes(cmapName))
         return (value) => {
-            const [r, g, b] = evaluate_cmap(value, cmapName, reversed);
+            // A non-finite value (NaN cell in a property blob, NaN embedding)
+            // is "no data": neutral grey rather than a colormap end. Finite
+            // values are clamped because js-colormaps alert()s on anything
+            // outside [0, 1] -- including float rounding past 1.
+            if (!Number.isFinite(value)) return NO_DATA_COLOR.clone();
+            const [r, g, b] = evaluate_cmap(
+                Math.min(1, Math.max(0, value)),
+                cmapName,
+                reversed
+            );
             return new THREE.Color(r / 255, g / 255, b / 255);
         };
     console.log(

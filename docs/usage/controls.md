@@ -17,11 +17,12 @@ Once the visualizer is running, you can interact with the simulation using the f
 ## Timeline
 
 - **Step Forward/Backward**: `Alt` + Arrow Right / Arrow Left
-- **Seek (and Pause)**: Click on the timeline bar
+- **Seek**: Click on the timeline bar (`Alt` + click also pauses)
 - **Play/Pause**: `Space` or Click the Play button
 - **Record**: `R` or Click the Record button (select WEBM or, if your browser supports
   recording it, MP4 via the dropdown). Recording seeks to the start, plays
-  exactly one loop, then automatically stops and downloads the file.
+  exactly one loop at the current playback speed, then automatically stops and
+  downloads the file.
 - **Screenshot**: `S` or Click the camera button next to Record to save the current frame as a PNG.
 - **Playback Speed**: Adjust speed (0.1x to 5x) via the dropdown next to the timeline
 - **Previous/Next Episode**: `[` / `]` or the |◀ / ▶| buttons. Only shown for a scene
@@ -117,7 +118,9 @@ one is shown directly without the switcher.
 When a scene has 2 or more batches, a toggleable "Batches" legend appears in the
 bottom-right corner, listing each batch's color, index, and name. Click a row to focus
 that batch, or click a name to rename it in place — renames persist next to the input
-file(s), so they survive a reload or server restart.
+file(s), so they survive a reload or server restart. A viewer with no scene file to
+write next to (`scene.show()`, `LiveViewer`, `simview render`) keeps renames for the
+session only and says so under the legend.
 
 ## Scene Info
 

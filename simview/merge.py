@@ -296,12 +296,20 @@ def _validate_doc(doc: dict, label: str) -> None:
     _require(doc, "states", list, label)
     if not doc["states"]:
         raise ValueError(f"'{label}' has no states")
+    previous = None
     for idx, state in enumerate(doc["states"]):
         if not isinstance(state, dict) or "time" not in state:
             raise ValueError(
                 f"File '{label}' has 'states[{idx}]' missing 'time' -- is it "
                 "a valid SimView scene?"
             )
+        # Resampling bisects each file's times, so they must be sorted.
+        if previous is not None and state["time"] < previous:
+            raise ValueError(
+                f"'{label}': state times are not non-decreasing (states[{idx}] "
+                f"has time {state['time']} after {previous})."
+            )
+        previous = state["time"]
 
 
 def _expand_batched(
@@ -315,6 +323,10 @@ def _expand_batched(
     if is_blob(values):
         return values
 
+    if values and not isinstance(values[0], list):
+        # A flat grid is one batch (json-format.md: "a single flat array is
+        # also accepted and treated as one batch").
+        values = [values]
     if len(values) == batch_size:
         return values
     if is_singleton and len(values) == 1:
@@ -346,23 +358,31 @@ def _merge_bodies(models: list[dict], labels: list[str]) -> list[dict]:
     return bodies
 
 
-def _default_batch_names(
-    paths: Sequence[Path], batch_sizes: list[int], selections: list[list[int] | None]
+def _merged_batch_names(
+    paths: Sequence[Path],
+    models: list[dict],
+    batch_sizes: list[int],
+    selections: list[list[int] | None],
 ) -> list[str]:
-    """One name per output batch, derived from the source file it came from.
-    Single-batch files just use the file stem; multi-batch files get an index
+    """One name per output batch. A file's own `batchNames` are kept for the
+    batches taken from it; otherwise the name is derived from the source file:
+    single-batch files just use the file stem; multi-batch files get an index
     suffix so batches from the same file are still distinguishable. The suffix
     is the batch's index *in its source file*, so a selected subset stays
     traceable back to it (batch 2 of a 4-batch 'run.json' is 'run[2]', not
     'run[0]')."""
     names = []
-    for path, batch_size, selection in zip(paths, batch_sizes, selections):
-        stem = path.stem
-        if batch_size == 1:
-            names.append(stem)
+    for path, model, batch_size, selection in zip(
+        paths, models, batch_sizes, selections
+    ):
+        own = model.get("batchNames")
+        indices = range(batch_size) if selection is None else selection
+        if isinstance(own, list) and len(own) == batch_size:
+            names.extend(str(own[j]) for j in indices)
+        elif batch_size == 1:
+            names.append(path.stem)
         else:
-            indices = range(batch_size) if selection is None else selection
-            names.extend(f"{stem}[{j}]" for j in indices)
+            names.extend(f"{path.stem}[{j}]" for j in indices)
     return names
 
 
@@ -388,11 +408,18 @@ def _merge_static_objects(
     first = models[0].get("staticObjects") or []
     names = [s["name"] for s in first]
     for model, label in zip(models[1:], labels[1:]):
-        other_names = [s["name"] for s in (model.get("staticObjects") or [])]
-        if other_names != names:
+        others = model.get("staticObjects") or []
+        if [s["name"] for s in others] != names:
             raise ValueError(
                 f"'{label}' defines different static objects than '{labels[0]}'."
             )
+        for mine, other in zip(first, others):
+            if other.get("isSingleton") != mine.get("isSingleton"):
+                raise ValueError(
+                    f"Static object '{mine['name']}' is "
+                    f"{'singleton' if mine.get('isSingleton') else 'batched'} in "
+                    f"'{labels[0]}' but not in '{label}'."
+                )
 
     merged = []
     for idx, name in enumerate(names):
@@ -604,6 +631,12 @@ def _merge_terrain(
                 expand(terrain["properties"][name]["data"], name)
             )
 
+    def _bound(name: str, key: str, pick) -> float | None:
+        # A null bound means "unknown" (json-format.md), and one unknown
+        # makes the merged range unknown too.
+        values = [t["properties"][name].get(key) for t in terrains]
+        return None if any(v is None for v in values) else pick(values)
+
     merged = {
         "dimensions": dims,
         "bounds": {
@@ -617,8 +650,8 @@ def _merge_terrain(
         "properties": {
             name: {
                 "data": _concat_lists_or_b64(property_data[name]),
-                "min": min(t["properties"][name]["min"] for t in terrains),
-                "max": max(t["properties"][name]["max"] for t in terrains),
+                "min": _bound(name, "min", min),
+                "max": _bound(name, "max", max),
             }
             for name in kept_properties
         },
@@ -837,8 +870,8 @@ def merge_simulation_files(
 
     merged_model = {
         "simBatches": total_batches,
-        "batchNames": _default_batch_names(
-            resolved_paths, batch_sizes, batch_selections
+        "batchNames": _merged_batch_names(
+            resolved_paths, models, batch_sizes, batch_selections
         ),
         "scalarNames": scalar_names,
         "dt": models[0].get("dt"),
@@ -847,6 +880,21 @@ def merge_simulation_files(
         "bodies": bodies,
         "staticObjects": static_objects,
     }
+    # The viewer's initial UI state is one setting for the whole scene, so
+    # only one file's can apply: the first's, like its timeline and episodes.
+    if models[0].get("viewerDefaults") is not None:
+        merged_model["viewerDefaults"] = models[0]["viewerDefaults"]
+    ignored_defaults = [
+        label
+        for model, label in zip(models[1:], labels[1:])
+        if model.get("viewerDefaults") is not None
+    ]
+    if ignored_defaults:
+        logger.warning(
+            "Ignoring viewerDefaults from %s; the merged scene uses '%s'’s.",
+            ", ".join(f"'{label}'" for label in ignored_defaults),
+            labels[0],
+        )
     # Keep every input's run provenance (engine, checkpoint, git commit, ...)
     # instead of silently dropping it -- namespaced per source file since the
     # inputs may come from entirely different runs.

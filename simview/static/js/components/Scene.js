@@ -58,7 +58,21 @@ export class Scene {
     }
 
     setupWindowHandlers() {
-        window.addEventListener("resize", () => this.#handleWindowResize());
+        this._onResize = () => this.#handleWindowResize();
+        window.addEventListener("resize", this._onResize);
+    }
+
+    // Drops the window listeners (resize here, keydown inside OrbitControls)
+    // and the GL context, so an embedded viewer's destroy() doesn't keep the
+    // whole Scene reachable from window.
+    dispose() {
+        if (this._onResize) {
+            window.removeEventListener("resize", this._onResize);
+            this._onResize = null;
+        }
+        this.controls?.dispose();
+        this.renderer?.dispose();
+        this.renderer?.domElement?.remove();
     }
 
     #handleWindowResize() {
