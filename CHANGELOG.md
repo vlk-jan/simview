@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.1.2] - 2026-10-08
+
 ### Changed
 
 - The scalar plotter draws each series over the whole timeline, with a vertical line
@@ -643,7 +645,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.1.1...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.1.2...HEAD
+[6.1.2]: https://github.com/vlk-jan/simview/compare/v6.1.1...v6.1.2
 [6.1.1]: https://github.com/vlk-jan/simview/compare/v6.1.0...v6.1.1
 [6.1.0]: https://github.com/vlk-jan/simview/compare/v6.0.1...v6.1.0
 [6.0.1]: https://github.com/vlk-jan/simview/compare/v6.0.0...v6.0.1
