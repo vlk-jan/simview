@@ -63,7 +63,7 @@ export class BatchManager {
                     "Toggle 'Render All Batches' in Controls to draw them all."
             );
         }
-        this._recomputeVisibleBatches();
+        this.recomputeVisibleBatches();
 
         this.batchPalette = categoricalPalette(BATCH_PALETTE, this.simBatches);
         console.debug("Batch palette initialized:", this.batchPalette);
@@ -96,6 +96,7 @@ export class BatchManager {
         // Static demo mode: no backend available to persist batch names.
         // The rename still takes effect locally for the current session.
         if (this.app.staticBase) return;
+        const notify = (text) => this.app.batchLegend?.showNotice?.(text);
         try {
             const response = await fetch("/batch-names", {
                 method: "POST",
@@ -104,9 +105,19 @@ export class BatchManager {
             });
             if (!response.ok) {
                 console.warn("Failed to persist batch names:", response.status);
+                notify(`Rename not saved (server returned ${response.status})`);
+                return;
+            }
+            // The server answers persisted:false when it has no scene file to
+            // write a sidecar next to (scene.show(), LiveViewer, render).
+            const body = await response.json().catch(() => ({}));
+            if (body && body.persisted === false && !this._notifiedNotPersisted) {
+                this._notifiedNotPersisted = true;
+                notify("Renames apply to this session only (no scene file to save them to)");
             }
         } catch (e) {
             console.warn("Failed to persist batch names:", e);
+            notify("Rename not saved (server unreachable)");
         }
     }
 
@@ -179,7 +190,7 @@ export class BatchManager {
         this.changeFocusOnBatchByIndex(batchIndex, previousBatch);
         // In focused mode the newly-active batch is (probably) not the one
         // currently built/drawn, so refresh before the panels read from it.
-        this._recomputeVisibleBatches();
+        this.recomputeVisibleBatches();
         this.app.bodyStateWindow.setSelectedBatch(batchIndex);
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setFocusedBatch(batchIndex);
@@ -207,7 +218,7 @@ export class BatchManager {
         if (mode !== RENDER_ALL && mode !== RENDER_FOCUSED) return;
         if (this.renderMode === mode) return;
         this.renderMode = mode;
-        this._recomputeVisibleBatches();
+        this.recomputeVisibleBatches();
     }
 
     // Batches that must stay drawn even in focused mode, because a comparison
@@ -221,7 +232,7 @@ export class BatchManager {
         return pinned;
     }
 
-    _recomputeVisibleBatches() {
+    recomputeVisibleBatches() {
         const previous = this.visibleBatches;
         this.visibleBatches = visibleBatchSet(
             this.renderMode,
@@ -245,6 +256,7 @@ export class BatchManager {
     applyBatchVisibility() {
         this.app.bodies?.forEach((body) => body.refreshBatchVisibility?.());
         this.app.staticObjects?.forEach((so) => so.refreshBatchVisibility?.());
+        this.app.polylines?.forEach((p) => p.refreshBatchVisibility());
         this.app.terrain?.refreshBatchVisibility?.();
     }
 }

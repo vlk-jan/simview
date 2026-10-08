@@ -78,6 +78,12 @@ export class InteractionController {
     onClick(e) {
         if (!this.app.scene || !this.app.scene.camera) return;
 
+        // This listens on window, so a click on a control panel, chart or
+        // legend overlaying the 3D view would otherwise probe/recolor
+        // whatever sits under it.
+        const canvas = this.app.scene.renderer?.domElement;
+        if (canvas && e.target && e.target !== canvas) return;
+
         // Prevent click if mouse was dragged (e.g. rotating camera)
         if (this.lastMouseDown) {
             const dx = e.clientX - this.lastMouseDown.x;
@@ -100,6 +106,9 @@ export class InteractionController {
         if (!probeActive && !similarityActive) return;
 
         this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
+        // THREE's raycaster ignores `visible`, so hidden objects (a focused-
+        // mode batch's point cloud that was built earlier, a hidden body) are
+        // filtered out here or a click lands on something not on screen.
         const intersects = this.raycaster.intersectObjects(
             // this.app.bodies is a Map (SimView.js), not a plain object --
             // Object.values() on a Map always returns [], which silently
@@ -107,9 +116,13 @@ export class InteractionController {
             // doesn't exist either (Body wraps a THREE.Group, exposed via
             // getObject3D()) -- filter includes isPoints too, so a click can
             // land on a rendered point cloud, not just mesh bodies.
-            Array.from(this.app.bodies.values()).flatMap((body) =>
-                body.getObject3D().children.filter((child) => child.isMesh || child.isPoints)
-            ),
+            Array.from(this.app.bodies.values()).flatMap((body) => {
+                const group = body.getObject3D();
+                if (!group || group.visible === false) return [];
+                return group.children.filter(
+                    (child) => (child.isMesh || child.isPoints) && child.visible !== false
+                );
+            }),
             true // Enable recursive raycasting
         );
 
@@ -136,7 +149,12 @@ export class InteractionController {
 
         // Raycast against terrain
         if (this.app.uiState && this.app.uiState.terrainProbe && this.app.terrain && this.app.terrain.group) {
-            const terrainIntersects = this.raycaster.intersectObject(this.app.terrain.group, true);
+            // Only the drawn batches' patches: every batch's heightfield is
+            // built up front and merely hidden in focused mode (Terrain.js).
+            const patches = (this.app.terrain.group.children || []).filter(
+                (patch) => patch.visible !== false
+            );
+            const terrainIntersects = this.raycaster.intersectObjects(patches, true);
             const surfaceIntersect = terrainIntersects.find(i => i.object.name === "surface");
             if (surfaceIntersect) {
                 if (this.app.uiState.terrainColorMode === "features") {

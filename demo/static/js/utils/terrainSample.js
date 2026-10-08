@@ -59,8 +59,9 @@ export function bilinearSample(grid, dimensions, bounds, x, y) {
 // `paths`: per-batch array of per-frame [x, y] points (e.g. a body's world
 // position history), one entry per batch. A frame entry may be null/
 // undefined (or contain a non-finite coordinate) to mark that batch as
-// having no body data at that frame -- such frames are simply omitted from
-// the output series rather than producing a bogus sample.
+// having no body data at that frame -- such frames become a `y: null` gap
+// at the same index (uPlot's gap value), so series[b][i] always lines up
+// with times[i] for the chart's x column and the CSV export.
 // `grids`: per-batch flat row-major grid arrays for the layer being sampled,
 // or a single-entry array when `isSingleton` (one terrain shared by every
 // batch, see Terrain.js's `isSingleton`).
@@ -88,17 +89,11 @@ export function buildTerrainSeries({
             const numFrames = Math.min(times.length, path.length);
             for (let s = 0; s < numFrames; s++) {
                 const p = path[s];
-                if (
-                    !p ||
-                    p.length < 2 ||
-                    !Number.isFinite(p[0]) ||
-                    !Number.isFinite(p[1])
-                ) {
-                    continue;
-                }
+                const valid =
+                    p && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
                 points.push({
                     x: times[s],
-                    y: bilinearSample(grid, dimensions, bounds, p[0], p[1]),
+                    y: valid ? bilinearSample(grid, dimensions, bounds, p[0], p[1]) : null,
                 });
             }
         }

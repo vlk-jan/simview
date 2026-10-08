@@ -92,22 +92,46 @@ export function previousEpisodeStart(episodes, frameIndex) {
 // is; `mean`/`min`/`max`/`final` cover the other usual questions.
 export function episodeAggregates(episodes, series, frameCount) {
     return episodeSegments(episodes, frameCount).map((segment) => {
-        const values = [];
+        // One pass, no spread: Math.min(...values) overflows the call stack
+        // past ~125k values, i.e. any long episode.
+        let count = 0;
+        let sum = 0;
+        let min = Infinity;
+        let max = -Infinity;
+        let final = null;
         for (let i = segment.start; i < segment.end && i < series.length; i++) {
             const y = series[i]?.y;
-            if (Number.isFinite(y)) values.push(y);
+            if (!Number.isFinite(y)) continue;
+            count++;
+            sum += y;
+            if (y < min) min = y;
+            if (y > max) max = y;
+            final = y;
         }
-        const sum = values.reduce((acc, v) => acc + v, 0);
         return {
             ...segment,
-            count: values.length,
-            sum: values.length ? sum : null,
-            mean: values.length ? sum / values.length : null,
-            min: values.length ? Math.min(...values) : null,
-            max: values.length ? Math.max(...values) : null,
-            final: values.length ? values[values.length - 1] : null,
+            count,
+            sum: count ? sum : null,
+            mean: count ? sum / count : null,
+            min: count ? min : null,
+            max: count ? max : null,
+            final,
         };
     });
+}
+
+// Live mode: episode startIndex values are absolute frame indices on the
+// producer's timeline, but a viewer that connects late only has the frames
+// from the catch-up window onward (the server sends each chunk's absolute
+// `frameOffset`; see SimView.startLiveStream). Rebases the episodes onto the
+// local store. Episodes that started before the window all collapse onto
+// frame 0, so only the last of those (the one actually in progress when the
+// window starts) is kept -- the earlier ones have no frames here to mark.
+export function shiftEpisodes(rawEpisodes, offset) {
+    if (!Array.isArray(rawEpisodes) || !(offset > 0)) return rawEpisodes;
+    const shifted = rawEpisodes.map((e) => ({ ...e, startIndex: Math.max(0, Number(e?.startIndex) - offset) }));
+    const lastZero = shifted.findLastIndex((e) => e.startIndex === 0);
+    return shifted.filter((e, i) => e.startIndex > 0 || i === lastZero);
 }
 
 // Display name for an episode segment: its label if it has one, else a

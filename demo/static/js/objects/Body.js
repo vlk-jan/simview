@@ -17,11 +17,6 @@ export class Body {
         this.name = bodyData.name;
         this.simBatches = app.batchManager.simBatches;
 
-        // Data Normalization: Handle root-level bodyPoints
-        if (bodyData.bodyPoints && !bodyData.shape.points) {
-            bodyData.shape.points = bodyData.bodyPoints;
-        }
-
         // Mandatory attributes
         this.positions = Array(this.simBatches)
             .fill()
@@ -92,7 +87,11 @@ export class Body {
         this.isPointCloud = bodyData.shape?.type === "pointcloud";
         this.representations = { mesh: [], wireframe: [], points: [] };
         this.createBatchGroups(bodyData);
-        if (bodyData.visible === false) this.group.visible = false;
+        // Model-level initial visibility, ANDed with the time-ranged pass
+        // (AnimationController.updateScene / utils/visibleRanges.js).
+        this.userVisible = bodyData.visible !== false;
+        this.visibleRanges = bodyData.visibleRanges ?? null;
+        this.group.visible = this.userVisible;
 
         // Position/orientation history across all loaded states, per batch. Local
         // (un-offset) coordinates, shared by trail rendering and error metrics.
@@ -105,6 +104,10 @@ export class Body {
         // actually been written -- see finalizeTrails.
         this._trailCapacity = 0;
         this._trailFilledCount = 0;
+    }
+
+    setTimeVisible(flag) {
+        this.group.visible = flag && this.userVisible;
     }
 
     // --- History (position/orientation over all states) ---
@@ -238,7 +241,7 @@ export class Body {
             });
             const line = new THREE.Line(geometry, material);
             line.frustumCulled = false;
-            line.visible = this.app.uiState.trailsVisible || false;
+            line.visible = this.#trailVisible(i);
             this.group.add(line);
             this.trails[i] = line;
         }
@@ -271,7 +274,16 @@ export class Body {
     }
 
     toggleTrails(visible) {
-        this.trails.forEach((line) => line && (line.visible = visible));
+        this.trails.forEach(
+            (line, i) => line && (line.visible = visible && this.#isBatchVisible(i))
+        );
+    }
+
+    // A trail is drawn only for a batch that's drawn: in focused mode the
+    // other batches' grid cells are empty, so their trails would float
+    // across nothing.
+    #trailVisible(batchIndex) {
+        return (this.app.uiState.trailsVisible || false) && this.#isBatchVisible(batchIndex);
     }
 
     disposeTrails() {
@@ -375,6 +387,8 @@ export class Body {
                 this.contactPoints[i].visible =
                     visible && (this.app.uiState.attributeVisible.contacts || false);
             }
+            // (this.trails isn't set yet on the construction-time call.)
+            if (this.trails?.[i]) this.trails[i].visible = this.#trailVisible(i);
         }
         // Instanced representations are a single draw call covering every
         // batch, so hidden batches are collapsed to a zero-scale matrix rather
@@ -646,12 +660,18 @@ export class Body {
             }
         });
 
-        if (bodyState.contacts) {
+        if (Array.isArray(bodyState.contacts)) {
             const contactsData = bodyState.contacts;
-            if (Array.isArray(contactsData)) {
-                for (let i = 0; i < Math.min(this.simBatches, contactsData.length); i++) {
-                    this.updateAttribute("contacts", contactsData[i], i);
-                }
+            for (let i = 0; i < Math.min(this.simBatches, contactsData.length); i++) {
+                this.updateAttribute("contacts", contactsData[i], i);
+            }
+        } else {
+            // No contacts this frame (columnar `null`, or the key is absent):
+            // clear whatever the previous frame left lit, otherwise stale
+            // markers persist until the next frame that has contacts.
+            const storage = this.attributeStorage.get("contacts");
+            for (let i = 0; i < this.simBatches; i++) {
+                if (storage[i].length) this.updateAttribute("contacts", [], i);
             }
         }
 
@@ -688,7 +708,9 @@ export class Body {
         if (!arrow) return;
         const scale = arrow.userData.scale || 1.0;
         const length = vector.length() * scale;
-        if (length < 1e-6) {
+        // Written as !(>=) so a NaN vector is treated like a zero one instead
+        // of feeding NaN into setDirection/setLength.
+        if (!(length >= 1e-6)) {
             arrow.setLength(0);
             return;
         }
@@ -725,7 +747,9 @@ export class Body {
             if (obj instanceof THREE.InstancedMesh) {
                 obj.visible = type === mode;
             } else if (Array.isArray(obj)) {
-                obj.forEach((o) => (o.visible = type === mode));
+                // Per-batch objects sit directly in this.group, so a hidden
+                // batch has to be respected here, not by a parent group.
+                obj.forEach((o, i) => (o.visible = type === mode && this.#isBatchVisible(i)));
             }
         }
     }
@@ -800,7 +824,9 @@ export class Body {
     }
 
     toggleContactPoints(visible) {
-        this.contactPoints.forEach((cp) => cp && (cp.visible = visible));
+        this.contactPoints.forEach(
+            (cp, i) => cp && (cp.visible = visible && this.#isBatchVisible(i))
+        );
     }
 
     toggleAxes(visible) {

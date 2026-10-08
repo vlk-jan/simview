@@ -1,4 +1,5 @@
 import { PlaybackControls } from "../ui/PlaybackControls.js";
+import { isVisibleAt } from "../utils/visibleRanges.js";
 import { resolveStateBodies } from "../utils/bodyTransforms.js";
 import { interpolateTransformRows, lerpVectorRows } from "../utils/interpolate.js";
 import { downloadBlob } from "../utils/csv.js";
@@ -62,8 +63,15 @@ export class AnimationController {
         this._recordingStopped = null; // Promise resolved once the MediaRecorder actually stops
 
         this.currentStateIndex = 0;
-        this.totalTime = 0; // Total animation time
-        this.currentTime = 0; // Current time in the animation
+        // Timeline runs [firstTime, firstTime + totalTime]: a recording need
+        // not start at t=0 (sliced/merged files, producers using wall time).
+        // currentTime is absolute (a store timestamp), totalTime a duration.
+        this.firstTime = 0;
+        this.totalTime = 0;
+        this.currentTime = 0;
+        // Content seconds played since recording started; the recording stops
+        // once this reaches totalTime (one loop), whatever the playback speed.
+        this._recordedSeconds = 0;
         this.simulationTimestep = simulationTimestep; // Simulation timestep
         this.lastUpdateTime = null;
 
@@ -80,7 +88,7 @@ export class AnimationController {
             return;
         }
         this.store = store;
-        this.totalTime = this.store.lastTime();
+        this._syncTimeline();
 
         // Infer simulation timestep if not provided or invalid
         if ((!this.simulationTimestep || isNaN(this.simulationTimestep)) && this.store.length > 1) {
@@ -98,12 +106,17 @@ export class AnimationController {
         }
 
         this.playbackControls = new PlaybackControls(this);
-        this.goToTime(0);
+        this.goToTime(this.firstTime);
+    }
+
+    _syncTimeline() {
+        this.firstTime = this.store.timeAt(0);
+        this.totalTime = this.store.lastTime() - this.firstTime;
     }
 
     onStatesAppended() {
         if (this.store && this.store.length > 0) {
-            this.totalTime = this.store.lastTime();
+            this._syncTimeline();
         }
         if (this.playbackControls) {
             // The timeline just got longer, so every episode tick's position
@@ -125,6 +138,12 @@ export class AnimationController {
     }
 
     setSpeed(speed) {
+        // Every caller (dropdown, view-link hash, embedding API) routes through
+        // here; a non-positive speed would park playback on frame 0 forever.
+        if (!Number.isFinite(speed) || speed <= 0) {
+            console.warn(`Ignoring invalid playback speed ${speed}`);
+            return;
+        }
         this.playbackSpeed = speed;
         // Keep the playback bar's dropdown in step with programmatic callers.
         if (this.playbackControls && this.playbackControls.speedSelect) {
@@ -200,7 +219,8 @@ export class AnimationController {
     }
 
     goToTime(time) {
-        time = Math.min(Math.max(time, 0), this.totalTime); // Clamp out-of-bounds time
+        // Clamp to the timeline's [first, last] timestamps.
+        time = Math.min(Math.max(time, this.firstTime), this.firstTime + this.totalTime);
         if (this.app.uiState?.smoothInterpolation) {
             // Keep the exact scrubbed time (not snapped to the nearest frame) so
             // the interpolated path in updateScene() can render in-between poses;
@@ -218,20 +238,25 @@ export class AnimationController {
         }
     }
 
+    // Returns true once recording has actually started, false if the browser
+    // can't record (so the UI doesn't flip to "STOP" for nothing).
     startRecording() {
-        if (this.isRecording) return;
+        if (this.isRecording) return false;
 
         // Reset animation to start; the recording always captures exactly one
-        // full loop from time 0 (see captureFrame's auto-stop below).
+        // full loop of content from the first frame, at whatever playback
+        // speed is set (see captureFrame's auto-stop below).
         this.seekToIndex(0);
 
-        if (!this.#startVideoRecording()) return;
+        if (!this.#startVideoRecording()) return false;
 
         this.isRecording = true;
         this.startTime = performance.now();
+        this._recordedSeconds = 0;
         if (!this.isPlaying) {
             this.play();
         }
+        return true;
     }
 
     // Sets up canvas.captureStream() + MediaRecorder for the webm/mp4 format.
@@ -296,6 +321,20 @@ export class AnimationController {
         return this.currentStateIndex;
     }
 
+    getFirstTime() {
+        return this.firstTime;
+    }
+
+    // A windowed field (see WindowedField.js) just landed. While playing the
+    // next tick picks it up anyway; paused, nothing would re-render the frame
+    // the user scrubbed to, so redo it now (dropping the interpolation memo,
+    // which was resolved without that field).
+    onWindowLanded() {
+        if (this.isPlaying || !this.store) return;
+        this._resolvedCache = { lo: -1, hi: -1, frameLo: null, frameHi: null };
+        this.updateScene();
+    }
+
     stopRecording() {
         if (!this.isRecording) return;
         this.isRecording = false;
@@ -338,11 +377,14 @@ export class AnimationController {
         }
         const dt = (now - this.lastUpdateTime) / 1000;
         this.lastUpdateTime = now;
-        this.currentTime += dt * this.playbackSpeed;
+        const advance = dt * this.playbackSpeed;
+        if (this.isRecording) this._recordedSeconds += advance;
         if (this.totalTime > 0) {
-            this.currentTime = this.currentTime % this.totalTime;
+            // Wrap within [firstTime, firstTime + totalTime).
+            const elapsed = (this.currentTime - this.firstTime + advance) % this.totalTime;
+            this.currentTime = this.firstTime + elapsed;
         } else {
-            this.currentTime = 0; // Single-state scene: totalTime % would be NaN
+            this.currentTime = this.firstTime; // Single-state scene: % would be NaN
         }
         const newStateIndex = this.getStateIndexForTime(this.currentTime);
         const indexChanged = newStateIndex !== this.currentStateIndex;
@@ -362,8 +404,6 @@ export class AnimationController {
 
     captureFrame(now) {
         if (!this.isRecording) return;
-        const elapsed = now - this.startTime;
-        const duration = this.totalTime * 1000; // Convert to milliseconds
 
         if (this._captureTrack) {
             // Manual-mode capture stream (see #startVideoRecording): pull
@@ -375,8 +415,9 @@ export class AnimationController {
         // Realtime (non-manual) MediaRecorder streams need no per-frame call
         // here -- the browser samples the canvas on its own timer.
 
-        // Stop recording if we've completed one loop
-        if (elapsed >= duration) {
+        // Stop recording once one loop of content has played (content
+        // seconds, not wall-clock, so 2x doesn't record two loops).
+        if (this._recordedSeconds >= this.totalTime) {
             this.playbackControls.recordButton.click();
         }
     }
@@ -411,9 +452,24 @@ export class AnimationController {
         } else {
             this.updateSceneSnapped();
         }
+        this.app.polylines?.forEach((p) => p.update(this.currentStateIndex));
+        this.applyTimeVisibility();
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setEndIndex(this.currentStateIndex);
         }
+    }
+
+    // Time-ranged visibility (`visibleRanges` on bodies, static objects and
+    // polylines): evaluated on currentTime so it also works while
+    // interpolating between frames. Objects without ranges are left alone.
+    applyTimeVisibility() {
+        const t = this.currentTime;
+        const apply = (obj) => {
+            if (obj.visibleRanges) obj.setTimeVisible(isVisibleAt(obj.visibleRanges, t));
+        };
+        this.app.bodies?.forEach(apply);
+        this.app.staticObjects?.forEach(apply);
+        this.app.polylines?.forEach(apply);
     }
 
     // Exactly today's behavior: render the nearest recorded frame, no

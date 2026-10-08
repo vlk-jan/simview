@@ -8,6 +8,8 @@ const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArr
 // are only built after the states load.
 export const PANEL_SELECTORS = {
     playback: ".sv-playback",
+    // The REC / format / screenshot controls inside the playback bar.
+    recording: ".sv-playback-recording",
     analysis: ".analysis-container",
     legend: ".sv-legend",
     batchLegend: ".batch-legend-container",

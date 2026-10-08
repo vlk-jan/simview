@@ -31,6 +31,11 @@ const READOUT_ROWS = [
     ["Z error:", SERIES_COLORS.z, "z"],
     ["Orientation error:", SERIES_COLORS.rot, "rot"],
 ];
+// A value for display, or "-" for a NaN frame.
+const fmt = (v, digits, unit) => (Number.isFinite(v) ? `${v.toFixed(digits)}${unit}` : "-");
+// uPlot draws null as a gap; NaN would break the path.
+const gapOrValue = (v) => (Number.isFinite(v) ? v : null);
+
 const STATS_ROWS = [
     ["Position RMSE:", null, "posRmse"],
     ["Max position error (t):", null, "posMax"],
@@ -200,12 +205,16 @@ export class ErrorMetrics {
         if (this.isExpanded) this._recompute();
     }
 
-    // Called by SimView once body position/quaternion history has been (re)built.
+    // Called by SimView once body position/quaternion history has been
+    // (re)built. Live streaming calls this per pushed frame, and a recompute
+    // walks the whole history, so it's deferred to the throttled animate()
+    // tick (and skipped entirely while the panel is hidden -- setVisible
+    // recomputes on open).
     onHistoryReady() {
         if (!this.app.bodies.has(this.selectedBody)) {
             this.selectedBody = this.app.bodies.keys().next().value || null;
         }
-        if (this.isExpanded) this._recompute();
+        this._historyDirty = true;
     }
 
     _clearSeries() {
@@ -259,6 +268,7 @@ export class ErrorMetrics {
     }
 
     _recompute() {
+        this._historyDirty = false;
         this._computeSeries();
         this._buildChart();
         this._computeStats();
@@ -275,21 +285,25 @@ export class ErrorMetrics {
             return;
         }
 
+        // NaN frames (gaps in the trajectory) are skipped by rmse/maxWithIndex
+        // and shown as "-" here, matching the scalar plots' gap handling.
         const posValues = this.posSeries.map((p) => p.y);
         const rotValues = this.rotSeries.map((p) => p.y);
 
         const posRmse = rmse(posValues);
         const posMax = maxWithIndex(posValues);
-        const posMaxTime = this.posSeries[posMax.index].x;
         const drift = posValues[posValues.length - 1];
         const rotRmse = rmse(rotValues);
         const rotMax = maxWithIndex(rotValues);
 
-        v.posRmse.textContent = `${posRmse.toFixed(3)} m`;
-        v.posMax.textContent = `${posMax.value.toFixed(3)} m (t=${posMaxTime.toFixed(3)})`;
-        v.drift.textContent = `${drift.toFixed(3)} m`;
-        v.rotRmse.textContent = `${rotRmse.toFixed(2)}°`;
-        v.rotMax.textContent = `${rotMax.value.toFixed(2)}°`;
+        v.posRmse.textContent = fmt(posRmse, 3, " m");
+        v.posMax.textContent =
+            posMax.index < 0
+                ? "-"
+                : `${posMax.value.toFixed(3)} m (t=${this.posSeries[posMax.index].x.toFixed(3)})`;
+        v.drift.textContent = fmt(drift, 3, " m");
+        v.rotRmse.textContent = fmt(rotRmse, 2, "°");
+        v.rotMax.textContent = rotMax.index < 0 ? "-" : `${rotMax.value.toFixed(2)}°`;
     }
 
     // Downloads the current selection's per-frame series as CSV: time,
@@ -324,7 +338,7 @@ export class ErrorMetrics {
         }
 
         const xValues = this.posSeries.map((p) => p.x);
-        const rotValues = this.rotSeries.map((p) => p.y);
+        const rotValues = this.rotSeries.map((p) => gapOrValue(p.y));
 
         const seriesConfigs = [{}];
         const dataArrays = [xValues];
@@ -335,9 +349,9 @@ export class ErrorMetrics {
                 { label: "Z error", stroke: SERIES_COLORS.z, width: 1, points: { show: false }, scale: "pos" }
             );
             dataArrays.push(
-                this.axisSeries.x.map((p) => p.y),
-                this.axisSeries.y.map((p) => p.y),
-                this.axisSeries.z.map((p) => p.y)
+                this.axisSeries.x.map((p) => gapOrValue(p.y)),
+                this.axisSeries.y.map((p) => gapOrValue(p.y)),
+                this.axisSeries.z.map((p) => gapOrValue(p.y))
             );
         } else {
             seriesConfigs.push({
@@ -347,7 +361,7 @@ export class ErrorMetrics {
                 points: { show: false },
                 scale: "pos",
             });
-            dataArrays.push(this.posSeries.map((p) => p.y));
+            dataArrays.push(this.posSeries.map((p) => gapOrValue(p.y)));
         }
         seriesConfigs.push({
             label: "Orientation error",
@@ -369,13 +383,15 @@ export class ErrorMetrics {
                     x: { time: false },
                     pos: this.showAxes
                         ? {
+                              // min/max are uPlot's extents over the non-null
+                              // data (null for an all-gap series).
                               range: (u, min, max) => {
-                                  const m = Math.max(Math.abs(min), Math.abs(max), 1e-6);
+                                  const m = Math.max(Math.abs(min ?? 0), Math.abs(max ?? 0), 1e-6);
                                   return [-m * 1.05, m * 1.05];
                               },
                           }
-                        : { range: (u, min, max) => [0, max * 1.01 || 1] },
-                    rot: { range: (u, min, max) => [0, max * 1.01 || 1] },
+                        : { range: (u, min, max) => [0, (max ?? 0) * 1.01 || 1] },
+                    rot: { range: (u, min, max) => [0, (max ?? 0) * 1.01 || 1] },
                 },
                 axes: [
                     {
@@ -426,16 +442,16 @@ export class ErrorMetrics {
             const z = u.data[3][idx];
             const rot = u.data[4][idx];
             html +=
-                `<span style="color:${SERIES_COLORS.x};">X: ${x.toFixed(3)} m</span><br>` +
-                `<span style="color:${SERIES_COLORS.y};">Y: ${y.toFixed(3)} m</span><br>` +
-                `<span style="color:${SERIES_COLORS.z};">Z: ${z.toFixed(3)} m</span><br>` +
-                `<span style="color:${SERIES_COLORS.rot};">Orientation: ${rot.toFixed(2)}°</span>`;
+                `<span style="color:${SERIES_COLORS.x};">X: ${fmt(x, 3, " m")}</span><br>` +
+                `<span style="color:${SERIES_COLORS.y};">Y: ${fmt(y, 3, " m")}</span><br>` +
+                `<span style="color:${SERIES_COLORS.z};">Z: ${fmt(z, 3, " m")}</span><br>` +
+                `<span style="color:${SERIES_COLORS.rot};">Orientation: ${fmt(rot, 2, "°")}</span>`;
         } else {
             const pos = u.data[1][idx];
             const rot = u.data[2][idx];
             html +=
-                `<span style="color:${SERIES_COLORS.pos};">Position: ${pos.toFixed(3)} m</span><br>` +
-                `<span style="color:${SERIES_COLORS.rot};">Orientation: ${rot.toFixed(2)}°</span>`;
+                `<span style="color:${SERIES_COLORS.pos};">Position: ${fmt(pos, 3, " m")}</span><br>` +
+                `<span style="color:${SERIES_COLORS.rot};">Orientation: ${fmt(rot, 2, "°")}</span>`;
         }
         return html;
     }
@@ -449,12 +465,12 @@ export class ErrorMetrics {
         if (this.showAxes) {
             for (const key of ["x", "y", "z"]) {
                 const p = this.axisSeries[key][idx];
-                v[key].textContent = p ? p.y.toFixed(3) + " m" : "-";
+                v[key].textContent = fmt(p?.y, 3, " m");
             }
         } else {
-            v.pos.textContent = pos ? pos.y.toFixed(3) + " m" : "-";
+            v.pos.textContent = fmt(pos?.y, 3, " m");
         }
-        v.rot.textContent = rot ? rot.y.toFixed(2) + "°" : "-";
+        v.rot.textContent = fmt(rot?.y, 2, "°");
 
         if (this.chart && pos) {
             if (this.markerTime !== pos.x) {
@@ -468,6 +484,7 @@ export class ErrorMetrics {
         if (!this.isExpanded) return;
         if (now - this.lastRenderTime < this.minRenderDelay) return;
         this.lastRenderTime = now;
+        if (this._historyDirty) this._recompute();
         this._updateReadoutAndMarker();
     }
 

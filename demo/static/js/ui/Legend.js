@@ -29,7 +29,11 @@ export class Legend {
             return;
         }
 
-        const mode = this.app.uiState.terrainColorMode || "height";
+        let mode = this.app.uiState.terrainColorMode || "height";
+        // Terrain.#updateSurfaceColor falls back to height colouring for a
+        // mode it doesn't know (e.g. a view link naming a property this
+        // scene lacks); label the bar the same way instead of throwing.
+        if (!this.app.terrain.getAvailableColorModes().includes(mode)) mode = "height";
         const cmapName =
             mode === "diff" || mode === "features"
                 ? "coolwarm"
@@ -64,10 +68,14 @@ export class Legend {
             maxVal = 1;
             unit = "";
             title = "Cosine similarity to clicked cell";
-        } else if (this.app.terrain.properties.has(mode)) {
+        } else {
+            // Same rule as Terrain.#normalizeToRange: a missing or degenerate
+            // (min == max) range means the raw value is clamped into [0, 1].
             const propBounds = this.app.terrain.propertyBounds.get(mode) || {};
-            minVal = propBounds.min ?? 0.0;
-            maxVal = propBounds.max ?? 1.0;
+            const { min, max } = propBounds;
+            const usable = typeof min === "number" && typeof max === "number" && max - min !== 0;
+            minVal = usable ? min : 0.0;
+            maxVal = usable ? max : 1.0;
             unit = "";
             title = mode.charAt(0).toUpperCase() + mode.slice(1);
         }

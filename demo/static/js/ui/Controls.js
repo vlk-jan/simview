@@ -146,6 +146,7 @@ export class UIControls {
             const controls = {
                 bodyVisualizationMode: defaultVisualizationMode,
                 showPointClouds: this.app.uiState.pointCloudsVisible !== false,
+                showPolylines: this.app.uiState.polylinesVisible !== false,
                 showAxes: this.app.uiState.axesVisible,
                 showTrails: this.app.uiState.trailsVisible,
                 smoothInterpolation: this.app.uiState.smoothInterpolation,
@@ -174,6 +175,16 @@ export class UIControls {
                     .name(this.attributeAvailability.contacts ? "Show Point Clouds" : "Show Point Clouds (C)")
                     .onChange((value) => {
                         this.updatePointCloudsVisibility(value);
+                    });
+            }
+
+            if (this.app.polylines?.length) {
+                this.bodyFolder
+                    .add(controls, "showPolylines")
+                    .name("Show Polylines")
+                    .onChange((value) => {
+                        this.app.uiState.polylinesVisible = value;
+                        this.app.polylines.forEach((p) => p.setVisible(value));
                     });
             }
 
@@ -434,18 +445,29 @@ export class UIControls {
             
         if (this.app.batchManager && this.app.batchManager.simBatches >= 2) {
             const batches = Array.from({length: this.app.batchManager.simBatches}, (_, i) => i);
+            // In focused render mode the split batches are only drawn because
+            // BatchManager pins them, so every change here must re-run its
+            // visibility pass -- otherwise one half of the split stays blank.
+            const refreshPins = () => this.app.batchManager.recomputeVisibleBatches();
             const splitScreenCtrl = cameraFolder.add(cameraControls, "splitScreen").name("Split Screen");
-            const splitBatchACtrl = cameraFolder.add(cameraControls, "splitBatchA", batches).name("Split Batch A").onChange(v => this.app.uiState.splitBatchA = parseInt(v));
-            const splitBatchBCtrl = cameraFolder.add(cameraControls, "splitBatchB", batches).name("Split Batch B").onChange(v => this.app.uiState.splitBatchB = parseInt(v));
-            
+            const splitBatchACtrl = cameraFolder.add(cameraControls, "splitBatchA", batches).name("Split Batch A").onChange(v => {
+                this.app.uiState.splitBatchA = parseInt(v);
+                refreshPins();
+            });
+            const splitBatchBCtrl = cameraFolder.add(cameraControls, "splitBatchB", batches).name("Split Batch B").onChange(v => {
+                this.app.uiState.splitBatchB = parseInt(v);
+                refreshPins();
+            });
+
             // Hide the batch selectors initially if splitScreen is off
             splitBatchACtrl.hide();
             splitBatchBCtrl.hide();
-            
+
             splitScreenCtrl.onChange(v => {
                 this.app.uiState.splitScreen = v;
                 splitBatchACtrl.show(v);
                 splitBatchBCtrl.show(v);
+                refreshPins();
             });
 
             this.app.uiState.splitScreen = cameraControls.splitScreen;
@@ -603,8 +625,13 @@ export class UIControls {
         }
 
         if (typeof state.terrainColorMode === "string") {
+            // A link from a scene with a `friction` property opened on one
+            // without it must not push an unknown mode into the dropdown.
             const ctrl = this.findController("colorMode");
-            if (ctrl) ctrl.setValue(state.terrainColorMode);
+            const known = this.app.terrain?.getAvailableColorModes() ?? [];
+            if (ctrl && known.includes(state.terrainColorMode)) {
+                ctrl.setValue(state.terrainColorMode);
+            }
         }
 
         if (typeof state.terrainColorMap === "string") {
@@ -636,6 +663,7 @@ export class UIControls {
                 "terrainVisualizationModes.surface": "showSurface",
                 "terrainVisualizationModes.wireframe": "showWireframe",
                 "terrainVisualizationModes.normals": "showNormals",
+                polylinesVisible: "showPolylines",
             };
             Object.entries(propertyForKey).forEach(([stateKey, property]) => {
                 if (!(stateKey in state.toggles)) return;
@@ -700,12 +728,16 @@ export class UIControls {
                 case "arrowright":
                     if (event.shiftKey) {
                         this.changeTargetBatch(event.key.toLowerCase());
-                        event.stopPropagation();
+                        // OrbitControls listens for keydown on this same
+                        // window and treats Shift+Arrow as rotate; a sibling
+                        // listener isn't stopped by stopPropagation, so this
+                        // runs in the capture phase and stops immediately.
+                        event.stopImmediatePropagation();
                     }
                     break;
             }
         };
-        window.addEventListener("keydown", this.keyboardControlsListener);
+        window.addEventListener("keydown", this.keyboardControlsListener, { capture: true });
     }
 
     // Searches every folder (Body/Terrain/Camera Options), not just
@@ -827,7 +859,7 @@ export class UIControls {
         this.gui.destroy();
         this.gui = null;
         if (this.keyboardControlsListener) {
-            window.removeEventListener("keydown", this.keyboardControlsListener);
+            window.removeEventListener("keydown", this.keyboardControlsListener, { capture: true });
             this.keyboardControlsListener = null;
         }
     }

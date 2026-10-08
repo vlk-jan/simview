@@ -9,6 +9,7 @@ import { Terrain } from "./objects/Terrain.js";
 import { BatchManager } from "./components/BatchManager.js";
 import { ScalarPlotter } from "./ui/ScalarPlotter.js";
 import { StaticObject } from "./objects/StaticObject.js";
+import { Polyline } from "./objects/Polyline.js";
 import { Legend } from "./ui/Legend.js";
 import { BatchLegend } from "./ui/BatchLegend.js";
 import { ErrorMetrics } from "./ui/ErrorMetrics.js";
@@ -22,8 +23,9 @@ import { StateStore } from "./components/StateStore.js";
 import { WindowedField } from "./components/WindowedField.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
+import { shiftEpisodes } from "./utils/episodes.js";
 import { parseViewState, parseStartupOptions, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
-import { mergeUiDefaults, applyViewerDomDefaults } from "./utils/viewerDefaults.js";
+import { mergeUiDefaults, applyViewerDomDefaults, panelHideCss } from "./utils/viewerDefaults.js";
 
 export class SimView {
     constructor() {
@@ -42,17 +44,24 @@ export class SimView {
         this.terrain = null;
         this.bodies = null;
         this.staticObjects = null;
+        this.polylines = null;
         this.uiState = structuredClone(UI_DEFAULT_CONFIG);
         this.animate = this.animate.bind(this);
         // Live streaming mode (see startLiveStream): the open WebSocket (or
         // null once closed/if never opened) and its "LIVE" badge element.
         this.liveSocket = null;
         this.liveBadge = null;
+        // Live mode: absolute frame index (on the producer's timeline) of this
+        // viewer's frame 0 -- a late-joining tab only gets the catch-up window.
+        // null until the first chunk arrives; see shiftEpisodes.
+        this.liveFrameOffset = null;
         // Static demo mode: when window.__simviewStaticBase is set by the
         // GitHub Pages demo index.html, all data fetches are redirected to
         // flat static files (model.json, states.json, blob/N) instead of the
         // Python backend API endpoints. Set to null in normal server mode.
         this.staticBase = null;
+        // `play=1` startup hash key: start playback once the scene is loaded.
+        this.autoplay = false;
         this._rafId = null;
         this._lastDispatchedFrame = -1;
         this._onHashChange = () => this.applyViewStateFromHash();
@@ -69,9 +78,20 @@ export class SimView {
             console.log(`SimView: static demo mode, base='${simView.staticBase}'`);
         }
         // Startup hash keys (see parseStartupOptions): `data` wins over the global.
-        const { data, ui } = parseStartupOptions(location.hash);
+        // `hide = []`: a browser cache serving an older viewState.js alongside
+        // this file must degrade to showing the panels, not a broken viewer.
+        const { data, ui, play, hide = [] } = parseStartupOptions(location.hash);
         if (data) simView.staticBase = data;
         if (!ui) document.body.classList.add("sv-embed");
+        simView.autoplay = play;
+        // `hide=recording,legend`: same stylesheet mechanism as
+        // viewerDefaults.panels, injected up front since it's pure CSS.
+        const hideCss = panelHideCss(Object.fromEntries(hide.map((name) => [name, false])));
+        if (hideCss) {
+            const style = document.createElement("style");
+            style.textContent = hideCss;
+            document.head.appendChild(style);
+        }
         window.simview = simView;
         window.__debugSimView = simView; // alias kept for e2e tests / downstream consumers
         simView.initAndAnimate();
@@ -188,6 +208,9 @@ export class SimView {
                     totalFrames,
                     batchCount,
                     width,
+                    // A paused scrub into a non-resident window has nothing
+                    // else to re-render the frame once it lands.
+                    onLanded: () => this.animationController?.onWindowLanded(),
                 });
                 windowed++;
             }
@@ -269,8 +292,12 @@ export class SimView {
                 this.applyEpisodes(message.episodes);
                 return;
             }
-            const { states } = message;
+            const { states, frameOffset } = message;
             if (!states || states.length === 0) return;
+            if (this.liveFrameOffset === null) {
+                // Absent on an older server: assume the stream starts at 0.
+                this.liveFrameOffset = Number.isInteger(frameOffset) ? frameOffset : 0;
+            }
             this.processStatesChunk(states);
             if (splash) splash.remove();
         };
@@ -289,9 +316,12 @@ export class SimView {
     // since onStoreReady calls it again once they do.
     applyEpisodes(episodes) {
         this.episodes = Array.isArray(episodes) ? episodes : [];
+        // Live: startIndex is absolute on the producer's timeline, our frame 0
+        // is the catch-up window's first frame.
+        const local = shiftEpisodes(this.episodes, this.liveFrameOffset ?? 0);
         const controls = this.animationController?.playbackControls;
-        if (controls) controls.setEpisodes(this.episodes);
-        if (this.scalarPlotter) this.scalarPlotter.setEpisodes(this.episodes);
+        if (controls) controls.setEpisodes(local);
+        if (this.scalarPlotter) this.scalarPlotter.setEpisodes(local);
     }
 
     showLiveBadge() {
@@ -334,6 +364,9 @@ export class SimView {
             this.appendBodyHistories(startIndex);
             if (this.errorMetrics) {
                 this.errorMetrics.onHistoryReady();
+            }
+            if (this.scalarPlotter) {
+                this.scalarPlotter.onStatesAppended();
             }
             if (wasFollowingLive) {
                 this.animationController.goToTime(this.store.lastTime());
@@ -417,6 +450,7 @@ export class SimView {
     initFromModel(model) {
         try {
             this.disposeOfAll();
+            this.model = model;
 
             // Free-form run provenance carried through from the Python side
             // (see SimViewModel.metadata) -- no meaning to the viewer itself,
@@ -427,6 +461,12 @@ export class SimView {
             // the playback bar once the store exists (see onStoreReady).
             // Absent for an ordinary single-timeline scene.
             this.episodes = Array.isArray(model.episodes) ? model.episodes : [];
+
+            // Before anything reads model.terrain (BatchManager does), so the
+            // splash shows this rather than a TypeError.
+            if (!model.terrain) {
+                throw new Error("Terrain data is missing in model");
+            }
 
             this.batchManager = new BatchManager(this, model);
             this.bodies = new Map();
@@ -472,16 +512,17 @@ export class SimView {
                     return staticObject;
                 });
             }
-            if (model.terrain) {
-                console.debug("Using terrain data");
-                this.terrain = new Terrain(model.terrain, this);
-                this.scene.addObject3D(this.terrain.getObject3D());
-                // Terrain extent is what tells us how far this scene reaches,
-                // so the camera's clipping/orbit range can stop being a guess.
-                this.scene.applySceneExtent(this.terrain.bounds);
-            } else {
-                throw new Error("Terrain data is missing in model");
-            }
+            this.polylines = (model.polylines || []).map((data) => {
+                const polyline = new Polyline(data, this);
+                this.scene.addObject3D(polyline.getObject3D());
+                return polyline;
+            });
+            console.debug("Using terrain data");
+            this.terrain = new Terrain(model.terrain, this);
+            this.scene.addObject3D(this.terrain.getObject3D());
+            // Terrain extent is what tells us how far this scene reaches,
+            // so the camera's clipping/orbit range can stop being a guess.
+            this.scene.applySceneExtent(this.terrain.bounds);
             const hasScalars = model.scalarNames && model.scalarNames.length > 0;
             const hasErrorMetrics = this.batchManager.simBatches >= 2;
             // Terrain tab needs an actual body *path* to sample against -- not
@@ -529,10 +570,15 @@ export class SimView {
             this.scene = new Scene(this);
             await this.loadData();
             this.applyViewStateFromHash();
+            // After the view state, so `#v=1&t=30&play=1` seeks to 30 and then
+            // plays (`t` pauses). Live mode has no timeline yet: nothing to play.
+            if (this.autoplay && this.animationController?.store) this.animationController.play();
             window.addEventListener("hashchange", this._onHashChange);
             this.animate();
+            // Live mode keeps the splash as its "waiting for first state"
+            // indicator until the first frame arrives (see startLiveStream).
             const splash = document.getElementById("loading-splash");
-            if (splash) splash.remove();
+            if (splash && !this.liveSocket) splash.remove();
             window.dispatchEvent(new CustomEvent("simview:ready", { detail: { simview: this } }));
         } catch (error) {
             console.error("Initialization failed:", error);
@@ -575,11 +621,11 @@ export class SimView {
                 this.batchManager.setActiveBatch(state.batchIndex);
             }
 
-            if (this.animationController && this.animationController.store) {
+            // Only `t` pauses (and seeks); a hash that changes e.g. the colour
+            // map leaves playback running, as the embedding docs promise.
+            if (this.animationController && this.animationController.store && Number.isFinite(state.time)) {
                 this.animationController.pause();
-                if (Number.isFinite(state.time)) {
-                    this.animationController.goToTime(state.time);
-                }
+                this.animationController.goToTime(state.time);
             }
 
             if (this.scene && state.camera) {
@@ -602,8 +648,8 @@ export class SimView {
             // actually flips body/terrain visuals) stay in sync instead of
             // uiState silently drifting out from under the displayed panel.
             if (this.uiControls) {
-                if (Number.isFinite(state.playbackSpeed) && this.animationController) {
-                    this.animationController.setSpeed(state.playbackSpeed);
+                if (this.animationController && state.playbackSpeed !== undefined) {
+                    this.animationController.setSpeed(state.playbackSpeed); // rejects <= 0 / non-finite
                 }
                 this.uiControls.applyViewState(state);
             }
@@ -655,10 +701,7 @@ export class SimView {
         if (this.liveSocket) this.liveSocket.close();
         window.removeEventListener("hashchange", this._onHashChange);
         this.disposeOfAll();
-        if (this.scene) {
-            this.scene.renderer.dispose();
-            this.scene.renderer.domElement.remove();
-        }
+        if (this.scene) this.scene.dispose();
         if (window.simview === this) window.simview = null;
         if (window.__debugSimView === this) window.__debugSimView = null;
     }
@@ -672,6 +715,11 @@ export class SimView {
         if (this.staticObjects) {
             for (const staticObject of this.staticObjects) {
                 staticObject.dispose();
+            }
+        }
+        if (this.polylines) {
+            for (const polyline of this.polylines) {
+                polyline.dispose();
             }
         }
         if (this.terrain) {

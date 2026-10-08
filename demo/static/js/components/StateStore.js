@@ -23,15 +23,70 @@ const COLUMNAR_FIELD_WIDTHS = {
     torque: 3,
 };
 
+// Index of the first frame whose time is below the previous frame's, or -1.
+// States are specified as time-ordered; nothing on the Python side enforces
+// it, and an unsorted timeline silently breaks the playback binary search.
+export function firstNonMonotonicIndex(timeAt, length, from = 1) {
+    for (let i = Math.max(1, from); i < length; i++) {
+        if (timeAt(i) < timeAt(i - 1)) return i;
+    }
+    return -1;
+}
+
+function warnIfNonMonotonic(store, from) {
+    if (store._warnedOrder) return;
+    const i = firstNonMonotonicIndex((k) => store.timeAt(k), store.length, from);
+    if (i < 0) return;
+    store._warnedOrder = true;
+    console.warn(
+        `State times are not monotonic (frame ${i}: ${store.timeAt(i)} < ${store.timeAt(i - 1)}); ` +
+            "playback and plots assume time-ordered states."
+    );
+}
+
+// A server serves an on-disk columnar file as-is, so the blobs are validated
+// here (the way Python's expand_columnar_states does) instead of reading
+// `undefined` past the end and rendering NaN poses.
+function validateColumnar(times, bodies, scalars, simBatches) {
+    const T = times.length;
+    const B = simBatches;
+    for (const body of bodies) {
+        for (const field in body.fields) {
+            const value = body.fields[field];
+            if (value && typeof value.rowsAt === "function") continue; // WindowedField
+            const width = COLUMNAR_FIELD_WIDTHS[field];
+            if (!width) {
+                throw new Error(`Unknown columnar state field "${field}" on body "${body.name}"`);
+            }
+            if (value.length !== T * B * width) {
+                throw new Error(
+                    `Columnar field "${field}" of body "${body.name}" has ${value.length} floats; ` +
+                        `expected ${T * B * width} (${T} frames x ${B} batches x ${width})`
+                );
+            }
+        }
+    }
+    for (const name in scalars) {
+        if (scalars[name].length !== T * B) {
+            throw new Error(
+                `Columnar scalar "${name}" has ${scalars[name].length} floats; ` +
+                    `expected ${T * B} (${T} frames x ${B} batches)`
+            );
+        }
+    }
+}
+
 class ColumnarStateStore {
     // `bodies`: [{name, fields: {fieldName: Float32Array}, contacts?}], each
     // fields Float32Array already reshaped to flat (T * B * k) row-major.
     // `scalars`: {scalarName: Float32Array}, each flat (T * B) row-major.
     constructor(times, bodies, scalars, simBatches) {
+        validateColumnar(times, bodies, scalars, simBatches);
         this.times = times;
         this._bodies = bodies;
         this._scalars = scalars;
         this.simBatches = simBatches;
+        warnIfNonMonotonic(this, 1);
         // Single-frame memo: playback only ever touches one frame at a time,
         // so materializing the whole timeline into legacy-shaped objects up
         // front would defeat the point of storing it columnar in the first place.
@@ -136,6 +191,7 @@ class LegacyStateStore {
     // decoded -- __b64__ fields expanded via decodeStatesChunk).
     constructor(statesArray) {
         this._states = statesArray;
+        warnIfNonMonotonic(this, 1);
     }
 
     // simBatches isn't known to the store itself in the legacy shape (each
@@ -190,6 +246,7 @@ class LegacyStateStore {
     append(chunk) {
         const startIndex = this._states.length;
         this._states.push(...chunk);
+        warnIfNonMonotonic(this, startIndex);
         return startIndex;
     }
 }

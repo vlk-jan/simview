@@ -23,7 +23,10 @@ export class BodyStateWindow {
         // --- Window setup ---
         this.window = document.createElement("details");
         this.window.className = "body-state-window sv-collapsible";
-        this.window.open = true;
+        // model.collapse is the authoring-time hint to start collapsed;
+        // viewerDefaults.bodyStatesOpen (applied after construction, see
+        // utils/viewerDefaults.js) wins when present.
+        this.window.open = this.app.model?.collapse !== true;
 
         // --- Header setup ---
         this.header = document.createElement("summary");

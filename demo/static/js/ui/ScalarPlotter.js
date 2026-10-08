@@ -8,6 +8,7 @@ import {
 } from "../utils/episodes.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
 import { batchColumnsCsv, closestSeries, exportBar, finiteBounds } from "./chartControls.js";
+import { appendScalarFrames } from "../utils/scalarSeries.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -26,7 +27,12 @@ export class ScalarPlotter {
         this.charts = new Map();
         this.scalarSeries = new Map();
         this.scalarBounds = new Map();
+        // uPlot's y columns per scalar (NaN -> null gaps), kept so a live
+        // append only pushes the new frames instead of remapping the series.
+        this.scalarColumns = new Map();
         this.times = [];
+        this.store = null;
+        this._appendPending = false;
         // Episode boundaries (see utils/episodes.js), drawn over each chart
         // with the focused batch's per-episode aggregate. Empty for an
         // ordinary non-episodic scene, in which case nothing extra is drawn.
@@ -132,15 +138,22 @@ export class ScalarPlotter {
 
     initFromStore(store) {
         const batchSize = this.app.batchManager.simBatches;
-        this.times = store.times;
+        this.store = store;
+        // Own copy: LegacyStateStore.times is a fresh snapshot per access and
+        // the columnar store's array must not be grown by us.
+        this.times = Array.from(store.times);
         for (const scalarName of this.scalarNames) {
-            // Per-batch series as plain {x, y} points (sliced into uPlot's
-            // columnar format on render), pulled from the store rather than
-            // walked per-frame here -- the columnar store already holds each
-            // scalar as one whole-trajectory Float32Array.
+            // Per-batch series as plain {x, y} points, pulled from the store
+            // rather than walked per-frame here -- the columnar store already
+            // holds each scalar as one whole-trajectory Float32Array.
             const series = store.getScalarSeries(scalarName, batchSize);
             this.scalarSeries.set(scalarName, series);
             this.scalarBounds.set(scalarName, finiteBounds(series));
+            // NaN (a gap in the source) becomes null, uPlot's gap.
+            this.scalarColumns.set(
+                scalarName,
+                series.map((batchSeries) => batchSeries.map(({ y }) => (Number.isFinite(y) ? y : null)))
+            );
         }
 
         this._initializePlots();
@@ -151,6 +164,36 @@ export class ScalarPlotter {
             this.setEndIndex(this.currentEndIndex, true);
             this.setFocusedBatch(this.currentFocusedBatch, true);
         }
+    }
+
+    // Live streaming appended frames to the store. Coalesced into the
+    // throttled animate() tick: pushes land once per frame, charts redraw at
+    // FREQ_CONFIG.scalarPlotter Hz.
+    onStatesAppended() {
+        this._appendPending = true;
+    }
+
+    _pullAppended() {
+        this._appendPending = false;
+        if (!this.store || this.charts.size === 0) return;
+        const from = this.times.length;
+        if (this.store.length <= from) return;
+        appendScalarFrames(
+            this.store,
+            this.scalarNames,
+            this.app.batchManager.simBatches,
+            this.times,
+            this.scalarSeries,
+            this.scalarColumns,
+            from
+        );
+        for (const [name, chart] of this.charts) {
+            // Default resetScales: x re-ranges via _timeExtent, y autoscales
+            // over the grown data.
+            chart.setData([this.times, ...this.scalarColumns.get(name)]);
+        }
+        // A longer timeline can bring an already-marked episode into range.
+        if (this.rawEpisodes.length > 0) this._refreshEpisodes();
     }
 
     // Episode boundaries from the model (or, in live mode, pushed mid-run).
@@ -324,15 +367,8 @@ export class ScalarPlotter {
                     },
                 },
                 // The whole timeline, plotted once; playback only moves the
-                // marker. NaN (a gap in the source) becomes null, uPlot's gap.
-                [
-                    this.times,
-                    ...this.scalarSeries
-                        .get(name)
-                        .map((batchSeries) =>
-                            batchSeries.map(({ y }) => (Number.isFinite(y) ? y : null))
-                        ),
-                ],
+                // marker (live mode appends via _pullAppended).
+                [this.times, ...this.scalarColumns.get(name)],
                 this.app
             );
 
@@ -429,13 +465,14 @@ export class ScalarPlotter {
         }
 
         if (!needRender) return;
-        // The data never changes after init, so the cached paths stay valid;
-        // strokes (focus opacity) are re-read on every draw anyway.
+        // The data only changes via setData (live append), so the cached
+        // paths stay valid; strokes (focus opacity) are re-read on every draw.
         activeChart.redraw(false);
     }
 
     animate(now) {
         if (now - this.lastRenderTime < this.minRenderDelay) return;
+        if (this._appendPending) this._pullAppended();
         this._renderChart();
         this.lastRenderTime = now;
     }
@@ -447,5 +484,6 @@ export class ScalarPlotter {
         this.charts.clear();
         this.scalarSeries.clear();
         this.scalarBounds.clear();
+        this.scalarColumns.clear();
     }
 }

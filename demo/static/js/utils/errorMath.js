@@ -44,24 +44,32 @@ export function quaternionAngleError(quatA, quatB, frameIndex) {
     return 2 * Math.acos(clamped);
 }
 
-// Root-mean-square of a plain numeric array. Returns 0 for an empty series
-// (rather than NaN), so callers can display it without a special case.
+// Root-mean-square of a plain numeric array, over its finite entries (a NaN
+// frame -- a gap in the trajectory -- is skipped, not poison). Returns 0 when
+// nothing is finite (rather than NaN), so callers can display it directly.
 export function rmse(values) {
-    if (!values || values.length === 0) return 0;
+    if (!values) return 0;
     let sumSq = 0;
-    for (const v of values) sumSq += v * v;
-    return Math.sqrt(sumSq / values.length);
+    let count = 0;
+    for (const v of values) {
+        if (!Number.isFinite(v)) continue;
+        sumSq += v * v;
+        count++;
+    }
+    return count ? Math.sqrt(sumSq / count) : 0;
 }
 
-// Finds the maximum value in a plain numeric array and the index at which it
-// occurs. Returns { value: 0, index: -1 } for an empty series.
+// Finds the maximum finite value in a plain numeric array and the index at
+// which it occurs. Returns { value: 0, index: -1 } when nothing is finite.
 export function maxWithIndex(values) {
-    if (!values || values.length === 0) return { value: 0, index: -1 };
-    let bestValue = values[0];
-    let bestIndex = 0;
-    for (let i = 1; i < values.length; i++) {
-        if (values[i] > bestValue) {
-            bestValue = values[i];
+    let bestValue = 0;
+    let bestIndex = -1;
+    if (!values) return { value: bestValue, index: bestIndex };
+    for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        if (!Number.isFinite(v)) continue;
+        if (bestIndex < 0 || v > bestValue) {
+            bestValue = v;
             bestIndex = i;
         }
     }
