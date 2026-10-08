@@ -1464,11 +1464,12 @@
 <h2 id="timeline">Timeline</h2>
 <ul>
 <li><strong>Step Forward/Backward</strong>: <code>Alt</code> + Arrow Right / Arrow Left</li>
-<li><strong>Seek (and Pause)</strong>: Click on the timeline bar</li>
+<li><strong>Seek</strong>: Click on the timeline bar (<code>Alt</code> + click also pauses)</li>
 <li><strong>Play/Pause</strong>: <code>Space</code> or Click the Play button</li>
 <li><strong>Record</strong>: <code>R</code> or Click the Record button (select WEBM or, if your browser supports
   recording it, MP4 via the dropdown). Recording seeks to the start, plays
-  exactly one loop, then automatically stops and downloads the file.</li>
+  exactly one loop at the current playback speed, then automatically stops and
+  downloads the file.</li>
 <li><strong>Screenshot</strong>: <code>S</code> or Click the camera button next to Record to save the current frame as a PNG.</li>
 <li><strong>Playback Speed</strong>: Adjust speed (0.1x to 5x) via the dropdown next to the timeline</li>
 <li><strong>Previous/Next Episode</strong>: <code>[</code> / <code>]</code> or the |◀ / ▶| buttons. Only shown for a scene
@@ -1501,6 +1502,9 @@ way.</p>
 <li><strong><code>T</code></strong>: Toggle Torque</li>
 <li><strong><code>P</code></strong>: Toggle Terrain Data Probe (interactive tooltip on hover)</li>
 </ul>
+<p>"Show Polylines" (Body Options, shown when the scene has <code>model.polylines</code>) toggles planned
+routes and per-frame local paths. Bodies, static objects and polylines with <code>visibleRanges</code>
+hide themselves while the playhead is outside their time ranges.</p>
 <p>You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.</p>
 <h2 id="point-cloud-and-terrain-similarity-coloring">Point Cloud and Terrain Similarity Coloring</h2>
 <p>Point-cloud bodies and terrain cells can each carry an optional per-point/per-cell
@@ -1554,7 +1558,9 @@ one is shown directly without the switcher.</p>
 <p>When a scene has 2 or more batches, a toggleable "Batches" legend appears in the
 bottom-right corner, listing each batch's color, index, and name. Click a row to focus
 that batch, or click a name to rename it in place — renames persist next to the input
-file(s), so they survive a reload or server restart.</p>
+file(s), so they survive a reload or server restart. A viewer with no scene file to
+write next to (<code>scene.show()</code>, <code>LiveViewer</code>, <code>simview render</code>) keeps renames for the
+session only and says so under the legend.</p>
 <h2 id="scene-info">Scene Info</h2>
 <p>When the scene JSON includes a <code>model.metadata</code> object, a read-only "Scene Info" panel
 appears in the GUI listing each key/value pair — e.g. the engine, checkpoint path, git

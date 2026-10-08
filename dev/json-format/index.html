@@ -1403,12 +1403,17 @@ of breaking changes in this release.</p>
 <li><strong><code>simBatches</code></strong> <em>(integer)</em> — number of parallel simulation instances (batches).</li>
 <li><strong><code>batchNames</code></strong> <em>(array[string], optional)</em> — display name for each batch, length
     must equal <code>simBatches</code>. Shown in the <a href="../../usage/controls/#batch-legend">Batch Legend</a>; falls back to
-    <code>"Batch &lt;index&gt;"</code> per entry if omitted, empty, or the wrong length. Renames made from
+    <code>"Batch &lt;index&gt;"</code> per entry if omitted, empty, or the wrong length (the Python
+    reader applies the same fallback, with a warning). Renames made from
     the Batch Legend are persisted server-side (see below) and take precedence over this
-    field on subsequent loads.</li>
+    field on subsequent loads. <code>merge_simulation_files</code> keeps each input's own names
+    for the batches taken from it, falling back to the file stem.</li>
 <li><strong><code>scalarNames</code></strong> <em>(array[string])</em> — names of per-batch scalar time-series (e.g. <code>"energy"</code>).</li>
-<li><strong><code>dt</code></strong> <em>(float)</em> — simulation timestep in seconds. Used for playback timing; if omitted or invalid the viewer infers it from consecutive state times.</li>
-<li><strong><code>collapse</code></strong> <em>(boolean)</em> — UI hint to start with the body-state window collapsed.</li>
+<li><strong><code>dt</code></strong> <em>(float, optional)</em> — simulation timestep in seconds. Used for playback timing;
+    if omitted, <code>null</code> or invalid the viewer infers it from consecutive state times
+    (<code>SimulationScene.load</code> keeps it as <code>None</code>).</li>
+<li><strong><code>collapse</code></strong> <em>(boolean, optional, default <code>false</code>)</em> — start with the Body States
+    window collapsed. <code>viewerDefaults.bodyStatesOpen</code> (below), when present, wins over it.</li>
 <li><strong><code>metadata</code></strong> <em>(object, optional)</em> — free-form, JSON-serializable run provenance (e.g.
     engine name, checkpoint path, git commit, CLI args). Opaque to the viewer itself; shown
     read-only in <code>simview info</code> and the browser's "Scene Info" GUI folder so a scene saved
@@ -1432,7 +1437,7 @@ on (and ignores) unknown keys. Supported keys, all optional:
 - <strong><code>ui</code></strong> <em>(object)</em> — values for the viewer's UI state, deep-merged over its
     defaults before the controls are built: <code>pointCloudsVisible</code>, <code>axesVisible</code>,
     <code>trailsVisible</code>, <code>smoothInterpolation</code>, <code>terrainColorMode</code>, <code>terrainColorMap</code>,
-    <code>bodyVisualizationMode</code>, <code>terrainProbe</code>, <code>attributeVisible.*</code> (<code>contacts</code>,
+    <code>bodyVisualizationMode</code>, <code>polylinesVisible</code>, <code>terrainProbe</code>, <code>attributeVisible.*</code> (<code>contacts</code>,
     <code>velocity</code>, <code>angularVelocity</code>, <code>force</code>, <code>torque</code>) and <code>terrainVisualizationModes.*</code>
     (<code>surface</code>, <code>wireframe</code>, <code>normals</code>). Wins over the viewer's automatic
     <code>bodyVisualizationMode</code> choice.
@@ -1440,8 +1445,10 @@ on (and ignores) unknown keys. Supported keys, all optional:
     or closing the matching folder (e.g. <code>"Body Options"</code>, <code>"Terrain Options"</code>,
     <code>"Camera Options"</code>, <code>"Scene Info"</code>).
 - <strong><code>bodyStatesOpen</code></strong> <em>(boolean)</em> — whether the Body States window starts expanded.
-- <strong><code>panels</code></strong> <em>(object)</em> — <code>{playback, analysis, legend, batchLegend, bodyStates,
-    controls}</code>; a panel set to <code>false</code> is hidden entirely.</p>
+- <strong><code>panels</code></strong> <em>(object)</em> — <code>{playback, recording, analysis, legend, batchLegend,
+    bodyStates, controls}</code>; a panel set to <code>false</code> is hidden entirely. <code>recording</code> is
+    the REC button, format select and screenshot button inside the playback bar
+    (their <code>R</code>/<code>S</code> shortcuts are disabled with it); the rest of the bar stays.</p>
 </li>
 <li>
 <p><strong><code>bodies</code></strong> <em>(array)</em> — dynamic bodies. Each entry:</p>
@@ -1484,27 +1491,51 @@ on (and ignores) unknown keys. Supported keys, all optional:
     Omitted means opaque.</li>
 <li><strong><code>visible</code></strong> <em>(boolean, optional)</em> — <code>false</code> hides the body initially. Written only
     when <code>false</code>.</li>
+<li><strong><code>visibleRanges</code></strong> <em>(array[array[2]], optional)</em> — <code>[t_from, t_to]</code> pairs in
+    seconds on the states timeline (inclusive); the viewer hides the body while the
+    playhead is outside every pair. Omitted means always visible.</li>
 </ul>
 </li>
-<li><strong><code>staticObjects</code></strong> <em>(array, optional)</em> — non-moving geometry. Each entry has <code>name</code>,
+<li><strong><code>staticObjects</code></strong> <em>(array, optional, default <code>[]</code>)</em> — non-moving geometry. Each entry has <code>name</code>,
     <code>isSingleton</code> <em>(boolean)</em>, and either <code>shape</code> (when singleton) or <code>shapes</code>
-    <em>(array, one per batch)</em> using the same shape objects as bodies.</li>
-<li><strong><code>terrain</code></strong> <em>(object)</em> — heightfield shared or per-batch:<ul>
-<li><strong><code>dimensions</code></strong>: <code>sizeX</code>, <code>sizeY</code> <em>(float)</em> and <code>resolutionX</code>, <code>resolutionY</code> <em>(int)</em>.</li>
-<li><strong><code>bounds</code></strong>: <code>minX</code>, <code>maxX</code>, <code>minY</code>, <code>maxY</code>, <code>minZ</code>, <code>maxZ</code> — purely spatial; a
+    <em>(array, one per batch)</em> using the same shape objects as bodies, plus an optional
+    <code>visibleRanges</code> as on bodies.</li>
+<li>
+<p><strong><code>polylines</code></strong> <em>(array, optional)</em> — world-space lines (planned routes, replanned local
+    paths). Each entry:</p>
+<ul>
+<li><strong><code>name</code></strong> <em>(string)</em> — unique.</li>
+<li><strong><code>points</code></strong> <em>(array[array[3]] or <code>__b64__</code> blob, optional)</em> — fixed vertices
+    (at least 2) for a static line.</li>
+<li><strong><code>frames</code></strong> <em>(<code>__b64__</code> blob, optional)</em> + <strong><code>maxVertices</code></strong> <em>(int)</em> — per-frame
+    vertices, little-endian float32 of shape <code>(T, simBatches, maxVertices, 3)</code> with
+    <code>T</code> equal to the number of states; a frame shorter than <code>maxVertices</code> is padded
+    with trailing NaN rows. Snapped to the nearest frame (never interpolated); not
+    available in live mode. At least one of <code>points</code>/<code>frames</code> is required.</li>
+<li><strong><code>color</code></strong> <em>(array[3], default <code>[1, 1, 1]</code>)</em>, <strong><code>width</code></strong> <em>(float, pixels, default
+    <code>2</code>; drawn 1 px by the current viewer)</em>, <strong><code>dashed</code></strong> <em>(boolean, default <code>false</code>)</em>,
+    <strong><code>visibleRanges</code></strong> as on bodies.</li>
+</ul>
+<p>Authored with <code>SimulationScene.create_polyline</code>; toggled in the viewer with "Show
+Polylines" (<code>polylinesVisible</code> in <code>viewerDefaults.ui</code> / the view-link flags).
+- <strong><code>terrain</code></strong> <em>(object)</em> — heightfield shared or per-batch:
+- <strong><code>dimensions</code></strong>: <code>sizeX</code>, <code>sizeY</code> <em>(float)</em> and <code>resolutionX</code>, <code>resolutionY</code> <em>(int)</em>.
+- <strong><code>bounds</code></strong>: <code>minX</code>, <code>maxX</code>, <code>minY</code>, <code>maxY</code>, <code>minZ</code>, <code>maxZ</code> — purely spatial; a
     named property's own value range lives on the property itself (see <code>properties</code>
-    below), not here.</li>
-<li><strong><code>isSingleton</code></strong> <em>(boolean)</em> — <code>true</code> when one terrain is shared by all batches;
+    below), not here.
+- <strong><code>isSingleton</code></strong> <em>(boolean)</em> — <code>true</code> when one terrain is shared by all batches;
     <code>false</code> when each batch has its own. A singleton terrain ships exactly <strong>one</strong>
     copy of <code>heightData</code>/<code>normals</code>/each property's <code>data</code>/<code>embeddingData</code> (the
     shared row is detected by its resolution-sized length); readers also still
     accept the legacy layout where singleton data was broadcast to <code>simBatches</code>
-    identical copies.</li>
-<li><strong><code>heightData</code></strong> <em>(array[array[float]])</em> — one flattened <code>resolutionX * resolutionY</code>
-    grid per batch (a single flat array is also accepted and treated as one batch).</li>
-<li><strong><code>normals</code></strong> <em>(array[array[array[3]]])</em> — per-batch surface normals, one <code>[x, y, z]</code>
-    per grid point.</li>
-<li><strong><code>properties</code></strong> <em>(object, optional)</em> — arbitrary named per-cell scalar fields over
+    identical copies.
+- <strong><code>heightData</code></strong> <em>(array[array[float]])</em> — one flattened <code>resolutionX * resolutionY</code>
+    grid per batch (a single flat array is also accepted and treated as one batch).
+- <strong><code>normals</code></strong> <em>(array[array[array[3]]], optional)</em> — per-batch surface normals, one <code>[x, y, z]</code>
+    per grid point. When absent (<code>create_terrain(compute_normals=False)</code>) the viewer
+    computes shading normals from the heightfield itself; only the "normals" arrow
+    visualization then has nothing to draw.
+- <strong><code>properties</code></strong> <em>(object, optional)</em> — arbitrary named per-cell scalar fields over
     the grid (e.g. <code>friction</code>, <code>stiffness</code>, or any custom name), each selectable as a
     terrain color mode with no viewer code changes. Keyed by property name, each entry
     is <code>{"data": array[array[float]] | null, "min": float | null, "max": float | null}</code>
@@ -1515,13 +1546,12 @@ on (and ignores) unknown keys. Supported keys, all optional:
     comparable across scenes. Cells outside <code>[min, max]</code> saturate at the end colors;
     if either bound is missing or the range is degenerate the viewer falls back to
     clamping the raw value into <code>[0, 1]</code>.
-    Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.</li>
-<li><strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
+    Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.
+- <strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
     K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
     enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
     <code>color</code>/<code>embedding</code> on point-cloud bodies above. Not a named property (no min/max,
-    similarity-colored), so it stays a separate top-level field.</li>
-</ul>
+    similarity-colored), so it stays a separate top-level field.</p>
 </li>
 </ul>
 <h2 id="states-dynamic-data">States (Dynamic Data)</h2>

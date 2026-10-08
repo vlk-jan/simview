@@ -1346,8 +1346,9 @@ happen:</p>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>            <span class="n">live</span><span class="o">.</span><span class="n">push_state</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
 </span></code></pre></div>
 <p>Connected viewers update immediately; a viewer that connects later picks the
-boundaries up with the model. Like <code>push_state</code>, <code>mark_episode</code> never blocks
-your loop on the network.</p>
+boundaries up with the model (boundaries older than its catch-up window simply
+fall before the start of its timeline). Like <code>push_state</code>, <code>mark_episode</code>
+never blocks your loop on the network.</p>
 <h2 id="merging">Merging</h2>
 <p>Episode boundaries are indices into one specific timeline. Since
 <a href="../cli/#comparing-multiple-runs-eg-real-world-vs-simulated">merging</a> resamples every file onto the <em>first</em>

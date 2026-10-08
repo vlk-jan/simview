@@ -840,6 +840,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#simview.scene.SimulationScene.create_polyline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create_polyline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.scene.SimulationScene.create_terrain" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -877,6 +888,17 @@
     <span class="md-ellipsis">
       
         mark_episode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simview.scene.SimulationScene.reconcile_available_attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reconcile_available_attributes
       
     </span>
   </a>
@@ -1470,6 +1492,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#simview.scene.SimulationScene.create_polyline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create_polyline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.scene.SimulationScene.create_terrain" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1507,6 +1540,17 @@
     <span class="md-ellipsis">
       
         mark_episode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#simview.scene.SimulationScene.reconcile_available_attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        reconcile_available_attributes
       
     </span>
   </a>
@@ -1665,7 +1709,7 @@ saves/loads JSON or launches a viewer. <code>SimulationScene.show()</code> retur
 <div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">SimulationScene</span><span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">scalar_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">dt</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">dt</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">collapse</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">terrain</span><span class="p">:</span> <span class="n">SimViewTerrain</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">bodies</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">SimViewBody</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1868,8 +1912,9 @@ already exist in the model.</p>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">color</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">opacity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">visible</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">visible_ranges</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1878,7 +1923,9 @@ already exist in the model.</p>
 <p><code>color</code> (RGB in [0, 1]) and <code>opacity</code> (in (0, 1]) style the
 mesh/primitive representation (box/sphere/cylinder/mesh); a point
 cloud's per-point colour is its shape's own <code>color</code>. <code>visible=False</code>
-hides the body initially.</p>
+hides the body initially. <code>visible_ranges</code> is an optional list of
+<code>[t_from, t_to]</code> pairs (seconds on the states timeline); the viewer
+hides the body outside them.</p>
 <p><code>parent</code>/<code>local_transform</code> attach this body to another body already
 in the model, instead of it moving in world space:</p>
 <ul>
@@ -2009,6 +2056,42 @@ viewer's click-to-similarity color mode.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="simview.scene.SimulationScene.create_polyline" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">create_polyline</span>
+
+
+</h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">create_polyline</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">points</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">*</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">frames</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">color</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">width</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">dashed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">visible_ranges</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Adds a world-space polyline to the model.</p>
+<p><code>points</code> <code>(N, 3)</code> draws a fixed line (a planned route). <code>frames</code>
+<code>(T, B, max_vertices, 3)</code> -- or <code>(T, max_vertices, 3)</code> when
+<code>batch_size == 1</code> -- draws a different line every state (a
+replanned local path); pad shorter frames with trailing NaN rows. T
+must equal the number of states by the time the scene is saved or
+shown. <code>width</code> is in pixels (the viewer currently draws 1 px);
+<code>visible_ranges</code> as in <code>create_body</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="simview.scene.SimulationScene.create_terrain" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">create_terrain</span>
 
@@ -2024,7 +2107,8 @@ viewer's click-to-similarity color mode.</p>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">property_bounds</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span>
 </span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">embedding_map</span><span class="p">:</span> <span class="n">Tensor</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">compute_normals</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2078,6 +2162,25 @@ normals are automatically computed from the heightmap gradients.</p>
           </tr>
           <tr class="doc-section-item">
             <td>
+                <code>compute_normals</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>With <code>normals=None</code>, <code>False</code> stores no normals
+at all (three floats per cell less on disk and over the wire); the
+viewer then shades the surface from normals it computes itself. The
+"normals" arrow visualization has nothing to draw in that case.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
                 <code>x_lim</code>
             </td>
             <td>
@@ -2117,8 +2220,9 @@ normals are automatically computed from the heightmap gradients.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Grid resolution. If x_lim and y_lim are omitted,
-they will be automatically inferred assuming the grid is centered at 0.</p>
+                <p>Spacing between adjacent grid nodes. If x_lim
+and y_lim are omitted they are inferred so the nodes sit <code>grid_res</code>
+apart, centered at 0 (a W-wide grid spans <code>(W - 1) * grid_res</code>).</p>
               </div>
             </td>
             <td>
@@ -2280,6 +2384,31 @@ frame will land at -- means::</p>
 <p>Pass <code>start_index</code> explicitly to annotate an already-recorded scene.
 Episode starts must be strictly increasing; a repeated or out-of-order
 index raises ValueError. Returns the created <code>SimViewEpisode</code>.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="simview.scene.SimulationScene.reconcile_available_attributes" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">reconcile_available_attributes</span>
+
+
+</h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">reconcile_available_attributes</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Set each body's <code>available_attributes</code> to the optional attributes
+its states actually carry (an attribute may be absent from earlier
+frames but present later). The viewer only builds contact markers and
+vector arrows for declared attributes, so <code>save()</code> and <code>show()</code> both
+call this before serializing the model. Unknown per-body keys (e.g.
+from a hand-edited file) are ignored with a warning.</p>
 
 
     </div>

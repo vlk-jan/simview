@@ -1185,14 +1185,146 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.1.2...HEAD">Unreleased</a></h2>
-<h2 id="612-2026-10-08"><a href="https://github.com/vlk-jan/simview/compare/v6.1.1...v6.1.2">6.1.2</a> - 2026-10-08</h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.2.0...HEAD">Unreleased</a></h2>
+<h2 id="620-2026-10-08"><a href="https://github.com/vlk-jan/simview/compare/v6.1.2...v6.2.0">6.2.0</a> - 2026-10-08</h2>
+<h3 id="added">Added</h3>
+<ul>
+<li>Polylines: <code>SimulationScene.create_polyline</code> / <code>model.polylines</code> draw a world-space
+  line from fixed <code>points</code> (a planned route) or from a per-frame <code>frames</code> blob with
+  NaN padding (a replanned local path), with colour, dashed style and a "Show Polylines"
+  toggle (<code>polylinesVisible</code> view-link flag and <code>viewerDefaults.ui</code> key).</li>
+<li>Time-ranged visibility: bodies, static objects and polylines accept
+  <code>visible_ranges=[[t_from, t_to], ...]</code> (<code>visibleRanges</code> in the JSON) and are hidden
+  while the playhead is outside every range.</li>
+<li>Live WebSocket <code>states</code> messages carry a <code>frameOffset</code> (absolute index of the first
+  frame in the message), so a viewer that connects after the catch-up buffer has
+  wrapped places episode boundaries correctly instead of shifting them by the dropped
+  frames.</li>
+<li><code>SimulationScene.reconcile_available_attributes()</code> (previously an internal step of
+  <code>save()</code>); <code>show()</code> and <code>LiveViewer</code> now call it too, so arrows and contact markers
+  for attributes that were never declared with <code>available_attributes</code> appear in the
+  live/<code>show()</code> viewer exactly as they do after save-then-view.</li>
+<li>The Batch Legend reports when a rename could not be persisted (no file to write to
+  under <code>show()</code>/<code>LiveViewer</code>/<code>render</code>, or the request failed) instead of silently
+  keeping the new name.</li>
+<li><code>/batch-names</code> answers <code>{"ok": true, "persisted": bool}</code>; the sidecar is keyed by the
+  batch selection (<code>file.json#1</code>) as well as the path.</li>
+<li><code>create_terrain(compute_normals=False)</code> stores no terrain normals (three floats per
+  cell less in the file and over the wire); <code>normals</code> is now optional in the JSON format,
+  <code>SimulationScene.load</code> and <code>merge_simulation_files</code> accept files without it, and the
+  viewer shades from normals it computes itself (the "normals" arrows have nothing to
+  draw then).</li>
+<li><code>play=1</code> startup hash key (<code>view_hash(play=True)</code>): start playing once the scene is
+  loaded, applied after <code>t</code>.</li>
+<li><code>viewerDefaults.panels.recording: false</code> and the <code>hide=&lt;panel,...&gt;</code> startup hash key
+  (<code>view_hash(hide=[...])</code>) hide the REC / format / screenshot controls (and their
+  <code>R</code>/<code>S</code> shortcuts) while keeping the rest of the playback bar; <code>hide=</code> takes any
+  <code>viewerDefaults.panels</code> name.</li>
+<li><code>simview static-viewer DIR</code> copies the viewer page (<code>index.html</code> + <code>static/</code>) to
+  <code>DIR</code>, so a site can host it as plain files next to <code>save_static()</code> bundles.</li>
+</ul>
 <h3 id="changed">Changed</h3>
+<ul>
+<li><code>SimViewModel.from_dict</code> no longer requires <code>dt</code>, <code>collapse</code> or <code>staticObjects</code>
+  (matching the viewer and the format doc); a wrong-length <code>batchNames</code> is warned
+  about and dropped instead of rejected.</li>
+<li><code>create_terrain</code> auto-computed normals use the real node spacing <code>extent / (W - 1)</code>
+  (they were tilted by <code>W / (W - 1)</code>), and <code>grid_res</code> now means the distance between
+  adjacent nodes, so the extent is <code>(W - 1) * grid_res</code>.</li>
+<li><code>merge_simulation_files</code> keeps each input's own <code>batchNames</code> for its selected
+  batches (file stem only as a fallback) and carries the first file's <code>viewerDefaults</code>.</li>
+<li>The terrain surface is shaded with the file's per-vertex <code>normals</code> (recomputed when
+  absent) instead of flat <code>(0, 0, 1)</code> normals, so slopes get a lighting cue.</li>
+<li>Video recording stops after exactly one loop of content at any playback speed.</li>
+<li>A view-link hash change only pauses playback when it carries <code>t</code>.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><code>save()</code> wrote <code>availableAttributes</code> in <code>set</code> order (hash-randomised per process),
+  so identical scenes saved in two processes could fail to merge with "defines
+  different bodies"; the order is now the attribute declaration order.</li>
+<li><code>save_static</code> externalised the per-frame <code>__b64__</code> fields of a legacy-layout scene
+  into <code>/blob/</code> files the viewer never fetches, leaving every body at a NaN pose.</li>
+<li>Every <code>/static/*</code> asset returned 500 when the package was installed through a
+  symlinked path (HPC homes, macOS <code>/tmp</code>, symlinked venvs).</li>
+<li>Live broadcast raised "Set changed size during iteration" and dropped the frame for
+  the remaining clients whenever a tab connected or disconnected mid-send.</li>
+<li><code>simview --host ::1</code> (any IPv6 host) failed with "No free port found".</li>
+<li>The explicit <code>simview view FILE</code> form treated <code>view</code> as a file path.</li>
+<li>Playback assumed the timeline starts at <code>t = 0</code>: a recording whose first timestamp
+  is 100 s spent 100 s on frame 0 per loop and mapped the progress bar wrongly.</li>
+<li>The scalar chart froze at the catch-up chunk in live mode and warned "Invalid end
+  index" on every later frame.</li>
+<li>Episode aggregates threw <code>RangeError</code> for an episode longer than ~125k frames.</li>
+<li>A NaN cell in a terrain property (or diff) layer fired a blocking <code>alert()</code> from the
+  vendored colour-map library and aborted the recolour; non-finite cells are now drawn
+  neutral grey.</li>
+<li>Split screen in focused render mode showed a blank half until the active batch was
+  changed, because the split batches were never pinned visible.</li>
+<li>Terrain-profile curves and CSV shifted left after a frame with a non-finite position;
+  the gap is now plotted as a break.</li>
+<li><code>add_state</code> accepted per-batch rows that did not match <code>batch_size</code> (and a
+  position/orientation count mismatch silently dropped rows); both now raise.</li>
+<li><code>simview terrain --body</code> sampled parented bodies in parent-local coordinates and
+  could not find rigidly attached (<code>local_transform</code>) bodies at all.</li>
+<li>A 1-D <code>contacts</code> tensor in a single-batch scene was written flat instead of
+  per-batch, and merge then concatenated the index lists; an empty list raised.</li>
+<li><code>simview diff</code> reported 0° orientation error for a NaN pose and never tripped
+  <code>--fail-on-exceed</code> on NaN; stats are NaN-aware and NaN counts as exceeding.</li>
+<li>Merge: <code>null</code> property bounds crashed with <code>TypeError</code>, a singleton-vs-batched
+  static object crashed with <code>KeyError</code>, a flat plain <code>heightData</code> list was rejected,
+  and a non-monotonic <code>time</code> list resampled silently wrong (now a clear error).</li>
+<li><code>simview info</code> claimed a legacy file was columnar-repackable when its blob widths
+  were wrong, crashed on a non-columnar <code>states</code> dict, and suggested gzip for an
+  already-gzipped file; <code>--save-merged</code> into a missing directory now creates it.</li>
+<li>An <code>--area</code> box lying inside a single terrain cell was rejected as non-overlapping.</li>
+<li><code>view_hash</code> now matches the viewer's serialiser byte for byte for non-finite and
+  very large numbers and for <code>!'()*</code> in names, and the sync test parses the key order
+  out of <code>viewState.js</code> so drift is caught.</li>
+<li>Model validation: primitive shape parameters must be present and positive, terrain
+  normal/property/embedding grids must match the heightmap, static objects loaded via
+  <code>from_dict</code> are checked for duplicate names and <code>shapes</code> length, episode
+  <code>start_index</code> past the last frame is rejected at save time, and unknown keys in a
+  loaded state body are ignored with a warning instead of raising.</li>
+<li>Server: blobs registered before a columnar bail-out were kept in memory for the
+  server's lifetime; a ragged per-frame row crashed load instead of falling back to the
+  legacy layout; a blob whose byte length is not a multiple of 4 raised <code>struct.error</code>
+  instead of <code>ValueError</code>; <code>bytes=5-3</code> answered 416 instead of ignoring the header;
+  the batch-names fingerprint was taken at rename time instead of load time;
+  <code>extract_blobs</code> rewrote <code>metadata</code>/<code>batchNames</code> strings starting with <code>__b64__</code>;
+  <code>ViewerHandle</code> left its server thread running after a startup timeout; a stalled
+  live broadcast was not cancelled on timeout; <code>SimViewServer(sim_path=[a, b])</code>
+  without <code>data=</code> silently served only <code>a</code>.</li>
+<li><code>ssh://-oProxyCommand=...</code> and <code>[-o...]:path</code> host forms reached <code>ssh</code> as options;
+  a host starting with <code>-</code> is now rejected in every spec form.</li>
+<li>Viewer: <code>model.collapse</code> is honoured (it was written by Python and read by nobody);
+  a <code>tcm=</code> colour mode the scene lacks no longer throws inside the legend and aborts
+  the rest of the view state; the legend and surface agree on a <code>min == max</code> range;
+  per-batch nested <code>embeddingData</code> lists are accepted; a frame without <code>contacts</code>
+  clears the previous frame's markers; contact markers, point arrays and trails are no
+  longer drawn for hidden batches; probe/similarity clicks no longer hit hidden
+  batches or fire through UI panels; Shift+Arrow no longer also rotates the camera;
+  a NaN vector hides its arrow instead of reaching <code>ArrowHelper</code>; the REC button no
+  longer sticks on STOP when recording cannot start; a negative or zero speed is
+  rejected; a paused scrub into a not-yet-fetched field window re-renders when it
+  lands; the live "waiting for first state" splash stays until the first frame; a
+  missing terrain reports "Terrain data is missing" instead of a <code>TypeError</code>.</li>
+<li>Viewer data checks: columnar blobs are validated against <code>T * B * width</code> and known
+  field names, a partial trailing row throws like Python does, a window fetch requires
+  a 206 response, non-monotonic times are warned about once, and interpolation keeps
+  extra rows from whichever side is longer.</li>
+<li>Error metrics with a NaN frame plot a gap and print "-" instead of NaN scales;
+  recomputation is coalesced to one pass per animation frame while the panel is open.</li>
+<li><code>SimView.destroy()</code> now disposes the scene's resize/keyboard listeners and
+  OrbitControls; terrain and static-object disposal release their GPU resources.</li>
+</ul>
+<h2 id="612-2026-10-08"><a href="https://github.com/vlk-jan/simview/compare/v6.1.1...v6.1.2">6.1.2</a> - 2026-10-08</h2>
+<h3 id="changed_1">Changed</h3>
 <ul>
 <li>The scalar plotter draws each series over the whole timeline, with a vertical line
   at the current playback time, instead of only the part played so far.</li>
 </ul>
-<h3 id="fixed">Fixed</h3>
+<h3 id="fixed_1">Fixed</h3>
 <ul>
 <li>A scalar series with NaN samples (gaps in its source) no longer plots as an empty
   chart: the y range is taken over finite values and the gaps are drawn as breaks.</li>
@@ -1201,7 +1333,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   offset between the two batches' cells, and body tracking re-centres on a batch switch.</li>
 </ul>
 <h2 id="611-2026-10-06"><a href="https://github.com/vlk-jan/simview/compare/v6.1.0...v6.1.1">6.1.1</a> - 2026-10-06</h2>
-<h3 id="added">Added</h3>
+<h3 id="added_1">Added</h3>
 <ul>
 <li>The view link (and <code>getViewState()</code>/<code>setViewState()</code>, <code>view_hash(...)</code>) now also
   carries point-cloud visibility (<code>pc</code>), the tracked body (<code>track</code>), the terrain colour
@@ -1209,14 +1341,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   setup from one page load to the next. They are named keys, not flag bits: an absent
   key leaves the viewer's current setting alone, and old <code>v=1</code> links decode unchanged.</li>
 </ul>
-<h3 id="fixed_1">Fixed</h3>
+<h3 id="fixed_2">Fixed</h3>
 <ul>
 <li><code>AnimationController.setSpeed()</code> keeps the playback bar's speed dropdown in sync.</li>
 <li>The scalar plotter no longer warns "Invalid end index" while the Analysis panel is
   opened before the states have loaded.</li>
 </ul>
 <h2 id="610-2026-10-06"><a href="https://github.com/vlk-jan/simview/compare/v6.0.1...v6.1.0">6.1.0</a> - 2026-10-06</h2>
-<h3 id="added_1">Added</h3>
+<h3 id="added_2">Added</h3>
 <ul>
 <li><strong>The viewer can be embedded in other applications</strong> -- see the new
   <a href="docs/usage/embedding.md">Embedding</a> guide. The URL hash is now live: changing it
@@ -1243,7 +1375,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   toggles such as <code>pointCloudsVisible</code>, open or closed options folders, the Body
   States window, and whole panels hidden -- stored as <code>viewerDefaults</code> in the model.</li>
 </ul>
-<h3 id="fixed_2">Fixed</h3>
+<h3 id="fixed_3">Fixed</h3>
 <ul>
 <li>Keyboard shortcuts (playback, visualization toggles, terrain probe) no longer fire
   while typing in a text input, textarea, select or contentEditable element, and the
@@ -1267,7 +1399,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   catch-up replays at most the most recent 10,000 frames.</li>
 </ul>
 <h2 id="601-2026-10-05"><a href="https://github.com/vlk-jan/simview/compare/v6.0.0...v6.0.1">6.0.1</a> - 2026-10-05</h2>
-<h3 id="fixed_3">Fixed</h3>
+<h3 id="fixed_4">Fixed</h3>
 <ul>
 <li><strong>The 3D view now resizes with the browser window.</strong> The canvas kept the size it
   had when the page loaded while the panels and charts reflowed, so after a resize
@@ -1301,7 +1433,7 @@ redundant Python authoring entry points were removed, listed below.</p>
 <li><strong>The 71 matplotlib colormaps the viewer never offered</strong> from <code>js-colormaps.js</code>.
   Every map in the colormap dropdown is unchanged.</li>
 </ul>
-<h3 id="changed_1">Changed</h3>
+<h3 id="changed_2">Changed</h3>
 <ul>
 <li><strong><code>ViewerHandle</code> is now the background server itself</strong> (<code>simview.server.ViewerHandle</code>).
   <code>scene.show()</code>, <code>LiveViewer</code> and <code>simview render</code> share it instead of three
@@ -1315,7 +1447,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   <code>&lt;details&gt;</code>. Collapsed, Body states and Analysis now have the same height and
   centring.</li>
 </ul>
-<h3 id="fixed_4">Fixed</h3>
+<h3 id="fixed_5">Fixed</h3>
 <ul>
 <li><strong>Keyboard shortcuts no longer cancel themselves out after a model reload.</strong> The
   controls' keydown listener was never removed, so each reload added another and
@@ -1333,7 +1465,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   <code>URLSearchParams</code>, and existing share links still work.</li>
 </ul>
 <h2 id="511-2026-10-01"><a href="https://github.com/vlk-jan/simview/compare/v5.1.0...v5.1.1">5.1.1</a> - 2026-10-01</h2>
-<h3 id="fixed_5">Fixed</h3>
+<h3 id="fixed_6">Fixed</h3>
 <ul>
 <li><strong>SimView's button and select styles no longer leak into pages that embed the
   viewer.</strong> 5.1.0 styled every <code>button</code> and <code>select</code> on the page, including a
@@ -1344,13 +1476,13 @@ redundant Python authoring entry points were removed, listed below.</p>
 <li>The docs and demo deploys no longer fail when two pushes land close together.</li>
 </ul>
 <h2 id="510-2026-10-01"><a href="https://github.com/vlk-jan/simview/compare/v5.0.0...v5.1.0">5.1.0</a> - 2026-10-01</h2>
-<h3 id="added_2">Added</h3>
+<h3 id="added_3">Added</h3>
 <ul>
 <li><strong><code>C</code> toggles Show Point Clouds</strong> in scenes that have point clouds but no
   contacts (contacts keep the key when present); the label reads "Show Point
   Clouds (C)" when the key applies.</li>
 </ul>
-<h3 id="changed_2">Changed</h3>
+<h3 id="changed_3">Changed</h3>
 <ul>
 <li><strong>Viewer UI restyled in Catppuccin Mocha.</strong> Every panel (Analysis, Body states,
   Batches, legends, playback bar, and now the lil-gui Controls panel, which floats
@@ -1368,7 +1500,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   between them.</li>
 <li>The live demo shows a new scene: GT vs prediction on helhest sample 774.</li>
 </ul>
-<h3 id="fixed_6">Fixed</h3>
+<h3 id="fixed_7">Fixed</h3>
 <ul>
 <li><strong>Stateless point clouds no longer show up as trackable bodies.</strong> A point cloud
   with no per-frame states (a static prop) is now left out of the Analysis tab's
@@ -1407,7 +1539,7 @@ versa, and authoring code needs no edits.</p>
   in plain <code>torch</code>, which <code>model.py</code> already requires. If your own code imports
   <code>einops</code> while relying on <code>simview[authoring]</code> to install it, declare it yourself.</li>
 </ul>
-<h3 id="changed_3">Changed</h3>
+<h3 id="changed_4">Changed</h3>
 <ul>
 <li><strong>The CLI now uses real argparse subcommands.</strong> Every documented invocation is
   unchanged — <code>simview info &lt;file&gt;</code>, <code>simview diff &lt;file&gt; --batches 0 1</code>,
@@ -1441,13 +1573,13 @@ versa, and authoring code needs no edits.</p>
   three.js defaults or overwrote an OrbitControls method with a boolean).</li>
 </ul>
 <h2 id="421-2026-09-02"><a href="https://github.com/vlk-jan/simview/compare/v4.2.0...v4.2.1">4.2.1</a> - 2026-09-02</h2>
-<h3 id="added_3">Added</h3>
+<h3 id="added_4">Added</h3>
 <ul>
 <li><strong>"Show Point Clouds" toggle</strong> in Body Options, for scenes that contain point-cloud
   bodies. Point clouds are no longer governed by Body Visualization Mode (see below),
   so this is how they are hidden and shown.</li>
 </ul>
-<h3 id="fixed_7">Fixed</h3>
+<h3 id="fixed_8">Fixed</h3>
 <ul>
 <li><strong>Mesh bodies no longer disappear once a run travels away from where it started.</strong>
   Bodies are drawn as instanced meshes positioned per instance, and THREE caches an
@@ -1476,7 +1608,7 @@ versa, and authoring code needs no edits.</p>
   longer clip away, and the whole scene can be framed.</li>
 </ul>
 <h2 id="420-2026-08-31"><a href="https://github.com/vlk-jan/simview/compare/v4.1.0...v4.2.0">4.2.0</a> - 2026-08-31</h2>
-<h3 id="added_4">Added</h3>
+<h3 id="added_5">Added</h3>
 <ul>
 <li><strong>Merging a subset of a file's batches.</strong> Append <code>#&lt;batches&gt;</code> to any input file to
   contribute only some of its batches to the merged scene, e.g.
@@ -1496,13 +1628,13 @@ versa, and authoring code needs no edits.</p>
 <li>Each Error Metrics readout is prefixed with a swatch in its plot series color, so the
   readout doubles as a legend for the curves below it.</li>
 </ul>
-<h3 id="fixed_8">Fixed</h3>
+<h3 id="fixed_9">Fixed</h3>
 <ul>
 <li>Nested fields in the Scene Info panel now start collapsed. A scene with rich metadata
   used to expand every nested key at once, burying the top-level entries.</li>
 </ul>
 <h2 id="410-2026-08-19"><a href="https://github.com/vlk-jan/simview/compare/v4.0.0...v4.1.0">4.1.0</a> - 2026-08-19</h2>
-<h3 id="added_5">Added</h3>
+<h3 id="added_6">Added</h3>
 <ul>
 <li><strong>Remote scene files.</strong> Anywhere the CLI takes an input file (view, <code>info</code>, <code>diff</code>,
   <code>terrain</code>, <code>render</code>, and multi-file merges) it now also accepts an scp-style
@@ -1536,7 +1668,7 @@ versa, and authoring code needs no edits.</p>
   resident, since trails, error metrics, the terrain profile and the scalar plots all
   walk the entire trajectory.</li>
 </ul>
-<h3 id="changed_4">Changed</h3>
+<h3 id="changed_5">Changed</h3>
 <ul>
 <li><code>SimulationScene.save()</code> writes columnar <code>states</code> by default. Files stay readable
   by <code>load</code>, <code>merge_simulation_files</code>, <code>simview info</code>/<code>diff</code>/<code>terrain</code> and the viewer
@@ -1548,7 +1680,7 @@ versa, and authoring code needs no edits.</p>
   length, so files written by older versions (which broadcast the singleton) keep
   working; a mixed terrain still broadcasts its shared fields.</li>
 </ul>
-<h3 id="fixed_9">Fixed</h3>
+<h3 id="fixed_10">Fixed</h3>
 <ul>
 <li><code>LiveViewer.push_state</code> no longer blocks the simulation loop on a slow or hung viewer
   tab (up to 5 s per frame before). Frames go through a bounded queue drained by a
@@ -1616,7 +1748,7 @@ versa, and authoring code needs no edits.</p>
 <li>The model JSON's long-superseded <code>batchSize</code> field (renamed to <code>simBatches</code> several
   releases ago) is no longer read as a fallback.</li>
 </ul>
-<h3 id="added_6">Added</h3>
+<h3 id="added_7">Added</h3>
 <ul>
 <li>Terrain scalar properties (friction, stiffness, or any other per-cell field) are
   now a fully generic, arbitrarily-named mechanism end to end — Python
@@ -1631,7 +1763,7 @@ versa, and authoring code needs no edits.</p>
   location, computed client-side — a new "similarity" Point Color Mode for point
   clouds and "features" terrain color mode, both with a matching colormap legend.</li>
 </ul>
-<h3 id="fixed_10">Fixed</h3>
+<h3 id="fixed_11">Fixed</h3>
 <ul>
 <li>Clicking now only recolors a point cloud/terrain by similarity when the matching
   mode is already selected from its dropdown; otherwise it's an ordinary selection,
@@ -1642,7 +1774,7 @@ versa, and authoring code needs no edits.</p>
 <li>"Scene Info" now shows full metadata keys/values instead of truncating them.</li>
 </ul>
 <h2 id="36-2026-07-29"><a href="https://github.com/vlk-jan/simview/compare/v3.5...v3.6">3.6</a> - 2026-07-29</h2>
-<h3 id="added_7">Added</h3>
+<h3 id="added_8">Added</h3>
 <ul>
 <li><code>SimulationScene</code>/<code>SimViewModel</code> now accept an optional free-form <code>metadata</code>
   dict (e.g. engine name, checkpoint path, git commit, CLI args) carried
@@ -1671,7 +1803,7 @@ versa, and authoring code needs no edits.</p>
   distinct from the usage/parse-error exit 1, so scripts and CI can use an
   exported scene as a regression tripwire.</li>
 </ul>
-<h3 id="fixed_11">Fixed</h3>
+<h3 id="fixed_12">Fixed</h3>
 <ul>
 <li>Focusing a batch while a Scalars plot was open threw
   <code>s.stroke is not a function</code> on the next redraw (uPlot expects
@@ -1679,7 +1811,7 @@ versa, and authoring code needs no edits.</p>
   with a color string).</li>
 </ul>
 <h2 id="35-2026-07-28"><a href="https://github.com/vlk-jan/simview/compare/v3.4...v3.5">3.5</a> - 2026-07-28</h2>
-<h3 id="added_8">Added</h3>
+<h3 id="added_9">Added</h3>
 <ul>
 <li><code>simview render &lt;file&gt; --output frame.png</code>: headless PNG screenshot via a
   real (headless) browser driving a real <code>SimViewServer</code> instance, with
@@ -1700,14 +1832,14 @@ versa, and authoring code needs no edits.</p>
   developer guide, published to GitHub Pages. <code>README.md</code> is trimmed to a
   landing page that links to it.</li>
 </ul>
-<h3 id="changed_5">Changed</h3>
+<h3 id="changed_6">Changed</h3>
 <ul>
 <li>The Error Metrics panel auto-selects a sensible Batch A/B default from
   batch names (e.g. ground-truth vs. post-adaptation) instead of always
   defaulting to indices 0/1, falling back to 0/1 when no batch name matches.</li>
 </ul>
 <h2 id="34-2026-07-27"><a href="https://github.com/vlk-jan/simview/compare/v3.3...v3.4">3.4</a> - 2026-07-27</h2>
-<h3 id="added_9">Added</h3>
+<h3 id="added_10">Added</h3>
 <ul>
 <li><code>simview info &lt;file&gt;</code>: a structural summary of a scene JSON (model/terrain/
   body/state breakdown, columnar-repack eligibility, consistency warnings) in
@@ -1722,18 +1854,18 @@ versa, and authoring code needs no edits.</p>
 <li><code>--csv</code> output for <code>simview diff</code> and <code>simview terrain</code>, alongside the
   existing <code>--json</code>.</li>
 </ul>
-<h3 id="changed_6">Changed</h3>
+<h3 id="changed_7">Changed</h3>
 <ul>
 <li>Only emit uvicorn's access log when running in debug mode.</li>
 </ul>
 <h2 id="33-2026-07-17"><a href="https://github.com/vlk-jan/simview/compare/v3.2...v3.3">3.3</a> - 2026-07-17</h2>
-<h3 id="added_10">Added</h3>
+<h3 id="added_11">Added</h3>
 <ul>
 <li>Expose the installed package version as <code>simview.__version__</code>.</li>
 <li>Test against Python 3.14 in CI and advertise it in the package classifiers.</li>
 <li>Dependabot configuration for GitHub Actions, npm, and Python dependencies.</li>
 </ul>
-<h3 id="changed_7">Changed</h3>
+<h3 id="changed_8">Changed</h3>
 <ul>
 <li>Bump the PyPI development-status classifier to <code>5 - Production/Stable</code>.</li>
 <li>Use uvicorn's modern sansio websocket implementation for the live server when
@@ -1745,26 +1877,26 @@ versa, and authoring code needs no edits.</p>
 <li>Unused <code>collapsedMode</code>/<code>focusedMode</code> placeholder flags from <code>BatchManager</code>.</li>
 </ul>
 <h2 id="32-2026-07-15"><a href="https://github.com/vlk-jan/simview/compare/v3.1...v3.2">3.2</a> - 2026-07-15</h2>
-<h3 id="added_11">Added</h3>
+<h3 id="added_12">Added</h3>
 <ul>
 <li>Shareable view links: the current camera/playback state is encoded in the URL
   hash so a view can be restored or handed off.</li>
 <li>Single-frame PNG screenshot export.</li>
 </ul>
-<h3 id="changed_8">Changed</h3>
+<h3 id="changed_9">Changed</h3>
 <ul>
 <li>Prepare packaging for PyPI publishing (metadata, build, publish workflow).</li>
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
   covered by an e2e test.</li>
 </ul>
-<h3 id="fixed_12">Fixed</h3>
+<h3 id="fixed_13">Fixed</h3>
 <ul>
 <li>Unblock CI: guard the optional <code>numpy</code> import and add <code>--no-launch</code> to
   <code>example.py</code>.</li>
 <li>Plot visualization fixes.</li>
 </ul>
 <h2 id="31-2026-07-14"><a href="https://github.com/vlk-jan/simview/compare/v3.0...v3.1">3.1</a> - 2026-07-14</h2>
-<h3 id="added_12">Added</h3>
+<h3 id="added_13">Added</h3>
 <ul>
 <li>Live streaming mode: <code>LiveViewer</code> pushes states to connected browser tabs over
   WebSocket as a simulation runs.</li>
@@ -1772,14 +1904,14 @@ versa, and authoring code needs no edits.</p>
 <li>Smooth interpolated playback (position lerp + quaternion slerp) with a toggle.</li>
 <li>Error-metric summary stats and CSV export in the analysis panel.</li>
 </ul>
-<h3 id="changed_9">Changed</h3>
+<h3 id="changed_10">Changed</h3>
 <ul>
 <li>Vendor three.js and chroma-js locally so the viewer works fully offline.</li>
 <li>Serve states as per-body whole-trajectory binary columns ("v4" columnar
   repack), backed by a <code>Float32Array</code> <code>StateStore</code>, for much cheaper playback of
   long recordings.</li>
 </ul>
-<h3 id="fixed_13">Fixed</h3>
+<h3 id="fixed_14">Fixed</h3>
 <ul>
 <li>Binary-search seek for non-uniform timelines, parallel blob fetches, and
   versioned immutable blob URLs.</li>
