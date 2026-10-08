@@ -757,8 +757,11 @@ export class SimView {
                         const currentBodyPos = new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z);
                         
                         try {
-                            if (this._lastTrackedBody !== this.uiState.trackBody) {
-                                // On first tracking or switch, center the target on the body, preserving the viewing angle
+                            if (
+                                this._lastTrackedBody !== this.uiState.trackBody ||
+                                this._lastTrackedBatch !== activeBatch
+                            ) {
+                                // On first tracking or a body/batch switch, center the target on the body, preserving the viewing angle
                                 const delta = currentBodyPos.clone().sub(this.scene.controls.target);
                                 this.scene.camera.position.add(delta);
                                 this.scene.controls.target.copy(currentBodyPos);
@@ -779,11 +782,13 @@ export class SimView {
                         }
                         
                         this._lastTrackedBody = this.uiState.trackBody;
+                        this._lastTrackedBatch = activeBatch;
                         this._lastTrackedPosition = currentBodyPos.clone();
                     }
                 }
             } else {
                 this._lastTrackedBody = null;
+                this._lastTrackedBatch = null;
                 this._lastTrackedPosition = null;
             }
             this.scene.animate(now);

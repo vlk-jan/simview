@@ -20,6 +20,21 @@ export function closestSeries(u, dataIdx, yVal) {
     return best;
 }
 
+// [min, max] over the finite y of every batch's {x, y} points; [0, 1] when
+// there are none, so a chart never gets NaN/Infinity bounds.
+export function finiteBounds(seriesPerBatch) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const batchSeries of seriesPerBatch) {
+        for (const { y } of batchSeries) {
+            if (!Number.isFinite(y)) continue;
+            if (y < min) min = y;
+            if (y > max) max = y;
+        }
+    }
+    return min <= max ? [min, max] : [0, 1];
+}
+
 // CSV with a time column, then one column per batch (named after the batch's
 // display name); `seriesPerBatch[b][i]` is an {x, y} point or missing.
 export function batchColumnsCsv(batchManager, times, seriesPerBatch) {
