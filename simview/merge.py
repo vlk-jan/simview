@@ -292,7 +292,8 @@ def _validate_doc(doc: dict, label: str) -> None:
     _require(doc, "model.terrain.dimensions", dict, label)
     _require(doc, "model.terrain.bounds", dict, label)
     _require(doc, "model.terrain.heightData", (list, str), label)
-    _require(doc, "model.terrain.normals", (list, str), label)
+    if doc["model"]["terrain"].get("normals") is not None:
+        _require(doc, "model.terrain.normals", (list, str), label)
     _require(doc, "states", list, label)
     if not doc["states"]:
         raise ValueError(f"'{label}' has no states")
@@ -425,6 +426,8 @@ def _merge_static_objects(
     for idx, name in enumerate(names):
         is_singleton = first[idx]["isSingleton"]
         entry = {"name": name, "isSingleton": is_singleton}
+        if first[idx].get("visibleRanges") is not None:
+            entry["visibleRanges"] = first[idx]["visibleRanges"]
         if is_singleton:
             shape = first[idx]["shape"]
             for model, label in zip(models[1:], labels[1:]):
@@ -625,7 +628,8 @@ def _merge_terrain(
             )
 
         height_data.append(expand(terrain["heightData"], "heightData"))
-        normals.append(expand(terrain["normals"], "normals"))
+        if terrain.get("normals") is not None:
+            normals.append(expand(terrain["normals"], "normals"))
         for name in kept_properties:
             property_data[name].append(
                 expand(terrain["properties"][name]["data"], name)
@@ -646,7 +650,6 @@ def _merge_terrain(
         },
         "isSingleton": False,
         "heightData": _concat_lists_or_b64(height_data),
-        "normals": _concat_lists_or_b64(normals, vector_width=3),
         "properties": {
             name: {
                 "data": _concat_lists_or_b64(property_data[name]),
@@ -656,6 +659,10 @@ def _merge_terrain(
             for name in kept_properties
         },
     }
+    # Normals are optional (create_terrain(compute_normals=False)); the viewer
+    # computes its own, so one input without them makes the merge go without.
+    if len(normals) == len(terrains):
+        merged["normals"] = _concat_lists_or_b64(normals, vector_width=3)
     embedding = _merge_embedding(models, batch_sizes, labels, resolution, selections)
     if embedding is not None:
         merged["embeddingData"] = embedding
@@ -845,6 +852,17 @@ def merge_simulation_files(
         models, batch_sizes, labels, batch_selections
     )
     terrain = _merge_terrain(models, batch_sizes, labels, batch_selections)
+    # Polylines are model-level (a per-frame blob is laid out per the first
+    # file's batch count), so they only pass through unchanged when nothing
+    # about the batch layout changes.
+    polylines = models[0].get("polylines") or []
+    if polylines and (
+        len(models) > 1 or any(sel is not None for sel in batch_selections)
+    ):
+        raise ValueError(
+            f"'{labels[0]}' has polylines, which cannot be merged across files "
+            "or batch selections; drop them before merging."
+        )
     merged_states = _merge_states(
         states_list, batch_sizes, bodies, scalar_names, labels, batch_selections
     )
@@ -884,6 +902,8 @@ def merge_simulation_files(
     # only one file's can apply: the first's, like its timeline and episodes.
     if models[0].get("viewerDefaults") is not None:
         merged_model["viewerDefaults"] = models[0]["viewerDefaults"]
+    if polylines:
+        merged_model["polylines"] = polylines
     for model, label in zip(models[1:], labels[1:]):
         if model.get("viewerDefaults") is not None:
             logger.warning(

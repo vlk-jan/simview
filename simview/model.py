@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from simview.columnar import inline_blob
+from simview.columnar import blob_bytes, inline_blob, is_blob
 
 logger = logging.getLogger("simview.model")
 
@@ -48,6 +48,27 @@ def _validated_property_bounds(name: str, bounds: Any) -> tuple[float, float]:
             f"got ({low}, {high})."
         )
     return low, high
+
+
+def _validated_visible_ranges(owner: str, ranges: Any) -> list[list[float]] | None:
+    """Validate an optional list of `[t_from, t_to]` pairs (seconds on the
+    states timeline, inclusive) outside which the viewer hides `owner`."""
+    if ranges is None:
+        return None
+    out = []
+    for r in ranges:
+        try:
+            lo, hi = float(r[0]), float(r[1])
+        except (TypeError, ValueError, IndexError):
+            raise ValueError(
+                f"'{owner}' visible_ranges entries must be [t_from, t_to] pairs; got {r!r}."
+            ) from None
+        if not (math.isfinite(lo) and math.isfinite(hi)) or lo > hi:
+            raise ValueError(
+                f"'{owner}' visible_ranges entry must satisfy finite t_from <= t_to; got {r!r}."
+            )
+        out.append([lo, hi])
+    return out
 
 
 class BodyShapeType(StrEnum):
@@ -112,7 +133,10 @@ class SimViewTerrain:
     # base64 blob string for compactness; `to_json`/`from_dict` pass them through
     # as-is either way.
     height_data: list[list[float]] | str
-    normals: list[list[list[float]]] | str
+    # None when the terrain was authored with `compute_normals=False`: the
+    # viewer then shades from normals it computes itself, and the file is
+    # smaller by three floats per cell.
+    normals: list[list[list[float]]] | str | None
     is_singleton: bool
     # Arbitrary named per-cell scalar fields (e.g. "friction", "stiffness", or
     # any other user-defined property), keyed by name -- see `TerrainProperty`.
@@ -130,7 +154,7 @@ class SimViewTerrain:
     embedding_data: list[list[float]] | str | None = None
 
     def to_json(self):
-        return {
+        r = {
             "dimensions": {
                 "sizeX": self.extent_x,
                 "sizeY": self.extent_y,
@@ -146,13 +170,15 @@ class SimViewTerrain:
                 "maxZ": self.max_z,
             },
             "heightData": self.height_data,
-            "normals": self.normals,
             "isSingleton": self.is_singleton,
             "properties": {
                 name: prop.to_json() for name, prop in self.properties.items()
             },
             "embeddingData": self.embedding_data,
         }
+        if self.normals is not None:
+            r["normals"] = self.normals
+        return r
 
     @classmethod
     def from_dict(cls, d: dict) -> "SimViewTerrain":
@@ -167,7 +193,6 @@ class SimViewTerrain:
             dimensions = d["dimensions"]
             bounds = d["bounds"]
             height_data = d["heightData"]
-            normals = d["normals"]
             is_singleton = d["isSingleton"]
         except KeyError as e:
             raise ValueError(f"Terrain dict is missing required key: {e}") from e
@@ -189,7 +214,7 @@ class SimViewTerrain:
             min_z=bounds["minZ"],
             max_z=bounds["maxZ"],
             height_data=height_data,
-            normals=normals,
+            normals=d.get("normals"),
             is_singleton=is_singleton,
             properties=properties,
             embedding_data=d.get("embeddingData"),
@@ -198,7 +223,7 @@ class SimViewTerrain:
     @staticmethod
     def create(
         heightmap: torch.Tensor,  # ! remember the x,y indexing is assumed to follow torch's "xy" convention, so increasing column index is increasing x coordinate
-        normals: torch.Tensor,
+        normals: torch.Tensor | None,
         x_lim: tuple[float, float],
         y_lim: tuple[float, float],
         is_singleton: bool,
@@ -210,17 +235,18 @@ class SimViewTerrain:
             raise ValueError(
                 f"Heightmap must include a batch dimension (ndim=3); got ndim={heightmap.ndim}."
             )
-        if normals.ndim != 4:
-            raise ValueError(
-                f"Normals must include a batch dimension (ndim=4); got ndim={normals.ndim}."
-            )
-        if normals.shape[1] != 3:
-            raise ValueError(
-                f"Normals must have 3 channels (shape[1] == 3); got shape={tuple(normals.shape)}."
-            )
+        if normals is not None:
+            if normals.ndim != 4:
+                raise ValueError(
+                    f"Normals must include a batch dimension (ndim=4); got ndim={normals.ndim}."
+                )
+            if normals.shape[1] != 3:
+                raise ValueError(
+                    f"Normals must have 3 channels (shape[1] == 3); got shape={tuple(normals.shape)}."
+                )
         B, Dy, Dx = heightmap.shape
         grids = {
-            "normals": tuple(normals.shape[2:]),
+            **({"normals": tuple(normals.shape[2:])} if normals is not None else {}),
             **{
                 f"property '{name}'": tuple(p.shape[1:])
                 for name, p in (properties or {}).items()
@@ -242,8 +268,10 @@ class SimViewTerrain:
         extent_x = max_x - min_x
         extent_y = max_y - min_y
         height_data_list = _encode_blob(heightmap.flatten(1).cpu().numpy())
-        normals_list = _encode_blob(
-            normals.permute(0, 2, 3, 1).flatten(1, 2).cpu().numpy()
+        normals_list = (
+            None
+            if normals is None
+            else _encode_blob(normals.permute(0, 2, 3, 1).flatten(1, 2).cpu().numpy())
         )
 
         property_bounds = property_bounds or {}
@@ -324,8 +352,11 @@ class SimViewBody:
     color: list[float] | None = None
     opacity: float | None = None
     visible: bool = True
+    # Optional `[t_from, t_to]` pairs (seconds); hidden outside them.
+    visible_ranges: list[list[float]] | None = None
 
     def __post_init__(self):
+        self.visible_ranges = _validated_visible_ranges(self.name, self.visible_ranges)
         if self.color is not None:
             if len(self.color) != 3 or not all(0.0 <= c <= 1.0 for c in self.color):
                 raise ValueError(
@@ -396,6 +427,7 @@ class SimViewBody:
         color: Any | None = None,
         opacity: float | None = None,
         visible: bool = True,
+        visible_ranges: list | None = None,
         **kwargs,
     ) -> "SimViewBody":
         shape_dict = SimViewBody._create_shape_dict(body_type, **kwargs)
@@ -411,6 +443,7 @@ class SimViewBody:
             color=[float(c) for c in color] if color is not None else None,
             opacity=opacity,
             visible=visible,
+            visible_ranges=visible_ranges,
         )
         if available_attributes is not None:
             body.set_available_attributes(available_attributes)
@@ -489,6 +522,8 @@ class SimViewBody:
             r["opacity"] = self.opacity
         if not self.visible:
             r["visible"] = False
+        if self.visible_ranges is not None:
+            r["visibleRanges"] = self.visible_ranges
         return r
 
     @classmethod
@@ -513,6 +548,7 @@ class SimViewBody:
             color=d.get("color"),
             opacity=d.get("opacity"),
             visible=d.get("visible", True),
+            visible_ranges=d.get("visibleRanges"),
         )
 
 
@@ -522,8 +558,10 @@ class SimViewStaticObject:
     is_singleton: bool
     shape: dict | None = None  # Used if is_singleton is True
     shapes: list[dict] | None = None  # Used if is_singleton is False
+    visible_ranges: list[list[float]] | None = None
 
     def __post_init__(self):
+        self.visible_ranges = _validated_visible_ranges(self.name, self.visible_ranges)
         if (self.shape is not None) != self.is_singleton:
             raise ValueError(
                 "A singleton static object needs 'shape'; a batched one must not."
@@ -535,16 +573,27 @@ class SimViewStaticObject:
 
     @staticmethod
     def create_singleton(
-        name: str, shape_type: BodyShapeType, **kwargs
+        name: str,
+        shape_type: BodyShapeType,
+        visible_ranges: list | None = None,
+        **kwargs,
     ) -> "SimViewStaticObject":
         shape_dict = SimViewBody._create_shape_dict(
             shape_type, **kwargs
         )  # Reuse helper
-        return SimViewStaticObject(name=name, is_singleton=True, shape=shape_dict)
+        return SimViewStaticObject(
+            name=name,
+            is_singleton=True,
+            shape=shape_dict,
+            visible_ranges=visible_ranges,
+        )
 
     @staticmethod
     def create_batched(
-        name: str, shape_type: BodyShapeType, shapes_kwargs: list[dict[str, Any]]
+        name: str,
+        shape_type: BodyShapeType,
+        shapes_kwargs: list[dict[str, Any]],
+        visible_ranges: list | None = None,
     ) -> "SimViewStaticObject":
         """
         Creates a batched static object where all instances share the same shape type.
@@ -570,7 +619,12 @@ class SimViewStaticObject:
             shapes_list.append(
                 SimViewBody._create_shape_dict(shape_type, **kwargs)
             )  # Reuse helper
-        return SimViewStaticObject(name=name, is_singleton=False, shapes=shapes_list)
+        return SimViewStaticObject(
+            name=name,
+            is_singleton=False,
+            shapes=shapes_list,
+            visible_ranges=visible_ranges,
+        )
 
     def to_json(self) -> dict:
         r = {"name": self.name, "isSingleton": self.is_singleton}
@@ -578,6 +632,8 @@ class SimViewStaticObject:
             r["shape"] = self.shape
         else:
             r["shapes"] = self.shapes
+        if self.visible_ranges is not None:
+            r["visibleRanges"] = self.visible_ranges
         return r
 
     @classmethod
@@ -593,6 +649,93 @@ class SimViewStaticObject:
             is_singleton=is_singleton,
             shape=d.get("shape"),
             shapes=d.get("shapes"),
+            visible_ranges=d.get("visibleRanges"),
+        )
+
+
+@dataclass
+class SimViewPolyline:
+    """A world-space polyline: a fixed `points` list (a route), and/or a
+    per-frame `frames` blob (a replanned local path) of shape
+    `(T, B, max_vertices, 3)` float32, trailing NaN rows padding each frame
+    up to `max_vertices`. Model-level by design (no new states field), so it
+    rides the generic blob machinery; not supported in live mode."""
+
+    name: str
+    points: str | list | None = None  # (N, 3) blob or nested list
+    color: list[float] = field(default_factory=lambda: [1.0, 1.0, 1.0])
+    width: float = 2.0
+    dashed: bool = False
+    frames: str | None = None  # (T, B, max_vertices, 3) blob
+    max_vertices: int | None = None
+    visible_ranges: list[list[float]] | None = None
+
+    def __post_init__(self):
+        if self.points is None and self.frames is None:
+            raise ValueError(f"Polyline '{self.name}' needs points and/or frames.")
+        if self.points is not None and not is_blob(self.points):
+            if len(self.points) < 2 or any(len(p) != 3 for p in self.points):
+                raise ValueError(
+                    f"Polyline '{self.name}' points must be at least 2 [x, y, z] rows."
+                )
+        if self.frames is not None and not (
+            isinstance(self.max_vertices, int) and self.max_vertices >= 2
+        ):
+            raise ValueError(
+                f"Polyline '{self.name}' frames need max_vertices >= 2; "
+                f"got {self.max_vertices!r}."
+            )
+        self.color = [float(c) for c in self.color]
+        if len(self.color) != 3 or not all(0.0 <= c <= 1.0 for c in self.color):
+            raise ValueError(
+                f"Polyline '{self.name}' color must be an RGB triple in [0, 1]; "
+                f"got {self.color!r}."
+            )
+        if not (isinstance(self.width, (int, float)) and self.width > 0):
+            raise ValueError(
+                f"Polyline '{self.name}' width must be > 0; got {self.width!r}."
+            )
+        self.visible_ranges = _validated_visible_ranges(self.name, self.visible_ranges)
+
+    def frame_count(self, batch_size: int) -> int | None:
+        """Number of frames in `frames` for `batch_size` batches (None if static)."""
+        if self.frames is None:
+            return None
+        per_frame = 4 * batch_size * self.max_vertices * 3  # type: ignore[operator]
+        return len(blob_bytes(self.frames)) // per_frame
+
+    def to_json(self) -> dict:
+        r: dict[str, Any] = {
+            "name": self.name,
+            "color": self.color,
+            "width": self.width,
+        }
+        if self.points is not None:
+            r["points"] = self.points
+        if self.dashed:
+            r["dashed"] = True
+        if self.frames is not None:
+            r["frames"] = self.frames
+            r["maxVertices"] = self.max_vertices
+        if self.visible_ranges is not None:
+            r["visibleRanges"] = self.visible_ranges
+        return r
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimViewPolyline":
+        try:
+            name = d["name"]
+        except KeyError as e:
+            raise ValueError(f"Polyline dict is missing required key: {e}") from e
+        return cls(
+            name=name,
+            points=d.get("points"),
+            color=d.get("color", [1.0, 1.0, 1.0]),
+            width=d.get("width", 2.0),
+            dashed=bool(d.get("dashed", False)),
+            frames=d.get("frames"),
+            max_vertices=d.get("maxVertices"),
+            visible_ranges=d.get("visibleRanges"),
         )
 
 
@@ -681,6 +824,7 @@ class SimViewModel:
     terrain: SimViewTerrain | None = None
     bodies: dict[str, SimViewBody] = field(default_factory=dict)
     static_objects: dict[str, SimViewStaticObject] = field(default_factory=dict)
+    polylines: dict[str, SimViewPolyline] = field(default_factory=dict)
     batch_names: list[str] | None = None
     # Free-form, JSON-serializable run provenance (engine name, checkpoint path,
     # git commit, CLI args, ...) with no meaning to the viewer itself -- just
@@ -735,6 +879,11 @@ class SimViewModel:
                 )
         self.static_objects[static_object.name] = static_object
 
+    def add_polyline(self, polyline: SimViewPolyline) -> None:
+        if polyline.name in self.polylines:
+            raise ValueError(f"Polyline {polyline.name} already exists")
+        self.polylines[polyline.name] = polyline
+
     def to_json(self) -> dict:
         if not self.bodies:
             logger.warning("No dynamic bodies defined in the model.")
@@ -749,6 +898,8 @@ class SimViewModel:
             "bodies": [b.to_json() for b in self.bodies.values()],
             "staticObjects": [s.to_json() for s in self.static_objects.values()],
         }
+        if self.polylines:
+            r["polylines"] = [p.to_json() for p in self.polylines.values()]
         if self.batch_names is not None:
             r["batchNames"] = self.batch_names
         if self.metadata is not None:
@@ -805,6 +956,8 @@ class SimViewModel:
         # shapes count are checked exactly as when authoring.
         for static_object_dict in d.get("staticObjects") or []:
             model.add_static_object(SimViewStaticObject.from_dict(static_object_dict))
+        for polyline_dict in d.get("polylines") or []:
+            model.add_polyline(SimViewPolyline.from_dict(polyline_dict))
         return model
 
     @property

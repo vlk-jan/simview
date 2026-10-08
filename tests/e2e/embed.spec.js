@@ -96,3 +96,20 @@ test("loads a static bundle from #data= with #ui=0 and follows hash changes", as
     // No "Invalid end index" (scalar plotter before the store) or other warnings.
     expect(warnings).toEqual([]);
 });
+
+test("play=1 starts playback after the view state is applied", async ({ page }) => {
+    await page.route("**/bundle/**", (route) => {
+        const rel = new URL(route.request().url()).pathname.replace(/^.*\/bundle\//, "");
+        route.fulfill({ path: join(bundleDir, rel) });
+    });
+    await page.goto("/#v=1&t=2&play=1&data=/bundle&ui=0");
+    await page.waitForSelector("#loading-splash", { state: "detached", timeout: 20_000 });
+
+    const ac = () => page.evaluate(() => window.simview.animationController.isPlaying);
+    expect(await ac()).toBe(true);
+    // `t=2` was honoured before play started: the index advances from there, not from 0.
+    const indexAt2 = await page.evaluate(() => window.simview.animationController.getStateIndexForTime(2));
+    await expect
+        .poll(() => page.evaluate(() => window.simview.animationController.getCurrentStateIndex()))
+        .toBeGreaterThan(indexAt2);
+});

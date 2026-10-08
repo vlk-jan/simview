@@ -24,6 +24,8 @@ export const UI_DEFAULT_CONFIG = {
     // way of drawing a body, it's the whole object), so they get their own
     // visibility toggle -- see Body#pointsVisible.
     pointCloudsVisible: true,
+    // Polylines (model.polylines) likewise have their own toggle.
+    polylinesVisible: true,
     axesVisible: false,
     trailsVisible: false,
     smoothInterpolation: true,

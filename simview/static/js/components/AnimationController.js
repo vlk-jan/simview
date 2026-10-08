@@ -1,4 +1,5 @@
 import { PlaybackControls } from "../ui/PlaybackControls.js";
+import { isVisibleAt } from "../utils/visibleRanges.js";
 import { resolveStateBodies } from "../utils/bodyTransforms.js";
 import { interpolateTransformRows, lerpVectorRows } from "../utils/interpolate.js";
 import { downloadBlob } from "../utils/csv.js";
@@ -451,9 +452,24 @@ export class AnimationController {
         } else {
             this.updateSceneSnapped();
         }
+        this.app.polylines?.forEach((p) => p.update(this.currentStateIndex));
+        this.applyTimeVisibility();
         if (this.app.scalarPlotter) {
             this.app.scalarPlotter.setEndIndex(this.currentStateIndex);
         }
+    }
+
+    // Time-ranged visibility (`visibleRanges` on bodies, static objects and
+    // polylines): evaluated on currentTime so it also works while
+    // interpolating between frames. Objects without ranges are left alone.
+    applyTimeVisibility() {
+        const t = this.currentTime;
+        const apply = (obj) => {
+            if (obj.visibleRanges) obj.setTimeVisible(isVisibleAt(obj.visibleRanges, t));
+        };
+        this.app.bodies?.forEach(apply);
+        this.app.staticObjects?.forEach(apply);
+        this.app.polylines?.forEach(apply);
     }
 
     // Exactly today's behavior: render the nearest recorded frame, no

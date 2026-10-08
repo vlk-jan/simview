@@ -15,6 +15,7 @@ export class StaticObject {
         this.batchSize = app.batchManager.simBatches;
         this.representations = { mesh: [], wireframe: [], points: [] }; // For visualization modes
         this.batchGroups = []; // Store batch groups
+        this.visibleRanges = objectData.visibleRanges ?? null;
 
         // Validate input data
         if (this.isSingleton) {
@@ -155,6 +156,10 @@ export class StaticObject {
                     this.app.uiState.bodyVisualizationMode === "points";
             });
         }
+    }
+
+    setTimeVisible(flag) {
+        this.group.visible = flag;
     }
 
     /** Update visualization mode (mesh, wireframe, points) */

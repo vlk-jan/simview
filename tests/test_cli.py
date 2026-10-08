@@ -1388,3 +1388,16 @@ def test_info_on_a_non_columnar_states_dict_reports_instead_of_tracebacking(
     monkeypatch.setattr(cli.sys, "argv", ["simview", "info", str(sim_file)])
     cli.main()
     assert "neither a per-frame array" in capsys.readouterr().out
+
+
+def test_static_viewer_copies_page_and_assets(monkeypatch, tmp_path):
+    out = tmp_path / "site" / "simview"
+    monkeypatch.setattr(cli.sys, "argv", ["simview", "static-viewer", str(out)])
+    cli.main()
+
+    index = (out / "index.html").read_text()
+    assert "./static/js/main.js" in index
+    assert (out / "static" / "js" / "main.js").is_file()
+    assert (out / "static" / "lib" / "three-0.174.0" / "three.module.js").is_file()
+    # Re-running over an existing directory is fine (dirs_exist_ok).
+    cli.main()

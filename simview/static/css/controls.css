@@ -373,6 +373,10 @@ body {
     justify-content: center;
     gap: 8px;
 }
+/* Wrapper only (hideable as a panel); its children stay row items. */
+.sv-playback-recording {
+    display: contents;
+}
 .sv-playback button,
 .sv-playback select {
     height: 26px;

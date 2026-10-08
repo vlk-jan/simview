@@ -28,6 +28,7 @@ const BOOLEAN_FLAG_KEYS = [
     "terrainVisualizationModes.surface",
     "terrainVisualizationModes.wireframe",
     "terrainVisualizationModes.normals",
+    "polylinesVisible",
 ];
 
 // Deliberately NOT in the list above: `pointCloudsVisible`. It defaults on,
@@ -195,10 +196,18 @@ export function toggleMapFromUiState(uiState) {
 }
 
 // Startup-only hash keys, independent of `v=1`: `data=<base url>` (static data
-// base) and `ui=0` (embedded mode, chrome hidden). Returns {data, ui} with
-// data null when absent and ui true unless explicitly "0".
+// base), `ui=0` (embedded mode, chrome hidden), `play=1` (start playing once
+// the scene is loaded) and `hide=<panel,...>` (panel names as in
+// viewerDefaults.panels, see utils/viewerDefaults.js). Returns {data, ui,
+// play, hide} with data null when absent, ui true unless explicitly "0", play
+// false unless explicitly "1", hide an array (empty when absent).
 export function parseStartupOptions(hash) {
-    if (typeof hash !== "string") return { data: null, ui: true };
+    if (typeof hash !== "string") return { data: null, ui: true, play: false, hide: [] };
     const params = new URLSearchParams(hash.replace(/^#/, ""));
-    return { data: params.get("data") || null, ui: params.get("ui") !== "0" };
+    return {
+        data: params.get("data") || null,
+        ui: params.get("ui") !== "0",
+        play: params.get("play") === "1",
+        hide: (params.get("hide") || "").split(",").filter(Boolean),
+    };
 }

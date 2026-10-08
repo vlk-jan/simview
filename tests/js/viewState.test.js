@@ -31,6 +31,7 @@ describe("serializeViewState / parseViewState round-trip", () => {
                 "terrainVisualizationModes.surface": true,
                 "terrainVisualizationModes.wireframe": false,
                 "terrainVisualizationModes.normals": true,
+                polylinesVisible: false,
             },
         };
 
@@ -80,6 +81,7 @@ describe("serializeViewState / parseViewState round-trip", () => {
                 wireframe: true,
                 normals: false,
             },
+            polylinesVisible: true,
         };
 
         const toggles = toggleMapFromUiState(uiState);
@@ -90,6 +92,8 @@ describe("serializeViewState / parseViewState round-trip", () => {
         expect(toggles.axesVisible).toBe(true);
         expect(toggles["attributeVisible.force"]).toBe(true);
         expect(toggles["terrainVisualizationModes.normals"]).toBe(false);
+        expect(toggles.polylinesVisible).toBe(true);
+        expect(parseViewState("#v=1&flags=4096").toggles.polylinesVisible).toBe(true);
     });
 
     it("keeps the hash format stable for existing links", () => {
@@ -213,15 +217,18 @@ describe("serializeViewState edge cases", () => {
 });
 
 describe("parseStartupOptions", () => {
-    it("reads data and ui with or without v=1", () => {
-        expect(parseStartupOptions("#ui=0&data=/x")).toEqual({ data: "/x", ui: false });
-        expect(parseStartupOptions("#v=1&t=2&ui=0&data=%2Fx")).toEqual({ data: "/x", ui: false });
+    it("reads data, ui, play and hide with or without v=1", () => {
+        expect(parseStartupOptions("#ui=0&data=/x")).toEqual({ data: "/x", ui: false, play: false, hide: [] });
+        expect(parseStartupOptions("#v=1&t=2&ui=0&data=%2Fx&play=1&hide=recording,legend")).toEqual({
+            data: "/x", ui: false, play: true, hide: ["recording", "legend"],
+        });
     });
     it("defaults when keys are missing or input is bad", () => {
-        expect(parseStartupOptions("#v=1&t=2")).toEqual({ data: null, ui: true });
-        expect(parseStartupOptions("")).toEqual({ data: null, ui: true });
-        expect(parseStartupOptions(undefined)).toEqual({ data: null, ui: true });
-        expect(parseStartupOptions("#ui=1")).toEqual({ data: null, ui: true });
+        const defaults = { data: null, ui: true, play: false, hide: [] };
+        expect(parseStartupOptions("#v=1&t=2")).toEqual(defaults);
+        expect(parseStartupOptions("")).toEqual(defaults);
+        expect(parseStartupOptions(undefined)).toEqual(defaults);
+        expect(parseStartupOptions("#ui=1&play=0")).toEqual(defaults);
     });
 });
 

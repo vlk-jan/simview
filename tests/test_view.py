@@ -33,6 +33,9 @@ def test_view_hash():
         == "#v=1&t=1.25&cam=1.5,2,0&tgt=0,0,0.123457&fov=50&b=1&bvm=mesh&tcm=a%20b&flags=9"
     )
     assert view_hash(ui=False, data="http://h/x") == "#data=http%3A%2F%2Fh%2Fx&ui=0"
+    assert view_hash(t=1, play=True) == "#v=1&t=1&play=1"
+    assert view_hash(hide=["recording", "legend"]) == "#hide=recording,legend"
+    assert view_hash(play=False) == "#"
     with pytest.raises(ValueError):
         view_hash(flags={"nope": True})
     # Named carry-over keys, in the JS serializer's order; absent means "leave alone".

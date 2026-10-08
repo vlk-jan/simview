@@ -16,7 +16,7 @@ _logging_configured = False
 
 # Subcommands with their own scoped flags. "view" also works bare
 # (`simview <file>...`) -- see main()'s routing.
-_SUBCOMMANDS = ("view", "info", "diff", "terrain", "render", "clear")
+_SUBCOMMANDS = ("view", "info", "diff", "terrain", "render", "clear", "static-viewer")
 
 
 def _configure_logging() -> None:
@@ -69,6 +69,20 @@ def clear_cache():
         logger.info("Freed %s.", human_bytes(freed))
 
     logger.info("Cache cleared.")
+
+
+def export_static_viewer(directory: Path) -> None:
+    """Copy the viewer page (`index.html` + `static/`) into `directory`, so a
+    site can host it next to `SimulationScene.save_static` bundles and open
+    `index.html#data=<bundle url>` with no SimView server. The page's asset
+    URLs are page-relative already, so the files are copied verbatim."""
+    from importlib.resources import files
+
+    package = files("simview")
+    directory.mkdir(parents=True, exist_ok=True)
+    shutil.copy(str(package / "templates" / "index.html"), directory / "index.html")
+    shutil.copytree(str(package / "static"), directory / "static", dirs_exist_ok=True)
+    logger.info("Static viewer written to %s", directory)
 
 
 def run_info(path: Path, as_json: bool) -> None:
@@ -624,6 +638,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("clear", help="Remove simview's on-disk cache.")
 
+    static_viewer = sub.add_parser(
+        "static-viewer",
+        help=(
+            "Copy the viewer page (index.html + static/) to DIR, to host it "
+            "as plain files next to save_static() bundles (open with #data=)."
+        ),
+    )
+    static_viewer.add_argument("directory", type=Path, metavar="DIR")
+
     return parser
 
 
@@ -669,6 +692,9 @@ def main():
 
     if args.command == "clear":
         clear_cache()
+        return
+    if args.command == "static-viewer":
+        export_static_viewer(args.directory)
         return
 
     single_file_commands = {

@@ -23,6 +23,7 @@ from .model import (
     SimViewBody,
     SimViewEpisode,
     SimViewModel,
+    SimViewPolyline,
     SimViewStaticObject,
     SimViewTerrain,
     _encode_blob,
@@ -241,6 +242,7 @@ class SimulationScene:
             episodes=model.episodes,
             viewer_defaults=model.viewer_defaults,
         )
+        scene.model.polylines = model.polylines
         scene.states = list(states)
         return scene
 
@@ -454,6 +456,16 @@ class SimulationScene:
                     f"has only {len(self.states)} state(s)."
                 )
 
+    def _check_polyline_frames(self) -> None:
+        """A per-frame polyline must have exactly one frame per state."""
+        for p in self.model.polylines.values():
+            count = p.frame_count(self.model.batch_size)
+            if count is not None and count != len(self.states):
+                raise ValueError(
+                    f"Polyline '{p.name}' has {count} frames but the scene has "
+                    f"{len(self.states)} state(s)."
+                )
+
     def reconcile_available_attributes(self) -> None:
         """Set each body's `available_attributes` to the optional attributes
         its states actually carry (an attribute may be absent from earlier
@@ -530,6 +542,7 @@ class SimulationScene:
                 "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
             )
         self._check_episodes_in_range()
+        self._check_polyline_frames()
         self.reconcile_available_attributes()
 
         output_path = Path(filepath)
@@ -620,6 +633,7 @@ class SimulationScene:
                 "(e.g. terrain might be missing)."
             )
         self._check_episodes_in_range()
+        self._check_polyline_frames()
         self.reconcile_available_attributes()
 
         data = {"model": self.model.to_json(), "states": self.states}
@@ -650,6 +664,7 @@ class SimulationScene:
         properties: dict[str, torch.Tensor] | None = None,
         property_bounds: dict[str, tuple[float, float]] | None = None,
         embedding_map: torch.Tensor | None = None,
+        compute_normals: bool = True,
     ) -> None:
         """Adds terrain to the simulation model.
 
@@ -657,6 +672,10 @@ class SimulationScene:
             heightmap (torch.Tensor): 2D or 3D tensor of terrain heights.
             normals (torch.Tensor | None): 3D or 4D tensor of terrain normals. If None,
                 normals are automatically computed from the heightmap gradients.
+            compute_normals (bool): With ``normals=None``, ``False`` stores no normals
+                at all (three floats per cell less on disk and over the wire); the
+                viewer then shades the surface from normals it computes itself. The
+                "normals" arrow visualization has nothing to draw in that case.
             x_lim (tuple[float, float] | None): (min, max) coordinates for the X axis.
             y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
             grid_res (float | None): Spacing between adjacent grid nodes. If x_lim
@@ -690,7 +709,7 @@ class SimulationScene:
             x_lim = x_lim or (-half_x, half_x)
             y_lim = y_lim or (-half_y, half_y)
 
-        if normals is None:
+        if normals is None and compute_normals:
             # The W nodes span the full extent (viewer, terrain.py), so the
             # node spacing is extent / (W - 1), not extent / W.
             H_dim, W_dim = heightmap.shape[-2:]
@@ -706,7 +725,7 @@ class SimulationScene:
             )
             normals = cast(torch.Tensor, computed_normals.to(dtype=heightmap.dtype))
 
-        if normals.ndim == 3:  # channels first
+        if normals is not None and normals.ndim == 3:  # channels first
             normals = normals.unsqueeze(0)  # add batch dim
         properties = {
             name: (prop.unsqueeze(0) if prop.ndim == 2 else prop)
@@ -747,7 +766,7 @@ class SimulationScene:
         if batch_size > 1 and not is_singleton:
             if heightmap.shape[0] == 1:
                 heightmap = heightmap.repeat(batch_size, 1, 1)
-            if normals.shape[0] == 1:
+            if normals is not None and normals.shape[0] == 1:
                 normals = normals.repeat(batch_size, 1, 1, 1)
             properties = {
                 name: (prop.repeat(batch_size, 1, 1) if prop.shape[0] == 1 else prop)
@@ -802,6 +821,7 @@ class SimulationScene:
         color: Sequence[float] | None = None,
         opacity: float | None = None,
         visible: bool = True,
+        visible_ranges: list | None = None,
         **kwargs,
     ) -> None:
         """Creates and adds a dynamic body to the simulation model.
@@ -809,7 +829,9 @@ class SimulationScene:
         ``color`` (RGB in [0, 1]) and ``opacity`` (in (0, 1]) style the
         mesh/primitive representation (box/sphere/cylinder/mesh); a point
         cloud's per-point colour is its shape's own ``color``. ``visible=False``
-        hides the body initially.
+        hides the body initially. ``visible_ranges`` is an optional list of
+        ``[t_from, t_to]`` pairs (seconds on the states timeline); the viewer
+        hides the body outside them.
 
         ``parent``/``local_transform`` attach this body to another body already
         in the model, instead of it moving in world space:
@@ -834,7 +856,64 @@ class SimulationScene:
                 color=color,
                 opacity=opacity,
                 visible=visible,
+                visible_ranges=visible_ranges,
                 **kwargs,
+            )
+        )
+
+    def create_polyline(
+        self,
+        name: str,
+        points: torch.Tensor | np.ndarray | None = None,
+        *,
+        frames: torch.Tensor | np.ndarray | None = None,
+        color: Sequence[float] = (1.0, 1.0, 1.0),
+        width: float = 2.0,
+        dashed: bool = False,
+        visible_ranges: list | None = None,
+    ) -> None:
+        """Adds a world-space polyline to the model.
+
+        ``points`` ``(N, 3)`` draws a fixed line (a planned route). ``frames``
+        ``(T, B, max_vertices, 3)`` -- or ``(T, max_vertices, 3)`` when
+        ``batch_size == 1`` -- draws a different line every state (a
+        replanned local path); pad shorter frames with trailing NaN rows. T
+        must equal the number of states by the time the scene is saved or
+        shown. ``width`` is in pixels (the viewer currently draws 1 px);
+        ``visible_ranges`` as in ``create_body``.
+        """
+        B = self.model.batch_size
+        points_blob = None
+        if points is not None:
+            arr = _to_f4(points)
+            if arr.ndim != 2 or arr.shape[1] != 3 or arr.shape[0] < 2:
+                raise ValueError(
+                    f"Polyline '{name}' points must have shape (N >= 2, 3); "
+                    f"got {arr.shape}."
+                )
+            points_blob = _encode_blob(arr)
+        frames_blob = max_vertices = None
+        if frames is not None:
+            arr = _to_f4(frames)
+            if arr.ndim == 3 and B == 1:
+                arr = arr[:, None]
+            if arr.ndim != 4 or arr.shape[1] != B or arr.shape[3] != 3:
+                raise ValueError(
+                    f"Polyline '{name}' frames must have shape (T, {B}, max_vertices, 3)"
+                    f"{' or (T, max_vertices, 3)' if B == 1 else ''}; got {arr.shape}."
+                )
+            max_vertices = int(arr.shape[2])
+            frames_blob = _encode_blob(np.ascontiguousarray(arr))
+        self.model.add_polyline(
+            SimViewPolyline(
+                name=name,
+                points=points_blob,
+                color=list(color),
+                width=width,
+                dashed=dashed,
+                frames=frames_blob,
+                max_vertices=max_vertices,
+                visible_ranges=visible_ranges,
             )
         )
 
@@ -846,7 +925,9 @@ class SimulationScene:
         # Clear large terrain data if present
         if self.model and self.model.terrain:
             self.model.terrain.height_data = []
-            self.model.terrain.normals = []
+            self.model.terrain.normals = None
             self.model.terrain.properties = {}
             self.model.terrain.embedding_data = None
+        for p in self.model.polylines.values():
+            p.frames = None
         logger.info("SimulationScene: Internal data cleared.")

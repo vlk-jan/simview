@@ -1,6 +1,8 @@
 """Tests for body-name validation, numpy authoring, contacts in add_trajectory,
 and _clear_internal_data."""
 
+import json
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -9,6 +11,7 @@ np = pytest.importorskip("numpy")
 from conftest import build_scene
 
 from simview.columnar import blob_floats
+from simview.model import SimViewModel, SimViewStaticObject
 from simview.scene import BodyShapeType, SimulationScene
 from simview.state import BodyTrajectory, SimViewBodyState
 
@@ -167,7 +170,7 @@ def test_clear_internal_data_clears_terrain_properties():
 
     assert scene.states == []
     assert terrain.height_data == []
-    assert terrain.normals == []
+    assert terrain.normals is None
     assert terrain.properties == {}
 
 
@@ -574,3 +577,109 @@ def test_save_ignores_unknown_state_body_keys(tmp_path, caplog):
 
     assert "unknown per-body state field 'mass'" in caplog.text
     assert scene.model.bodies["Box"].available_attributes is None
+
+
+def test_compute_normals_false_omits_normals(tmp_path):
+    """`compute_normals=False` stores no normals: the key is absent from the
+    JSON (the viewer computes its own shading normals), and load/merge of
+    such a file keep working."""
+    from simview.merge import merge_simulation_files
+
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    heights = torch.zeros(4, 4)
+    scene.create_terrain(heightmap=heights, grid_res=1.0, compute_normals=False)
+    scene.create_body(body_name="Box", shape_type=BodyShapeType.BOX, hx=1, hy=1, hz=1)
+    assert scene.model.terrain is not None
+    assert scene.model.terrain.normals is None
+    assert "normals" not in scene.model.to_json()["terrain"]
+
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    scene.add_state(0.0, [SimViewBodyState("Box", torch.zeros(1, 3), quat)])
+    scene.save(tmp_path / "a.json")
+    loaded = SimulationScene.load(tmp_path / "a.json")
+    assert loaded.model.terrain is not None
+    assert loaded.model.terrain.normals is None
+
+    scene.save(tmp_path / "b.json")
+    merged = merge_simulation_files([tmp_path / "a.json", tmp_path / "b.json"])
+    assert "normals" not in merged["model"]["terrain"]
+    assert merged["model"]["simBatches"] == 2
+
+
+def test_visible_ranges_roundtrip_and_validation():
+    scene = _base_scene(batch_size=1)
+    scene.create_body(
+        body_name="goal",
+        shape_type=BodyShapeType.SPHERE,
+        radius=0.2,
+        visible_ranges=[[0, 1.5], [3, 4]],
+    )
+    scene.model.add_static_object(
+        SimViewStaticObject.create_singleton(
+            "flag", BodyShapeType.BOX, hx=1, hy=1, hz=1, visible_ranges=[(2, 3)]
+        )
+    )
+    model = SimViewModel.from_dict(scene.model.to_json())
+    assert model.bodies["goal"].visible_ranges == [[0.0, 1.5], [3.0, 4.0]]
+    assert model.static_objects["flag"].visible_ranges == [[2.0, 3.0]]
+    assert "visibleRanges" not in scene.model.bodies["Box"].to_json()
+    with pytest.raises(ValueError, match="t_from <= t_to"):
+        scene.create_body(
+            "bad", BodyShapeType.SPHERE, radius=1, visible_ranges=[[2, 1]]
+        )
+    with pytest.raises(ValueError, match="pairs"):
+        scene.create_body("bad", BodyShapeType.SPHERE, radius=1, visible_ranges=[[1]])
+
+
+def test_create_polyline_static_and_per_frame(tmp_path):
+    scene = _base_scene(batch_size=1)
+    pos = torch.zeros(1, 3)
+    quat = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+    for t in range(2):
+        scene.add_state(t * 0.1, [SimViewBodyState("Box", pos, quat)])
+    scene.create_polyline(
+        "route",
+        torch.tensor([[0.0, 0, 0], [1, 0, 0], [2, 1, 0]]),
+        color=(1, 0, 0),
+        dashed=True,
+    )
+    frames = torch.full((2, 3, 3), float("nan"))
+    frames[0, :2] = torch.tensor([[0.0, 0, 0], [1, 0, 0]])
+    frames[1] = torch.tensor([[5.0, 5, 5], [6, 5, 5], [7, 5, 5]])
+    scene.create_polyline("plan", frames=frames, visible_ranges=[[0, 0.1]])
+
+    scene.save_static(tmp_path)
+    model = json.loads((tmp_path / "model.json").read_text())
+    by_name = {p["name"]: p for p in model["polylines"]}
+    assert by_name["route"]["dashed"] is True
+    assert by_name["route"]["color"] == [1.0, 0.0, 0.0]
+    assert by_name["plan"]["maxVertices"] == 3
+    assert by_name["plan"]["visibleRanges"] == [[0.0, 0.1]]
+    for key, name, floats in (("points", "route", 9), ("frames", "plan", 18)):
+        url = by_name[name][key]
+        assert url.startswith("/blob/")
+        assert (tmp_path / url.lstrip("/")).stat().st_size == floats * 4
+
+    scene.save(tmp_path / "scene.json")
+    loaded = SimulationScene.load(tmp_path / "scene.json")
+    assert loaded.model.polylines["plan"].frame_count(1) == 2
+    assert blob_floats(loaded.model.polylines["route"].points)[3:6] == [1.0, 0.0, 0.0]
+
+    scene.add_state(0.2, [SimViewBodyState("Box", pos, quat)])
+    with pytest.raises(ValueError, match="2 frames but the scene has 3"):
+        scene.save(tmp_path / "scene.json")
+
+
+def test_create_polyline_validation():
+    scene = _base_scene(batch_size=2)
+    with pytest.raises(ValueError, match=r"\(N >= 2, 3\)"):
+        scene.create_polyline("p", torch.zeros(1, 3))
+    with pytest.raises(ValueError, match=r"\(T, 2, max_vertices, 3\)"):
+        scene.create_polyline("p", frames=torch.zeros(4, 3, 3))
+    with pytest.raises(ValueError, match="needs points and/or frames"):
+        scene.create_polyline("p")
+    with pytest.raises(ValueError, match="width"):
+        scene.create_polyline("p", torch.zeros(2, 3), width=0)
+    scene.create_polyline("p", torch.zeros(2, 3))
+    with pytest.raises(ValueError, match="already exists"):
+        scene.create_polyline("p", torch.zeros(2, 3))

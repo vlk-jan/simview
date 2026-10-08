@@ -142,10 +142,13 @@ export class PlaybackControls {
                     this.nextEpisodeButton.click();
                     break;
                 case "r":
-                    this.recordButton.click();
+                    // A hidden recording panel (display: none on the wrapper)
+                    // disables the shortcut too. Checked on the button, not
+                    // the wrapper, which is display: contents and has no box.
+                    if (this.recordButton.getClientRects().length) this.recordButton.click();
                     break;
                 case "s":
-                    this.screenshotButton.click();
+                    if (this.screenshotButton.getClientRects().length) this.screenshotButton.click();
                     break;
                 case " ":
                     this.playButton.click();
@@ -246,11 +249,17 @@ export class PlaybackControls {
             { signal }
         );
 
+        // Recording/screenshot controls share a wrapper so viewerDefaults.panels
+        // (`recording: false`) / `#hide=recording` can hide them as one panel.
+        this.recordingGroup = document.createElement("span");
+        this.recordingGroup.className = "sv-playback-recording";
+        [this.recordButton, this.formatSelect, this.screenshotButton].forEach((element) =>
+            this.recordingGroup.appendChild(element)
+        );
+
         // Assemble controls row
         [
-            this.recordButton,
-            this.formatSelect,
-            this.screenshotButton,
+            this.recordingGroup,
             this.stepBackButton,
             this.playButton,
             this.stepForwardButton,

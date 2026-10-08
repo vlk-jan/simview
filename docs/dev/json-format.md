@@ -55,7 +55,7 @@ produces.
     - **`ui`** *(object)* — values for the viewer's UI state, deep-merged over its
         defaults before the controls are built: `pointCloudsVisible`, `axesVisible`,
         `trailsVisible`, `smoothInterpolation`, `terrainColorMode`, `terrainColorMap`,
-        `bodyVisualizationMode`, `terrainProbe`, `attributeVisible.*` (`contacts`,
+        `bodyVisualizationMode`, `polylinesVisible`, `terrainProbe`, `attributeVisible.*` (`contacts`,
         `velocity`, `angularVelocity`, `force`, `torque`) and `terrainVisualizationModes.*`
         (`surface`, `wireframe`, `normals`). Wins over the viewer's automatic
         `bodyVisualizationMode` choice.
@@ -63,8 +63,10 @@ produces.
         or closing the matching folder (e.g. `"Body Options"`, `"Terrain Options"`,
         `"Camera Options"`, `"Scene Info"`).
     - **`bodyStatesOpen`** *(boolean)* — whether the Body States window starts expanded.
-    - **`panels`** *(object)* — `{playback, analysis, legend, batchLegend, bodyStates,
-        controls}`; a panel set to `false` is hidden entirely.
+    - **`panels`** *(object)* — `{playback, recording, analysis, legend, batchLegend,
+        bodyStates, controls}`; a panel set to `false` is hidden entirely. `recording` is
+        the REC button, format select and screenshot button inside the playback bar
+        (their `R`/`S` shortcuts are disabled with it); the rest of the bar stays.
 
 - **`bodies`** *(array)* — dynamic bodies. Each entry:
     - **`name`** *(string)* — unique identifier, referenced from each state.
@@ -103,9 +105,29 @@ produces.
         Omitted means opaque.
     - **`visible`** *(boolean, optional)* — `false` hides the body initially. Written only
         when `false`.
+    - **`visibleRanges`** *(array[array[2]], optional)* — `[t_from, t_to]` pairs in
+        seconds on the states timeline (inclusive); the viewer hides the body while the
+        playhead is outside every pair. Omitted means always visible.
 - **`staticObjects`** *(array, optional, default `[]`)* — non-moving geometry. Each entry has `name`,
     `isSingleton` *(boolean)*, and either `shape` (when singleton) or `shapes`
-    *(array, one per batch)* using the same shape objects as bodies.
+    *(array, one per batch)* using the same shape objects as bodies, plus an optional
+    `visibleRanges` as on bodies.
+- **`polylines`** *(array, optional)* — world-space lines (planned routes, replanned local
+    paths). Each entry:
+    - **`name`** *(string)* — unique.
+    - **`points`** *(array[array[3]] or `__b64__` blob, optional)* — fixed vertices
+        (at least 2) for a static line.
+    - **`frames`** *(`__b64__` blob, optional)* + **`maxVertices`** *(int)* — per-frame
+        vertices, little-endian float32 of shape `(T, simBatches, maxVertices, 3)` with
+        `T` equal to the number of states; a frame shorter than `maxVertices` is padded
+        with trailing NaN rows. Snapped to the nearest frame (never interpolated); not
+        available in live mode. At least one of `points`/`frames` is required.
+    - **`color`** *(array[3], default `[1, 1, 1]`)*, **`width`** *(float, pixels, default
+        `2`; drawn 1 px by the current viewer)*, **`dashed`** *(boolean, default `false`)*,
+        **`visibleRanges`** as on bodies.
+
+    Authored with `SimulationScene.create_polyline`; toggled in the viewer with "Show
+    Polylines" (`polylinesVisible` in `viewerDefaults.ui` / the view-link flags).
 - **`terrain`** *(object)* — heightfield shared or per-batch:
     - **`dimensions`**: `sizeX`, `sizeY` *(float)* and `resolutionX`, `resolutionY` *(int)*.
     - **`bounds`**: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ` — purely spatial; a
@@ -119,8 +141,10 @@ produces.
         identical copies.
     - **`heightData`** *(array[array[float]])* — one flattened `resolutionX * resolutionY`
         grid per batch (a single flat array is also accepted and treated as one batch).
-    - **`normals`** *(array[array[array[3]]])* — per-batch surface normals, one `[x, y, z]`
-        per grid point.
+    - **`normals`** *(array[array[array[3]]], optional)* — per-batch surface normals, one `[x, y, z]`
+        per grid point. When absent (`create_terrain(compute_normals=False)`) the viewer
+        computes shading normals from the heightfield itself; only the "normals" arrow
+        visualization then has nothing to draw.
     - **`properties`** *(object, optional)* — arbitrary named per-cell scalar fields over
         the grid (e.g. `friction`, `stiffness`, or any custom name), each selectable as a
         terrain color mode with no viewer code changes. Keyed by property name, each entry

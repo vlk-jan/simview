@@ -9,6 +9,7 @@ torch = pytest.importorskip("torch")
 from conftest import build_scene
 
 from simview.merge import merge_simulation_files
+from simview.model import SimViewStaticObject
 from simview.scene import BodyShapeType, SimulationScene
 from simview.state import BodyTrajectory, SimViewBodyState
 
@@ -1080,3 +1081,31 @@ def test_merge_keeps_input_batch_names_and_first_viewer_defaults(tmp_path, caplo
     assert merged["model"]["batchNames"] == ["sim", "b"]
     assert merged["model"]["viewerDefaults"] == {"ui": {"trailsVisible": True}}
     assert "Ignoring viewerDefaults from 'b.json'" in caplog.text
+
+
+def test_merge_keeps_visible_ranges_and_rejects_polylines(tmp_path):
+    scene_a = build_scene(1)
+    scene_a.model.bodies["Box"].visible_ranges = [[0.0, 0.1]]
+    scene_a.model.add_static_object(
+        SimViewStaticObject.create_singleton(
+            "flag", BodyShapeType.BOX, hx=1, hy=1, hz=1, visible_ranges=[[0.1, 0.2]]
+        )
+    )
+    scene_b = build_scene(1)
+    scene_b.model.bodies["Box"].visible_ranges = [[0.0, 0.1]]
+    scene_b.model.add_static_object(
+        SimViewStaticObject.create_singleton(
+            "flag", BodyShapeType.BOX, hx=1, hy=1, hz=1
+        )
+    )
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    merged = merge_simulation_files([path_a, path_b])
+    assert merged["model"]["bodies"][0]["visibleRanges"] == [[0.0, 0.1]]
+    assert merged["model"]["staticObjects"][0]["visibleRanges"] == [[0.1, 0.2]]
+
+    scene_a.create_polyline("route", torch.zeros(2, 3))
+    scene_a.save(path_a)
+    with pytest.raises(ValueError, match="polylines"):
+        merge_simulation_files([path_a, path_b])

@@ -35,8 +35,9 @@ describe("mergeUiDefaults", () => {
 
 describe("panelHideCss", () => {
     it("hides only panels set to false", () => {
-        const css = panelHideCss({ playback: false, legend: true });
-        expect(css).toContain(".sv-playback");
+        const css = panelHideCss({ playback: false, legend: true, recording: false });
+        expect(css).toContain(".sv-playback {");
+        expect(css).toContain(".sv-playback-recording {");
         expect(css).not.toContain(".sv-legend");
     });
 

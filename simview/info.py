@@ -38,6 +38,8 @@ def _blob_byte_length(value: Any) -> int | None:
 
 
 def _encoding_of(value: Any) -> str:
+    if value is None:
+        return "absent"
     return "blob" if is_blob(value) else "plain"
 
 

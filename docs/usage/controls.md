@@ -58,6 +58,10 @@ way.
 - **`T`**: Toggle Torque
 - **`P`**: Toggle Terrain Data Probe (interactive tooltip on hover)
 
+"Show Polylines" (Body Options, shown when the scene has `model.polylines`) toggles planned
+routes and per-frame local paths. Bodies, static objects and polylines with `visibleRanges`
+hide themselves while the playhead is outside their time ranges.
+
 You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.
 
 ## Point Cloud and Terrain Similarity Coloring

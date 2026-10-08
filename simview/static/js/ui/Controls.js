@@ -146,6 +146,7 @@ export class UIControls {
             const controls = {
                 bodyVisualizationMode: defaultVisualizationMode,
                 showPointClouds: this.app.uiState.pointCloudsVisible !== false,
+                showPolylines: this.app.uiState.polylinesVisible !== false,
                 showAxes: this.app.uiState.axesVisible,
                 showTrails: this.app.uiState.trailsVisible,
                 smoothInterpolation: this.app.uiState.smoothInterpolation,
@@ -174,6 +175,16 @@ export class UIControls {
                     .name(this.attributeAvailability.contacts ? "Show Point Clouds" : "Show Point Clouds (C)")
                     .onChange((value) => {
                         this.updatePointCloudsVisibility(value);
+                    });
+            }
+
+            if (this.app.polylines?.length) {
+                this.bodyFolder
+                    .add(controls, "showPolylines")
+                    .name("Show Polylines")
+                    .onChange((value) => {
+                        this.app.uiState.polylinesVisible = value;
+                        this.app.polylines.forEach((p) => p.setVisible(value));
                     });
             }
 
@@ -652,6 +663,7 @@ export class UIControls {
                 "terrainVisualizationModes.surface": "showSurface",
                 "terrainVisualizationModes.wireframe": "showWireframe",
                 "terrainVisualizationModes.normals": "showNormals",
+                polylinesVisible: "showPolylines",
             };
             Object.entries(propertyForKey).forEach(([stateKey, property]) => {
                 if (!(stateKey in state.toggles)) return;

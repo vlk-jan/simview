@@ -28,6 +28,7 @@ BOOLEAN_FLAG_KEYS = (
     "terrainVisualizationModes.surface",
     "terrainVisualizationModes.wireframe",
     "terrainVisualizationModes.normals",
+    "polylinesVisible",
 )
 
 
@@ -66,6 +67,8 @@ def view_hash(
     speed: float | None = None,
     data: str | None = None,
     ui: bool | None = None,
+    play: bool | None = None,
+    hide: Sequence[str] | None = None,
 ) -> str:
     """Return a view-link fragment (with leading ``#``) for the viewer.
 
@@ -75,8 +78,11 @@ def view_hash(
     `point_clouds`, `track` (a body name, or ``"None"``), `color_map` and
     `speed` are carried as named keys; leaving one ``None`` leaves the
     viewer's current setting alone.
-    `data` (base URL of a static bundle, see `SimulationScene.save_static`) and
-    `ui=False` (hide all panels) are startup options, not view state.
+    `data` (base URL of a static bundle, see `SimulationScene.save_static`),
+    `ui=False` (hide all panels), `play=True` (start playing once loaded) and
+    `hide` (panel names as in `viewerDefaults.panels`, e.g. ``["recording"]``
+    for the REC/format/screenshot controls) are startup options, not view
+    state.
     """
     params = []
     if t is not None:
@@ -118,4 +124,8 @@ def view_hash(
         params.append(f"data={quote(data, safe=_URI_SAFE)}")
     if ui is False:
         params.append("ui=0")
+    if play:
+        params.append("play=1")
+    if hide:
+        params.append("hide=" + ",".join(quote(str(h), safe=_URI_SAFE) for h in hide))
     return "#" + "&".join(params)

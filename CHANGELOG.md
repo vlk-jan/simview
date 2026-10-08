@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Polylines: `SimulationScene.create_polyline` / `model.polylines` draw a world-space
+  line from fixed `points` (a planned route) or from a per-frame `frames` blob with
+  NaN padding (a replanned local path), with colour, dashed style and a "Show Polylines"
+  toggle (`polylinesVisible` view-link flag and `viewerDefaults.ui` key).
+- Time-ranged visibility: bodies, static objects and polylines accept
+  `visible_ranges=[[t_from, t_to], ...]` (`visibleRanges` in the JSON) and are hidden
+  while the playhead is outside every range.
 - Live WebSocket `states` messages carry a `frameOffset` (absolute index of the first
   frame in the message), so a viewer that connects after the catch-up buffer has
   wrapped places episode boundaries correctly instead of shifting them by the dropped
@@ -22,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the new name.
 - `/batch-names` answers `{"ok": true, "persisted": bool}`; the sidecar is keyed by the
   batch selection (`file.json#1`) as well as the path.
+- `create_terrain(compute_normals=False)` stores no terrain normals (three floats per
+  cell less in the file and over the wire); `normals` is now optional in the JSON format,
+  `SimulationScene.load` and `merge_simulation_files` accept files without it, and the
+  viewer shades from normals it computes itself (the "normals" arrows have nothing to
+  draw then).
+- `play=1` startup hash key (`view_hash(play=True)`): start playing once the scene is
+  loaded, applied after `t`.
+- `viewerDefaults.panels.recording: false` and the `hide=<panel,...>` startup hash key
+  (`view_hash(hide=[...])`) hide the REC / format / screenshot controls (and their
+  `R`/`S` shortcuts) while keeping the rest of the playback bar; `hide=` takes any
+  `viewerDefaults.panels` name.
+- `simview static-viewer DIR` copies the viewer page (`index.html` + `static/`) to
+  `DIR`, so a site can host it as plain files next to `save_static()` bundles.
 
 ### Changed
 

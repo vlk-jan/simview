@@ -256,6 +256,7 @@ export class BatchManager {
     applyBatchVisibility() {
         this.app.bodies?.forEach((body) => body.refreshBatchVisibility?.());
         this.app.staticObjects?.forEach((so) => so.refreshBatchVisibility?.());
+        this.app.polylines?.forEach((p) => p.refreshBatchVisibility());
         this.app.terrain?.refreshBatchVisibility?.();
     }
 }

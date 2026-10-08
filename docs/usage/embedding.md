@@ -57,6 +57,8 @@ Two **startup** keys are read once, at load, and don't need `v=1`:
 | --- | --- |
 | `data=<base>` | static mode: fetch `model.json`, `states.json` and `blob/<id>` from `<base>` instead of the server API (see below) |
 | `ui=0` | hide every floating panel (controls, playback bar, legends, Body States, Analysis); the 3D view and keyboard shortcuts stay |
+| `play=1` | start playing once the scene is loaded (applied after `t`, so `#v=1&t=30&play=1` seeks to 30 s and plays from there) |
+| `hide=<panel,...>` | hide named panels, same names as `viewerDefaults.panels` (e.g. `hide=recording` drops REC, format and screenshot from the playback bar) |
 
 ## Serving the data yourself: static bundles
 
@@ -67,9 +69,16 @@ server process at all:
 scene.save_static("public/scenes/run42")   # model.json, states.json, blob/0, blob/1, ...
 ```
 
-and loaded with `#data=/scenes/run42`. The viewer page itself (`templates/index.html`
-plus `static/`) loads all of its assets relative to the page, so it can be served from
-any path of your origin. The GitHub Pages demo is built this way (`.github/workflows/demo.yml`);
+and loaded with `#data=/scenes/run42`. The base is an ordinary URL resolved against the
+viewer page, so a page-relative `#data=../scenes/run42` works too, and the scenes can
+live anywhere on the site. The viewer page itself is vendored with
+
+```bash
+simview static-viewer public/simview   # index.html + static/
+```
+
+It loads all of its assets relative to the page, so it can be served from any path of
+your origin. The GitHub Pages demo is built this way (`.github/workflows/demo.yml`);
 `simview.columnar.write_static_bundle` is the stdlib-only writer behind `save_static`.
 
 Declare how the viewer should *start* at authoring time instead of patching it after

@@ -9,6 +9,7 @@ import { Terrain } from "./objects/Terrain.js";
 import { BatchManager } from "./components/BatchManager.js";
 import { ScalarPlotter } from "./ui/ScalarPlotter.js";
 import { StaticObject } from "./objects/StaticObject.js";
+import { Polyline } from "./objects/Polyline.js";
 import { Legend } from "./ui/Legend.js";
 import { BatchLegend } from "./ui/BatchLegend.js";
 import { ErrorMetrics } from "./ui/ErrorMetrics.js";
@@ -24,7 +25,7 @@ import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
 import { shiftEpisodes } from "./utils/episodes.js";
 import { parseViewState, parseStartupOptions, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
-import { mergeUiDefaults, applyViewerDomDefaults } from "./utils/viewerDefaults.js";
+import { mergeUiDefaults, applyViewerDomDefaults, panelHideCss } from "./utils/viewerDefaults.js";
 
 export class SimView {
     constructor() {
@@ -43,6 +44,7 @@ export class SimView {
         this.terrain = null;
         this.bodies = null;
         this.staticObjects = null;
+        this.polylines = null;
         this.uiState = structuredClone(UI_DEFAULT_CONFIG);
         this.animate = this.animate.bind(this);
         // Live streaming mode (see startLiveStream): the open WebSocket (or
@@ -58,6 +60,8 @@ export class SimView {
         // flat static files (model.json, states.json, blob/N) instead of the
         // Python backend API endpoints. Set to null in normal server mode.
         this.staticBase = null;
+        // `play=1` startup hash key: start playback once the scene is loaded.
+        this.autoplay = false;
         this._rafId = null;
         this._lastDispatchedFrame = -1;
         this._onHashChange = () => this.applyViewStateFromHash();
@@ -74,9 +78,20 @@ export class SimView {
             console.log(`SimView: static demo mode, base='${simView.staticBase}'`);
         }
         // Startup hash keys (see parseStartupOptions): `data` wins over the global.
-        const { data, ui } = parseStartupOptions(location.hash);
+        // `hide = []`: a browser cache serving an older viewState.js alongside
+        // this file must degrade to showing the panels, not a broken viewer.
+        const { data, ui, play, hide = [] } = parseStartupOptions(location.hash);
         if (data) simView.staticBase = data;
         if (!ui) document.body.classList.add("sv-embed");
+        simView.autoplay = play;
+        // `hide=recording,legend`: same stylesheet mechanism as
+        // viewerDefaults.panels, injected up front since it's pure CSS.
+        const hideCss = panelHideCss(Object.fromEntries(hide.map((name) => [name, false])));
+        if (hideCss) {
+            const style = document.createElement("style");
+            style.textContent = hideCss;
+            document.head.appendChild(style);
+        }
         window.simview = simView;
         window.__debugSimView = simView; // alias kept for e2e tests / downstream consumers
         simView.initAndAnimate();
@@ -497,6 +512,11 @@ export class SimView {
                     return staticObject;
                 });
             }
+            this.polylines = (model.polylines || []).map((data) => {
+                const polyline = new Polyline(data, this);
+                this.scene.addObject3D(polyline.getObject3D());
+                return polyline;
+            });
             console.debug("Using terrain data");
             this.terrain = new Terrain(model.terrain, this);
             this.scene.addObject3D(this.terrain.getObject3D());
@@ -550,6 +570,9 @@ export class SimView {
             this.scene = new Scene(this);
             await this.loadData();
             this.applyViewStateFromHash();
+            // After the view state, so `#v=1&t=30&play=1` seeks to 30 and then
+            // plays (`t` pauses). Live mode has no timeline yet: nothing to play.
+            if (this.autoplay && this.animationController?.store) this.animationController.play();
             window.addEventListener("hashchange", this._onHashChange);
             this.animate();
             // Live mode keeps the splash as its "waiting for first state"
@@ -692,6 +715,11 @@ export class SimView {
         if (this.staticObjects) {
             for (const staticObject of this.staticObjects) {
                 staticObject.dispose();
+            }
+        }
+        if (this.polylines) {
+            for (const polyline of this.polylines) {
+                polyline.dispose();
             }
         }
         if (this.terrain) {

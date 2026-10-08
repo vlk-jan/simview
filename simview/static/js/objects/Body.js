@@ -87,7 +87,11 @@ export class Body {
         this.isPointCloud = bodyData.shape?.type === "pointcloud";
         this.representations = { mesh: [], wireframe: [], points: [] };
         this.createBatchGroups(bodyData);
-        if (bodyData.visible === false) this.group.visible = false;
+        // Model-level initial visibility, ANDed with the time-ranged pass
+        // (AnimationController.updateScene / utils/visibleRanges.js).
+        this.userVisible = bodyData.visible !== false;
+        this.visibleRanges = bodyData.visibleRanges ?? null;
+        this.group.visible = this.userVisible;
 
         // Position/orientation history across all loaded states, per batch. Local
         // (un-offset) coordinates, shared by trail rendering and error metrics.
@@ -100,6 +104,10 @@ export class Body {
         // actually been written -- see finalizeTrails.
         this._trailCapacity = 0;
         this._trailFilledCount = 0;
+    }
+
+    setTimeVisible(flag) {
+        this.group.visible = flag && this.userVisible;
     }
 
     // --- History (position/orientation over all states) ---

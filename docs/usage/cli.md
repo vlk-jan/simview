@@ -200,6 +200,20 @@ Remote specs are for *inputs* only — `--output` and `--save-merged` must be lo
 A local file whose name happens to contain a colon always wins over the remote reading,
 so `simview weird:name.json` still opens the file sitting next to you.
 
+## Vendoring the viewer for a static site (`simview static-viewer`)
+
+To host the viewer as plain files (GitHub Pages, any static file server) next to
+scenes written with `scene.save_static()`, copy the page and its assets once:
+
+```bash
+simview static-viewer site/simview      # writes site/simview/index.html + static/
+```
+
+Then open `site/simview/index.html#data=../scenes/run42` — `data=` is resolved
+relative to the page, so bundles can live anywhere on the site. See
+[Embedding](embedding.md#serving-the-data-yourself-static-bundles) for the hash keys
+(`ui=0`, `play=1`, `t=`...).
+
 ## Headless rendering (`simview render`)
 
 To save a single PNG screenshot of a scene without opening a browser — e.g.
