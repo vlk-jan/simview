@@ -144,7 +144,7 @@ export class ScalarPlotter {
         // the columnar store's array must not be grown by us.
         this.times = Array.from(store.times);
         for (const scalarName of this.scalarNames) {
-            // Per-batch series as plain {x, y} points, pulled from the store
+            // Per-batch series as plain value arrays (x is this.times), pulled from the store
             // rather than walked per-frame here -- the columnar store already
             // holds each scalar as one whole-trajectory Float32Array.
             const series = store.getScalarSeries(scalarName, batchSize);
@@ -153,7 +153,7 @@ export class ScalarPlotter {
             // NaN (a gap in the source) becomes null, uPlot's gap.
             this.scalarColumns.set(
                 scalarName,
-                series.map((batchSeries) => batchSeries.map(({ y }) => (Number.isFinite(y) ? y : null)))
+                series.map((batchSeries) => batchSeries.map((y) => (Number.isFinite(y) ? y : null)))
             );
         }
 

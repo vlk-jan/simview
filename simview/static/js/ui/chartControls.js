@@ -20,13 +20,13 @@ export function closestSeries(u, dataIdx, yVal) {
     return best;
 }
 
-// [min, max] over the finite y of every batch's {x, y} points; [0, 1] when
+// [min, max] over the finite values of every batch's series; [0, 1] when
 // there are none, so a chart never gets NaN/Infinity bounds.
 export function finiteBounds(seriesPerBatch) {
     let min = Infinity;
     let max = -Infinity;
     for (const batchSeries of seriesPerBatch) {
-        for (const { y } of batchSeries) {
+        for (const y of batchSeries) {
             if (!Number.isFinite(y)) continue;
             if (y < min) min = y;
             if (y > max) max = y;
@@ -36,7 +36,7 @@ export function finiteBounds(seriesPerBatch) {
 }
 
 // CSV with a time column, then one column per batch (named after the batch's
-// display name); `seriesPerBatch[b][i]` is an {x, y} point or missing.
+// display name); `seriesPerBatch[b][i]` is the value at times[i], or missing.
 export function batchColumnsCsv(batchManager, times, seriesPerBatch) {
     const batchCount = batchManager.simBatches;
     const header = ["time"];
@@ -46,8 +46,8 @@ export function batchColumnsCsv(batchManager, times, seriesPerBatch) {
     const rows = times.map((t, idx) => {
         const row = [t];
         for (let b = 0; b < batchCount; b++) {
-            const point = seriesPerBatch[b] && seriesPerBatch[b][idx];
-            row.push(point && point.y != null ? point.y : "");
+            const y = seriesPerBatch[b]?.[idx];
+            row.push(y != null ? y : "");
         }
         return row;
     });
@@ -65,13 +65,29 @@ export function exportBar(onClick) {
     return bar;
 }
 
-// A "Label: [select]" control group appended to `parent`. `options` are
-// {value, label}; returns the <select>.
-export function selectGroup(parent, labelText, options, selectedValue) {
+// A "Label: [input]" control group appended to `parent`; returns `input`.
+function controlGroup(parent, labelText, input) {
     const group = document.createElement("div");
     group.className = "sv-control-group";
     const label = document.createElement("label");
     label.textContent = labelText;
+    group.appendChild(label);
+    group.appendChild(input);
+    parent.appendChild(group);
+    return input;
+}
+
+// A "Label: [checkbox]" control group appended to `parent`; returns the <input>.
+export function checkboxGroup(parent, labelText, checked) {
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = checked;
+    return controlGroup(parent, labelText, checkbox);
+}
+
+// A "Label: [select]" control group appended to `parent`. `options` are
+// {value, label}; returns the <select>.
+export function selectGroup(parent, labelText, options, selectedValue) {
     const select = document.createElement("select");
     for (const { value, label: optLabel } of options) {
         const option = document.createElement("option");
@@ -80,8 +96,5 @@ export function selectGroup(parent, labelText, options, selectedValue) {
         if (value === selectedValue) option.selected = true;
         select.appendChild(option);
     }
-    group.appendChild(label);
-    group.appendChild(select);
-    parent.appendChild(group);
-    return select;
+    return controlGroup(parent, labelText, select);
 }

@@ -18,12 +18,12 @@ import orjson
 import uvicorn
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.types import Scope
 
-from simview.columnar import blob_bytes, columnarize_states, is_blob, is_columnar
+from simview.columnar import columnarize_states, is_columnar, rewrite_blobs
 from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.server")
@@ -93,6 +93,10 @@ def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
     if start < 0 or start >= size:
         raise _RangeNotSatisfiable
     return start, min(end, size - 1)
+
+
+def _not_found(what: str) -> JSONResponse:
+    return JSONResponse({"message": f"{what} data not available"}, status_code=404)
 
 
 class BatchNamesRequest(BaseModel):
@@ -192,9 +196,7 @@ class SimViewServer:
         self.app = FastAPI(lifespan=lifespan)
         # Instance-scoped state (self.model_data, self.model_bytes, ...) lives on this
         # object rather than in module-level globals, so multiple SimViewServer
-        # instances (e.g. in tests) never share or clobber each other's data. It is
-        # also mirrored onto app.state for the FastAPI-idiomatic access pattern.
-        self.app.state.server = self
+        # instances (e.g. in tests) never share or clobber each other's data.
 
         # Local viewer only: restrict cross-origin requests to localhost/127.0.0.1.
         # No allow_credentials: the API doesn't use cookies or auth headers, and
@@ -224,6 +226,9 @@ class SimViewServer:
         self._load_data()
 
         self.setup_routes()
+
+    def _pack_model(self) -> None:
+        self.model_bytes = gzip.compress(orjson.dumps(self.model_data), compresslevel=1)
 
     def _names_sidecar_path(self) -> Path | None:
         """Where custom batch names get persisted, so they survive a server restart.
@@ -273,7 +278,7 @@ class SimViewServer:
         # In-memory callers (SimulationScene.show, LiveViewer, SimViewLauncher)
         # hand over dicts that still share structure with the live scene --
         # SimViewBody.to_json() returns `shape` by reference, for example.
-        # extract_blobs below rewrites `__b64__` strings in place, which would
+        # rewrite_blobs below rewrites `__b64__` strings in place, which would
         # otherwise corrupt the caller's scene (a later scene.save() would
         # write dead "/blob/..." URLs, and a second show() would serve stale
         # blob references). Deep-copying just the model is cheap: the big
@@ -323,16 +328,6 @@ class SimViewServer:
             self.blobs.append(raw)
             return f"/blob/{self._blob_token}/{blob_id}"
 
-        def extract_blobs(obj):
-            """Rewrite every inline `__b64__` blob in `obj` into a /blob/ URL."""
-            if not isinstance(obj, (dict, list)):
-                return
-            for k, v in obj.items() if isinstance(obj, dict) else enumerate(obj):
-                if is_blob(v):
-                    obj[k] = register_blob(blob_bytes(v))
-                else:
-                    extract_blobs(v)
-
         self.model_data = model_data
 
         if model_data is not None:
@@ -343,15 +338,15 @@ class SimViewServer:
                 for k in ("metadata", "batchNames")
                 if k in model_data
             }
-            extract_blobs(model_data)
+            rewrite_blobs(model_data, register_blob)
             model_data.update(keep)
 
         if is_columnar(states_data):
             # The file is already columnar (SimulationScene.save's default) --
             # no repack at all, just rewrite its inline __b64__ blobs into
-            # /blob/ URLs, which is exactly what extract_blobs does. This is
+            # /blob/ URLs, which is exactly what rewrite_blobs does. This is
             # the cheap path the on-disk format exists for.
-            extract_blobs(states_data)
+            rewrite_blobs(states_data, register_blob)
         elif isinstance(states_data, list) and states_data:
             # Legacy per-frame file: repack into whole-trajectory columnar
             # blobs so the viewer parses one lightweight JSON index plus raw
@@ -371,7 +366,7 @@ class SimViewServer:
         # itself is kept around (it's small, unlike states_data) so /batch-names can
         # patch and re-serialize it without re-reading the source file.
         if model_data is not None:
-            self.model_bytes = gzip.compress(orjson.dumps(model_data), compresslevel=1)
+            self._pack_model()
         if self.live:
             # Live mode: frames arrive over /ws/states instead, so /states just
             # tells the client to open the socket (see loadData in SimView.js).
@@ -401,11 +396,7 @@ class SimViewServer:
                     media_type="application/json",
                     headers=_gzip_headers,
                 )
-            return Response(
-                content=b'{"message":"Model data not available"}',
-                media_type="application/json",
-                status_code=404,
-            )
+            return _not_found("Model")
 
         @self.app.get("/states")
         async def get_states():
@@ -416,11 +407,7 @@ class SimViewServer:
                     media_type="application/json",
                     headers=_gzip_headers,
                 )
-            return Response(
-                content=b'{"message":"States data not available"}',
-                media_type="application/json",
-                status_code=404,
-            )
+            return _not_found("States")
 
         @self.app.get("/blob/{token}/{blob_id}")
         async def get_blob(token: str, blob_id: int, request: Request):
@@ -462,11 +449,7 @@ class SimViewServer:
         @self.app.post("/batch-names")
         async def set_batch_names(body: BatchNamesRequest):
             if self.model_data is None:
-                return Response(
-                    content=b'{"message":"Model data not available"}',
-                    media_type="application/json",
-                    status_code=404,
-                )
+                return _not_found("Model")
             names = body.names
             sim_batches = int(self.model_data.get("simBatches", 1))
             if len(names) != sim_batches:
@@ -477,9 +460,7 @@ class SimViewServer:
                 )
 
             self.model_data["batchNames"] = names
-            self.model_bytes = gzip.compress(
-                orjson.dumps(self.model_data), compresslevel=1
-            )
+            self._pack_model()
 
             names_path = self._names_sidecar_path()
             persisted = False
@@ -563,7 +544,7 @@ class SimViewServer:
         if self.model_data is None:
             return
         self.model_data["episodes"] = episodes
-        self.model_bytes = gzip.compress(orjson.dumps(self.model_data), compresslevel=1)
+        self._pack_model()
 
     async def broadcast_episodes(self, episodes: list[dict]) -> None:
         """Push updated episode boundaries to every connected /ws/states client.

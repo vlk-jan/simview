@@ -12,7 +12,7 @@ same document; only how a blob is referenced differs:
   URL the browser fetches in parallel as a `Float32Array`.
 
 That symmetry is the whole point: a columnar file needs no repacking at all
-to be served, and `server.py`'s existing `extract_blobs` walker does the
+to be served, and `columnar.rewrite_blobs` (shared by `server.py`) does the
 rewriting for free.
 
 Shape (see README.md "JSON Format Specification" for the authoritative spec)::
@@ -122,6 +122,29 @@ def encode_floats(flat) -> str:
     return inline_blob(struct.pack(f"<{len(flat)}f", *flat))
 
 
+def batch_rows(flat: list[float], per_row: int, batch_size: int) -> list | None:
+    """Split a decoded blob into `batch_size` rows of `per_row` floats: either
+    one row shared by every batch (replicated) or one row per batch. None if
+    `flat` is neither length -- callers raise their own error."""
+    if len(flat) == per_row:
+        return [flat] * batch_size
+    if len(flat) == batch_size * per_row:
+        return [flat[i : i + per_row] for i in range(0, len(flat), per_row)]
+    return None
+
+
+def rewrite_blobs(obj: Any, register_blob) -> None:
+    """Replace, in place, every inline ``__b64__`` blob string nested anywhere
+    in `obj` with `register_blob(raw_bytes)`."""
+    if not isinstance(obj, (dict, list)):
+        return
+    for k, v in obj.items() if isinstance(obj, dict) else enumerate(obj):
+        if is_blob(v):
+            obj[k] = register_blob(blob_bytes(v))
+        else:
+            rewrite_blobs(v, register_blob)
+
+
 def decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[float]:
     """Decode one state's `bodyTransform` field value for a single batch into
     a flat 7-element `[x, y, z, w, qx, qy, qz]` row, without numpy.
@@ -134,8 +157,6 @@ def decode_transform_row(value: Any, batch_size: int, batch_idx: int) -> list[fl
     if len(flat) == batch_size * width:
         start = batch_idx * width
         return flat[start : start + width]
-    if len(flat) == width and batch_size == 1:
-        return flat
     raise ValueError(
         f"bodyTransform has {len(flat)} floats; expected {width} "
         f"(batch_size=1, flat) or {batch_size * width} "
@@ -451,23 +472,17 @@ def write_static_bundle(data: dict, directory) -> None:
     (out / "blob").mkdir(parents=True, exist_ok=True)
     count = 0
 
-    def externalize(obj):
+    def write_blob(raw: bytes) -> str:
         nonlocal count
-        if not isinstance(obj, (dict, list)):
-            return
-        for k, v in obj.items() if isinstance(obj, dict) else enumerate(obj):
-            if is_blob(v):
-                (out / "blob" / str(count)).write_bytes(blob_bytes(v))
-                obj[k] = f"/blob/{count}"
-                count += 1
-            else:
-                externalize(v)
+        (out / "blob" / str(count)).write_bytes(raw)
+        count += 1
+        return f"/blob/{count - 1}"
 
-    externalize(data["model"])
+    rewrite_blobs(data["model"], write_blob)
     # The viewer only resolves /blob/ URLs in the model and a columnar states
     # object; a legacy per-frame array's inline __b64__ fields are decoded
     # in place, so they must stay inline.
     if is_columnar(data["states"]):
-        externalize(data["states"])
+        rewrite_blobs(data["states"], write_blob)
     for name in ("model", "states"):
         (out / f"{name}.json").write_text(json.dumps(data[name]))

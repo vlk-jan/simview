@@ -193,7 +193,7 @@ export class Body {
         }
         this._trailStateIndex = -1;
         const currentIndex = this.app.animationController
-            ? this.app.animationController.getCurrentStateIndex()
+            ? this.app.animationController.currentStateIndex
             : 0;
         this.updateTrails(currentIndex);
     }
@@ -679,7 +679,7 @@ export class Body {
         this.updateAllInstances();
 
         if (this.trails.length > 0 && this.app.animationController) {
-            this.updateTrails(this.app.animationController.getCurrentStateIndex());
+            this.updateTrails(this.app.animationController.currentStateIndex);
         }
     }
 
@@ -696,7 +696,6 @@ export class Body {
                     config
                 );
                 vector.visible = this.app.uiState.attributeVisible[attr] || false;
-                vector.userData = { scale: config.scale };
                 batchGroup.add(vector);
                 this.bodyVectors[batchIndex].set(attr, vector);
             }
@@ -706,8 +705,7 @@ export class Body {
     updateBodyVector(type, vector, batchIndex) {
         const arrow = this.bodyVectors[batchIndex]?.get(type);
         if (!arrow) return;
-        const scale = arrow.userData.scale || 1.0;
-        const length = vector.length() * scale;
+        const length = vector.length();
         // Written as !(>=) so a NaN vector is treated like a zero one instead
         // of feeding NaN into setDirection/setLength.
         if (!(length >= 1e-6)) {
@@ -848,10 +846,6 @@ export class Body {
 
     getObject3D() {
         return this.group;
-    }
-
-    getAvailableAttributes() {
-        return this.availableAttributes;
     }
 
     // Which of the mesh/wireframe/points representations this body actually has,

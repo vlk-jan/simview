@@ -76,11 +76,11 @@ function validateColumnar(times, bodies, scalars, simBatches) {
     }
 }
 
-class ColumnarStateStore {
+export class ColumnarStateStore {
     // `bodies`: [{name, fields: {fieldName: Float32Array}, contacts?}], each
     // fields Float32Array already reshaped to flat (T * B * k) row-major.
     // `scalars`: {scalarName: Float32Array}, each flat (T * B) row-major.
-    constructor(times, bodies, scalars, simBatches) {
+    constructor({ times, bodies, scalars }, simBatches) {
         validateColumnar(times, bodies, scalars, simBatches);
         this.times = times;
         this._bodies = bodies;
@@ -168,7 +168,8 @@ class ColumnarStateStore {
         return state;
     }
 
-    // Per-batch series for the scalar plotter: [{x: time, y: value}, ...] per batch.
+    // Per-batch series for the scalar plotter: one per-frame value array per
+    // batch, indexed like `times`.
     // `simBatches` is accepted (and ignored) for API parity with
     // LegacyStateStore.getScalarSeries -- the columnar store already knows
     // its own batch count.
@@ -179,14 +180,14 @@ class ColumnarStateStore {
         for (let i = 0; i < this.length; i++) {
             const base = i * B;
             for (let b = 0; b < B; b++) {
-                series[b][i] = { x: this.times[i], y: flat[base + b] };
+                series[b][i] = flat[base + b];
             }
         }
         return series;
     }
 }
 
-class LegacyStateStore {
+export class LegacyStateStore {
     // `statesArray`: the classic array of per-frame state objects (already
     // decoded -- __b64__ fields expanded via decodeStatesChunk).
     constructor(statesArray) {
@@ -234,7 +235,7 @@ class LegacyStateStore {
                 if (values[b] === undefined) {
                     throw new Error(`Scalar "${name}" not found in state at index ${b}.`);
                 }
-                series[b].push({ x: state.time, y: values[b] });
+                series[b].push(values[b]);
             }
         }
         return series;
@@ -248,15 +249,5 @@ class LegacyStateStore {
         this._states.push(...chunk);
         warnIfNonMonotonic(this, startIndex);
         return startIndex;
-    }
-}
-
-export class StateStore {
-    static fromColumnar({ times, bodies, scalars }, simBatches) {
-        return new ColumnarStateStore(times, bodies, scalars, simBatches);
-    }
-
-    static fromLegacy(statesArray) {
-        return new LegacyStateStore(statesArray);
     }
 }

@@ -24,24 +24,10 @@ export class UIControls {
             "force",
             "torque",
         ];
-        const availability = {};
-
-        // Initialize all attributes as unavailable
-        attributeTypes.forEach((type) => {
-            availability[type] = false;
-        });
-
-        // Check each body for available attributes
-        this.app.bodies.forEach((body) => {
-            const availableAttributes = body.getAvailableAttributes();
-            attributeTypes.forEach((type) => {
-                if (availableAttributes.has(type)) {
-                    availability[type] = true;
-                }
-            });
-        });
-
-        return availability;
+        const bodies = [...this.app.bodies.values()];
+        return Object.fromEntries(
+            attributeTypes.map((type) => [type, bodies.some((body) => body.availableAttributes.has(type))])
+        );
     }
 
     // Union of visualization modes actually available across all bodies, plus a
@@ -82,11 +68,7 @@ export class UIControls {
     }
 
     determineHasPointClouds() {
-        let found = false;
-        this.app.bodies.forEach((body) => {
-            if (body.isPointCloud) found = true;
-        });
-        return found;
+        return [...this.app.bodies.values()].some((body) => body.isPointCloud);
     }
 
     changeTargetBatch(key) {
@@ -174,7 +156,12 @@ export class UIControls {
                     .add(controls, "showPointClouds")
                     .name(this.attributeAvailability.contacts ? "Show Point Clouds" : "Show Point Clouds (C)")
                     .onChange((value) => {
-                        this.updatePointCloudsVisibility(value);
+                        // Point-cloud bodies are outside Body Visualization Mode (see
+                        // Body#pointsVisible), so their visibility rides on this instead.
+                        this.app.uiState.pointCloudsVisible = value;
+                        this.app.bodies.forEach((body) => {
+                            if (body.setPointCloudsVisible) body.setPointCloudsVisible(value);
+                        });
                     });
             }
 
@@ -192,21 +179,23 @@ export class UIControls {
                 .add(controls, "showAxes")
                 .name("Show Axes (A)")
                 .onChange((value) => {
-                    this.updateAxesVisibility(value);
+                    this.app.bodies.forEach((body) => body.toggleAxes(value));
+                    this.app.uiState.axesVisible = value;
                 });
 
             this.bodyFolder
                 .add(controls, "showTrails")
                 .name("Show Trails (G)")
                 .onChange((value) => {
-                    this.updateTrailsVisibility(value);
+                    this.app.bodies.forEach((body) => body.toggleTrails(value));
+                    this.app.uiState.trailsVisible = value;
                 });
 
             this.bodyFolder
                 .add(controls, "smoothInterpolation")
                 .name("Smooth Interpolation (I)")
                 .onChange((value) => {
-                    this.updateSmoothInterpolation(value);
+                    this.app.uiState.smoothInterpolation = value;
                 });
 
             // Only worth offering with enough batches for it to matter; with a
@@ -398,7 +387,7 @@ export class UIControls {
         );
         this.updateDiffControlsVisibility(currentColorMode);
 
-        const terrainProbeCtrl = this.terrainFolder
+        this.terrainFolder
             .add(terrainControls, "terrainProbe")
             .name("Data Probe (P)")
             .onChange((value) => {
@@ -407,15 +396,6 @@ export class UIControls {
                     this.app.interactionController.hideTerrainTooltip();
                 }
             });
-
-        this.handleKeydown = (e) => {
-            if (e.key.toLowerCase() === "p" && 
-                !e.ctrlKey && !e.metaKey && !e.altKey && 
-                !isEditableTarget(e)) {
-                terrainProbeCtrl.setValue(!terrainProbeCtrl.getValue());
-            }
-        };
-        window.addEventListener("keydown", this.handleKeydown);
 
         this.terrainFolder.open();
 
@@ -635,9 +615,8 @@ export class UIControls {
         }
 
         if (typeof state.terrainColorMap === "string") {
-            const known = Array.isArray(colorMapOptions) ? colorMapOptions : Object.keys(colorMapOptions);
             const ctrl = this.findController("colorMap");
-            if (ctrl && known.includes(state.terrainColorMap)) ctrl.setValue(state.terrainColorMap);
+            if (ctrl && colorMapOptions.includes(state.terrainColorMap)) ctrl.setValue(state.terrainColorMap);
         }
 
         if (typeof state.pointCloudsVisible === "boolean") {
@@ -676,9 +655,25 @@ export class UIControls {
     setupKeyboardControls(app) {
         // Stored (not addEventListener's undefined return) so dispose() can
         // actually remove it.
+        // Plain toggles. Attribute controls (V/W/F/T) only exist when the
+        // data has that attribute, so toggleControl's lookup is the guard.
+        const toggleForKey = {
+            a: "showAxes",
+            g: "showTrails",
+            i: "smoothInterpolation",
+            v: "showVelocity",
+            w: "showAngularVelocity",
+            f: "showForce",
+            t: "showTorque",
+        };
         this.keyboardControlsListener = (event) => {
             if (isEditableTarget(event)) return;
-            switch (event.key.toLowerCase()) {
+            const key = event.key.toLowerCase();
+            if (toggleForKey[key]) {
+                this.toggleControl(toggleForKey[key]);
+                return;
+            }
+            switch (key) {
                 case "b":
                     const modes = this.visualizationModes;
                     if (modes.length === 0) break;
@@ -690,14 +685,9 @@ export class UIControls {
                     const controller = this.findController("bodyVisualizationMode");
                     if (controller) controller.setValue(modes[nextIndex]);
                     break;
-                case "a":
-                    this.toggleControl("showAxes");
-                    break;
-                case "g":
-                    this.toggleControl("showTrails");
-                    break;
-                case "i":
-                    this.toggleControl("smoothInterpolation");
+                case "p":
+                    if (!event.ctrlKey && !event.metaKey && !event.altKey)
+                        this.toggleControl("terrainProbe");
                     break;
                 case "c":
                     // Shared key: contacts win when the scene has them.
@@ -705,22 +695,6 @@ export class UIControls {
                         this.toggleControl("showContacts");
                     else if (this.hasPointClouds)
                         this.toggleControl("showPointClouds");
-                    break;
-                case "v":
-                    if (this.attributeAvailability.velocity)
-                        this.toggleControl("showVelocity");
-                    break;
-                case "w":
-                    if (this.attributeAvailability.angularVelocity)
-                        this.toggleControl("showAngularVelocity");
-                    break;
-                case "f":
-                    if (this.attributeAvailability.force)
-                        this.toggleControl("showForce");
-                    break;
-                case "t":
-                    if (this.attributeAvailability.torque)
-                        this.toggleControl("showTorque");
                     break;
                 case "arrowup":
                 case "arrowdown":
@@ -768,33 +742,6 @@ export class UIControls {
             body.updateVisualizationMode(mode);
         });
         this.app.uiState.bodyVisualizationMode = mode;
-    }
-
-    // Point-cloud bodies are outside Body Visualization Mode (see
-    // Body#pointsVisible), so their visibility rides on this instead.
-    updatePointCloudsVisibility(visible) {
-        this.app.uiState.pointCloudsVisible = visible;
-        this.app.bodies.forEach((body) => {
-            if (body.setPointCloudsVisible) body.setPointCloudsVisible(visible);
-        });
-    }
-
-    updateAxesVisibility(show) {
-        this.app.bodies.forEach((body) => {
-            body.toggleAxes(show);
-        });
-        this.app.uiState.axesVisible = show;
-    }
-
-    updateTrailsVisibility(show) {
-        this.app.bodies.forEach((body) => {
-            body.toggleTrails(show);
-        });
-        this.app.uiState.trailsVisible = show;
-    }
-
-    updateSmoothInterpolation(enabled) {
-        this.app.uiState.smoothInterpolation = enabled;
     }
 
     updateAttributeVisibility(attrType, show) {
@@ -853,9 +800,6 @@ export class UIControls {
     }
 
     dispose() {
-        if (this.handleKeydown) {
-            window.removeEventListener("keydown", this.handleKeydown);
-        }
         this.gui.destroy();
         this.gui = null;
         if (this.keyboardControlsListener) {

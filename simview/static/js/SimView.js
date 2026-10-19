@@ -19,7 +19,7 @@ import { InteractionController } from "./components/InteractionController.js";
 import { buildBodyMeta, resolveStateBodies, topoSortBodies } from "./utils/bodyTransforms.js";
 import { hasBodyTrajectory } from "./utils/terrainSample.js";
 import { decodeStatesChunk, STATE_FIELD_WIDTHS } from "./utils/blobCodec.js";
-import { StateStore } from "./components/StateStore.js";
+import { ColumnarStateStore, LegacyStateStore } from "./components/StateStore.js";
 import { WindowedField } from "./components/WindowedField.js";
 import { escapeHtml } from "./utils/html.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
@@ -145,7 +145,7 @@ export class SimView {
                 // Live streaming mode (see simview.live.LiveViewer): no states
                 // yet, they arrive incrementally over /ws/states instead.
                 console.debug("Live mode: opening /ws/states");
-                this.store = StateStore.fromLegacy([]);
+                this.store = new LegacyStateStore([]);
                 this.startLiveStream(splash);
             } else if (statesPayload && statesPayload.version === 4) {
                 // Columnar wire shape (see server.py::_columnarize_states):
@@ -159,7 +159,7 @@ export class SimView {
                 console.time("fetch_state_blobs");
                 await this.fetchBlobs(statesPayload);
                 console.timeEnd("fetch_state_blobs");
-                this.store = StateStore.fromColumnar(statesPayload, this.batchManager.simBatches);
+                this.store = new ColumnarStateStore(statesPayload, this.batchManager.simBatches);
                 this.onStoreReady();
             } else {
                 throw new Error("Unrecognized /states payload shape");
@@ -355,7 +355,7 @@ export class SimView {
         decodeStatesChunk(chunk);
         const firstLoad = !this.animationController || !this.animationController.store;
         if (!this.store) {
-            this.store = StateStore.fromLegacy(chunk);
+            this.store = new LegacyStateStore(chunk);
         } else if (firstLoad) {
             this.store.append(chunk);
         } else {
@@ -418,7 +418,7 @@ export class SimView {
             this.analysisPanel = new AnalysisPanel(this);
         }
         this.terrainProfile = new TerrainProfile(this);
-        this.analysisPanel.attachTerrainProfile(this.terrainProfile);
+        this.analysisPanel.attach("terrain", this.terrainProfile, this.terrainProfile.content);
     }
 
     // Resolves and records position/orientation (and contacts, vectors, ...)
@@ -541,11 +541,12 @@ export class SimView {
                     model.scalarNames
                 );
                 this.scalarPlotter = new ScalarPlotter(this, model.scalarNames);
-                this.analysisPanel.attachScalarPlotter(this.scalarPlotter);
+                const { tabBar, plotArea } = this.scalarPlotter;
+                this.analysisPanel.attach("scalars", this.scalarPlotter, tabBar, plotArea);
             }
             if (hasErrorMetrics) {
                 this.errorMetrics = new ErrorMetrics(this);
-                this.analysisPanel.attachErrorMetrics(this.errorMetrics);
+                this.analysisPanel.attach("errorMetrics", this.errorMetrics, this.errorMetrics.content);
             }
             this.interactionController = new InteractionController(this);
             this.uiControls = new UIControls(this);
@@ -663,7 +664,7 @@ export class SimView {
     getViewState() {
         const { camera, controls } = this.scene;
         return {
-            time: this.animationController ? this.animationController.getCurrentTime() : undefined,
+            time: this.animationController ? this.animationController.currentTime : undefined,
             camera: {
                 position: camera.position.clone(),
                 target: controls.target.clone(),
@@ -771,11 +772,11 @@ export class SimView {
         // 1. Update states and time
         if (this.animationController) {
             this.animationController.animate(now);
-            const index = this.animationController.getCurrentStateIndex();
+            const index = this.animationController.currentStateIndex;
             if (index !== this._lastDispatchedFrame && this.animationController.store) {
                 this._lastDispatchedFrame = index;
                 window.dispatchEvent(
-                    new CustomEvent("simview:frame", { detail: { index, time: this.animationController.getCurrentTime() } })
+                    new CustomEvent("simview:frame", { detail: { index, time: this.animationController.currentTime } })
                 );
             }
         }

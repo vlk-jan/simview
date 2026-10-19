@@ -33,7 +33,6 @@ const DEFAULT_MESH_CONFIG = {
 };
 
 const DEFAULT_ARROW_CONFIG = {
-    lineWidth: 1,
     headWidth: 0.2,
     headLength: 0.2,
     color: 0xff0000,
@@ -157,7 +156,6 @@ export function createPoints(pointCloud, pointsConfig, visible = true, colors = 
     }
     // Create points object
     const points = new THREE.Points(geometry, material);
-    points.isPoints = true;
     points.visible = visible;
     return points;
 }
@@ -188,7 +186,6 @@ export function createContactPoints(pointCloud, pointsConfig) {
             sizeAttenuation: { value: config.sizeAttenuation !== false },
             useTexture: { value: false },
             pointTexture: { value: null },
-            alphaTest: { value: 0.5 }, // Add alphaTest uniform
         },
         vertexShader: `
       attribute float size;
@@ -211,7 +208,6 @@ export function createContactPoints(pointCloud, pointsConfig) {
       uniform float opacity;
       uniform bool useTexture;
       uniform sampler2D pointTexture;
-      uniform float alphaTest;
 
       void main() {
         // Create a circular point with smooth edges
@@ -222,7 +218,7 @@ export function createContactPoints(pointCloud, pointsConfig) {
         float alpha = 1.0 - smoothstep(0.8, 1.0, dist);
 
         // Apply alpha test
-        if (alpha < alphaTest) discard;
+        if (alpha < 0.5) discard;
 
         vec4 outputColor = vec4(color, alpha * opacity);
         if (useTexture) {
@@ -245,10 +241,8 @@ export function createContactPoints(pointCloud, pointsConfig) {
         material.uniforms.useTexture.value = true;
     }
 
-    const points = new THREE.Points(geometry, material);
-    points.visible = config.visible !== false;
-
-    return points;
+    // Visibility is the caller's call (Body sets it from uiState).
+    return new THREE.Points(geometry, material);
 }
 
 /**
@@ -268,7 +262,6 @@ export function createWireframe(geometry, wireframeConfig, visible = true) {
         new THREE.LineBasicMaterial(config)
     );
     wireframe.visible = visible;
-    wireframe.isWireframe = true;
     return wireframe;
 }
 
@@ -294,7 +287,6 @@ export function createMesh(geometry, meshConfig, visible = true) {
     });
 
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.isMesh = true;
     mesh.visible = visible;
     return mesh;
 }
@@ -311,7 +303,7 @@ export function createArrow(start, end, arrowConfig = {}) {
     const dir = end.clone().sub(start);
     const length = dir.length();
 
-    const arrow = new THREE.ArrowHelper(
+    return new THREE.ArrowHelper(
         dir.normalize(),
         start,
         length,
@@ -319,9 +311,6 @@ export function createArrow(start, end, arrowConfig = {}) {
         config.headLength,
         config.headWidth
     );
-
-    arrow.line.material.linewidth = config.lineWidth;
-    return arrow;
 }
 
 // sRGB hex <-> CIE LCh (D65), the same math chroma-js's "lch" mode uses.

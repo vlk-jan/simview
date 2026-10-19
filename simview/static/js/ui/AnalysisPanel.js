@@ -61,18 +61,6 @@ export class AnalysisPanel {
         this._applyMode();
     }
 
-    attachScalarPlotter(p) {
-        this.attach("scalars", p, p.tabBar, p.plotArea);
-    }
-
-    attachErrorMetrics(p) {
-        this.attach("errorMetrics", p, p.content);
-    }
-
-    attachTerrainProfile(p) {
-        this.attach("terrain", p, p.content);
-    }
-
     _applyMode() {
         for (const section of this.sections) {
             const active = this.mode === section.key;

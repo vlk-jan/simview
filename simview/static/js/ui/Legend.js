@@ -142,11 +142,7 @@ export class Legend {
     }
 
     dispose() {
-        if (this.container && this.container.parentElement) {
-            this.container.parentElement.removeChild(this.container);
-        }
-        if (this.pointContainer && this.pointContainer.parentElement) {
-            this.pointContainer.parentElement.removeChild(this.pointContainer);
-        }
+        this.container?.remove();
+        this.pointContainer?.remove();
     }
 }

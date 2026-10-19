@@ -31,7 +31,7 @@ async function loadEpisodicScene(page) {
 // test-only hook.
 function currentFrame(page) {
     return page.evaluate(
-        () => window.__debugSimView.animationController.getCurrentStateIndex()
+        () => window.__debugSimView.animationController.currentStateIndex
     );
 }
 

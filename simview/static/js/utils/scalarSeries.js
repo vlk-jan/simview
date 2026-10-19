@@ -1,7 +1,7 @@
 // Pure scalar-series growth for ui/ScalarPlotter.js, kept DOM/uPlot-free so
 // it can be unit-tested (tests/js/scalarSeries.test.js).
 
-// Pulls frames [from, store.length) into the plotter's per-batch {x, y}
+// Pulls frames [from, store.length) into the plotter's per-batch value
 // series and uPlot columns in place, returning the new frame count. Live
 // streaming appends a frame at a time, so this is O(new frames), not a
 // whole-trajectory rebuild per push.
@@ -16,7 +16,7 @@ export function appendScalarFrames(store, scalarNames, batchSize, times, seriesB
             const columns = columnsByName.get(name);
             for (let b = 0; b < batchSize; b++) {
                 const y = values?.[b];
-                series[b].push({ x: t, y });
+                series[b].push(y);
                 columns[b].push(Number.isFinite(y) ? y : null);
             }
         }

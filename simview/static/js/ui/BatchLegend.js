@@ -103,9 +103,7 @@ export class BatchLegend {
 
     dispose() {
         clearTimeout(this._noticeTimer);
-        if (this.container && this.container.parentElement) {
-            this.container.parentElement.removeChild(this.container);
-        }
+        this.container?.remove();
         this.rowElements.clear();
     }
 }

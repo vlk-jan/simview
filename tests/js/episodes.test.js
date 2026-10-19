@@ -106,7 +106,7 @@ describe("next/previousEpisodeStart", () => {
 });
 
 describe("episodeAggregates", () => {
-    const series = Array.from({ length: 6 }, (_, i) => ({ x: i * 0.1, y: i }));
+    const series = Array.from({ length: 6 }, (_, i) => i);
 
     it("aggregates each episode's slice of the series", () => {
         const aggregates = episodeAggregates(
@@ -152,7 +152,7 @@ describe("episodeAggregates", () => {
     });
 
     it("skips non-finite values instead of poisoning the aggregate", () => {
-        const withGaps = [{ y: 1 }, { y: NaN }, {}, { y: 3 }];
+        const withGaps = [1, NaN, undefined, 3];
         const aggregates = episodeAggregates([{ startIndex: 0 }], withGaps, 4);
         expect(aggregates[0]).toMatchObject({ count: 2, sum: 4, mean: 2 });
     });
@@ -175,7 +175,7 @@ describe("episodeLabel", () => {
 describe("episodeAggregates on a long episode", () => {
     it("does not overflow the call stack past ~125k frames", async () => {
         const n = 200000;
-        const series = Array.from({ length: n }, (_, i) => ({ x: i, y: i % 7 }));
+        const series = Array.from({ length: n }, (_, i) => i % 7);
         const [agg] = episodeAggregates([{ startIndex: 0, label: null }], series, n);
         expect(agg.count).toBe(n);
         expect(agg.min).toBe(0);

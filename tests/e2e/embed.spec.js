@@ -55,7 +55,7 @@ test("loads a static bundle from #data= with #ui=0 and follows hash changes", as
 
     // `t=2` was applied at load, and `ready` + a `frame` event followed.
     const indexAt = (t) => page.evaluate((t) => window.simview.animationController.getStateIndexForTime(t), t);
-    const current = () => page.evaluate(() => window.simview.animationController.getCurrentStateIndex());
+    const current = () => page.evaluate(() => window.simview.animationController.currentStateIndex);
     expect(await current()).toBe(await indexAt(2));
     expect(await current()).toBeGreaterThan(0);
     await expect.poll(() => page.evaluate(() => window.__events.map(([n]) => n))).toContain("simview:ready");
@@ -110,6 +110,6 @@ test("play=1 starts playback after the view state is applied", async ({ page }) 
     // `t=2` was honoured before play started: the index advances from there, not from 0.
     const indexAt2 = await page.evaluate(() => window.simview.animationController.getStateIndexForTime(2));
     await expect
-        .poll(() => page.evaluate(() => window.simview.animationController.getCurrentStateIndex()))
+        .poll(() => page.evaluate(() => window.simview.animationController.currentStateIndex))
         .toBeGreaterThan(indexAt2);
 });

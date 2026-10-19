@@ -3179,30 +3179,14 @@ export function evaluate_cmap(x, name, reverse) {
    * @return {list} - A 3-tuple (R, G, B) containing the color assigned to `x`.
    */
 
-  // Ensure that the value of `x` is valid (i.e., 0 <= x <= 1)
-  if (!(0 <= x && x <= 1)) {
-    alert("Illegal value for x! Must be in [0, 1].");
-  }
-
-  // Ensure that `name` is a valid colormap
-  if (!(name in data)) {
-    alert("Colormap " + name + "does not exist!");
-  }
-
   // We can get the reverse colormap by evaluating colormap(1-x)
   if (reverse === true) {
     x = 1 - x;
   }
 
-  // Get the colors and whether or not we need to interpolate
-  let colors = data[name]["colors"];
-  let interpolate = data[name]["interpolate"];
-
-  if (interpolate === true) {
-    return interpolated(x, colors);
-  } else {
-    return qualitative(x, colors);
-  }
+  // Every bundled map is interpolated; callers (objects/colormap.js) clamp
+  // x to [0, 1] and validate `name`.
+  return interpolated(x, data[name]["colors"]);
 }
 
 function interpolated(x, colors) {
@@ -3211,16 +3195,5 @@ function interpolated(x, colors) {
   let r = Math.round(((colors[lo][0] + colors[hi][0]) / 2) * 255);
   let g = Math.round(((colors[lo][1] + colors[hi][1]) / 2) * 255);
   let b = Math.round(((colors[lo][2] + colors[hi][2]) / 2) * 255);
-  return [r, g, b];
-}
-
-function qualitative(x, colors) {
-  let idx = 0;
-  while (x > (idx + 1) / (colors.length - 0)) {
-    idx++;
-  }
-  let r = Math.round(colors[idx][0] * 255);
-  let g = Math.round(colors[idx][1] * 255);
-  let b = Math.round(colors[idx][2] * 255);
   return [r, g, b];
 }

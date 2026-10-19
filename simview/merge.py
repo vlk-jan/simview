@@ -27,6 +27,7 @@ import orjson
 
 from .columnar import (
     STATE_FIELD_WIDTHS,
+    batch_rows,
     blob_floats,
     encode_floats,
     expand_columnar_states,
@@ -212,12 +213,8 @@ def _decode_per_batch(
         return value
     flat = blob_floats(value)
     per_row = resolution * (vector_width or 1)
-    if len(flat) == per_row:
-        # One shared row (deduplicated singleton terrain).
-        chunks = [list(flat)] * batch_size
-    elif len(flat) == batch_size * per_row:
-        chunks = [list(flat[i : i + per_row]) for i in range(0, len(flat), per_row)]
-    else:
+    chunks = batch_rows(flat, per_row, batch_size)
+    if chunks is None:
         raise ValueError(
             f"terrain blob has {len(flat)} floats; expected {per_row} (one "
             f"shared row) or {batch_size * per_row} ({batch_size} batches "
@@ -679,15 +676,6 @@ def _nearest_index(sorted_times: list[float], t: float) -> int:
     return i - 1 if (t - before) <= (after - t) else i
 
 
-def _state_body_lookup(
-    states: list[dict], file_idx: int, state_idx: int, cache: dict
-) -> dict[str, dict]:
-    key = (file_idx, state_idx)
-    if key not in cache:
-        cache[key] = bodies_by_name(states[state_idx].get("bodies"))
-    return cache[key]
-
-
 def _merge_states(
     states_list: list[list[dict]],
     batch_sizes: list[int],
@@ -731,7 +719,11 @@ def _merge_states(
                 zip(states_list, batch_sizes, selections)
             ):
                 state_idx = state_idx_by_file[file_idx]
-                lookup = _state_body_lookup(states, file_idx, state_idx, lookup_cache)
+                lookup = lookup_cache.get((file_idx, state_idx))
+                if lookup is None:
+                    lookup = lookup_cache[(file_idx, state_idx)] = bodies_by_name(
+                        states[state_idx].get("bodies")
+                    )
                 body_state = lookup.get(name)
                 if body_state is None:
                     raise ValueError(

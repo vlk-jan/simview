@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { StateStore, firstNonMonotonicIndex } from "../../simview/static/js/components/StateStore.js";
+import { ColumnarStateStore, LegacyStateStore, firstNonMonotonicIndex } from "../../simview/static/js/components/StateStore.js";
 
 // Small hand-built fixture: T=3 frames, B=2 batches, one body "Box" with
 // bodyTransform (width 7) + velocity (width 3), contacts present on frames 0
@@ -69,10 +69,10 @@ function transformFor(flat, t, b, row, width = 7) {
     for (let c = 0; c < width; c++) flat[base + c] = row[c];
 }
 
-describe("StateStore.fromLegacy", () => {
+describe("LegacyStateStore", () => {
     it("exposes length/timeAt/lastTime/getFrame", () => {
         const states = LEGACY_STATES.map((s) => ({ ...s }));
-        const store = StateStore.fromLegacy(states);
+        const store = new LegacyStateStore(states);
         expect(store.length).toBe(T);
         expect(store.timeAt(1)).toBe(0.5);
         expect(store.lastTime()).toBe(1.0);
@@ -80,7 +80,7 @@ describe("StateStore.fromLegacy", () => {
     });
 
     it("append() grows length and lastTime", () => {
-        const store = StateStore.fromLegacy([{ ...LEGACY_STATES[0] }]);
+        const store = new LegacyStateStore([{ ...LEGACY_STATES[0] }]);
         expect(store.length).toBe(1);
         const startIndex = store.append([{ ...LEGACY_STATES[1] }, { ...LEGACY_STATES[2] }]);
         expect(startIndex).toBe(1);
@@ -89,11 +89,11 @@ describe("StateStore.fromLegacy", () => {
     });
 });
 
-describe("StateStore.fromColumnar matches fromLegacy for equivalent data", () => {
-    const legacyStore = StateStore.fromLegacy(
+describe("ColumnarStateStore matches LegacyStateStore for equivalent data", () => {
+    const legacyStore = new LegacyStateStore(
         LEGACY_STATES.map((s) => structuredClone(s))
     );
-    const columnarStore = StateStore.fromColumnar(buildColumnarFixture(), B);
+    const columnarStore = new ColumnarStateStore(buildColumnarFixture(), B);
 
     it("agrees on length/times", () => {
         expect(columnarStore.length).toBe(legacyStore.length);
@@ -133,9 +133,9 @@ describe("StateStore.fromColumnar matches fromLegacy for equivalent data", () =>
     });
 });
 
-describe("StateStore.fromColumnar getFrame memoization", () => {
+describe("ColumnarStateStore getFrame memoization", () => {
     it("returns a fresh object per distinct frame index but is stable within the same index", () => {
-        const store = StateStore.fromColumnar(buildColumnarFixture(), B);
+        const store = new ColumnarStateStore(buildColumnarFixture(), B);
         const frame0a = store.getFrame(0);
         const frame0b = store.getFrame(0);
         expect(frame0a).toBe(frame0b);
@@ -150,25 +150,25 @@ describe("columnar blob validation", () => {
     it("throws on a blob whose length does not match T * B * width", () => {
         const fixture = buildColumnarFixture();
         fixture.bodies[0].fields.velocity = new Float32Array(T * B * 3 - 1);
-        expect(() => StateStore.fromColumnar(fixture, B)).toThrow(/velocity.*expected/);
+        expect(() => new ColumnarStateStore(fixture, B)).toThrow(/velocity.*expected/);
     });
 
     it("throws on an unknown field name", () => {
         const fixture = buildColumnarFixture();
         fixture.bodies[0].fields.spin = new Float32Array(T * B * 3);
-        expect(() => StateStore.fromColumnar(fixture, B)).toThrow(/Unknown columnar state field/);
+        expect(() => new ColumnarStateStore(fixture, B)).toThrow(/Unknown columnar state field/);
     });
 
     it("throws on a scalar blob of the wrong length", () => {
         const fixture = buildColumnarFixture();
         fixture.scalars.energy = new Float32Array(T * B + 1);
-        expect(() => StateStore.fromColumnar(fixture, B)).toThrow(/scalar "energy"/);
+        expect(() => new ColumnarStateStore(fixture, B)).toThrow(/scalar "energy"/);
     });
 
     it("skips validation for a WindowedField (it fetches its own ranges)", () => {
         const fixture = buildColumnarFixture();
         fixture.bodies[0].fields.velocity = { rowsAt: () => null };
-        expect(() => StateStore.fromColumnar(fixture, B)).not.toThrow();
+        expect(() => new ColumnarStateStore(fixture, B)).not.toThrow();
     });
 });
 
@@ -182,7 +182,7 @@ describe("non-monotonic times", () => {
 
     it("warns once when a legacy store is built or appended out of order", async () => {
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-        const store = StateStore.fromLegacy([{ time: 0 }, { time: 1 }]);
+        const store = new LegacyStateStore([{ time: 0 }, { time: 1 }]);
         expect(warn).not.toHaveBeenCalled();
         store.append([{ time: 0.5 }]);
         store.append([{ time: 0.25 }]);

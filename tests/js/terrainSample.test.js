@@ -115,10 +115,10 @@ describe("buildTerrainSeries", () => {
 
         expect(series).toHaveLength(2);
         // Batch 0 walks along row y=0 of its own (unshifted) grid: 0, 1, 2.
-        expect(series[0].map((p) => p.y)).toEqual([0, 1, 2]);
+        expect(series[0]).toEqual([0, 1, 2]);
         // Batch 1 walks along row y=2 of its own (+100) grid: 106, 107, 108.
-        expect(series[1].map((p) => p.y)).toEqual([106, 107, 108]);
-        expect(series[0].map((p) => p.x)).toEqual(times);
+        expect(series[1]).toEqual([106, 107, 108]);
+        expect(series[0]).toHaveLength(times.length);
     });
 
     it("supports a shared singleton grid for every batch", () => {
@@ -132,9 +132,9 @@ describe("buildTerrainSeries", () => {
             referenceBatch: null,
         });
 
-        expect(series[0].map((p) => p.y)).toEqual([0, 1, 2]);
+        expect(series[0]).toEqual([0, 1, 2]);
         // Batch 1 samples the same singleton grid, but along row y=2.
-        expect(series[1].map((p) => p.y)).toEqual([6, 7, 8]);
+        expect(series[1]).toEqual([6, 7, 8]);
     });
 
     it("samples every batch along a chosen reference batch's path", () => {
@@ -150,8 +150,8 @@ describe("buildTerrainSeries", () => {
         });
 
         // Both series now walk row y=0 of their respective terrain.
-        expect(series[0].map((p) => p.y)).toEqual([0, 1, 2]);
-        expect(series[1].map((p) => p.y)).toEqual([100, 101, 102]);
+        expect(series[0]).toEqual([0, 1, 2]);
+        expect(series[1]).toEqual([100, 101, 102]);
     });
 
     it("emits a null gap (not a shorter series) for frames with missing or non-finite body data", () => {
@@ -175,16 +175,8 @@ describe("buildTerrainSeries", () => {
 
         // Dropping the frame instead shifted every later sample onto an
         // earlier time in the chart and the CSV.
-        expect(series[0]).toEqual([
-            { x: 0, y: 0 },
-            { x: 1, y: null },
-            { x: 2, y: 2 },
-        ]);
-        expect(series[1]).toEqual([
-            { x: 0, y: 6 },
-            { x: 1, y: null },
-            { x: 2, y: null },
-        ]);
+        expect(series[0]).toEqual([0, null, 2]);
+        expect(series[1]).toEqual([6, null, null]);
     });
 
     it("returns an empty series for a batch with no path or grid data", () => {

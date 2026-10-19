@@ -17,23 +17,23 @@ describe("closestSeries", () => {
 describe("batchColumnsCsv", () => {
     it("writes time plus one column per batch, blank where a point is missing", () => {
         const batchManager = { simBatches: 2, getBatchName: (b) => (b === 0 ? "gt" : "") };
-        const csv = batchColumnsCsv(batchManager, [0, 0.5], [[{ y: 1 }, { y: 2 }], [{ y: 3 }]]);
+        const csv = batchColumnsCsv(batchManager, [0, 0.5], [[1, 2], [3]]);
         expect(csv.trim().split(/\r?\n/)).toEqual(["time,gt,batch_1", "0,1,3", "0.5,2,"]);
     });
 
     it("writes a null gap point as a blank cell", () => {
         const batchManager = { simBatches: 1, getBatchName: () => "a" };
-        const csv = batchColumnsCsv(batchManager, [0, 1], [[{ y: 1 }, { y: null }]]);
+        const csv = batchColumnsCsv(batchManager, [0, 1], [[1, null]]);
         expect(csv.trim().split(/\r?\n/)).toEqual(["time,a", "0,1", "1,"]);
     });
 });
 
 describe("finiteBounds", () => {
     it("ignores NaN gaps and handles all-negative series", () => {
-        expect(finiteBounds([[{ y: -3 }, { y: NaN }, { y: -1 }], [{ y: -2 }]])).toEqual([-3, -1]);
+        expect(finiteBounds([[-3, NaN, -1], [-2]])).toEqual([-3, -1]);
     });
 
     it("falls back to [0, 1] when nothing is finite", () => {
-        expect(finiteBounds([[{ y: NaN }]])).toEqual([0, 1]);
+        expect(finiteBounds([[NaN]])).toEqual([0, 1]);
     });
 });
