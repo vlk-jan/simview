@@ -39,6 +39,18 @@ the axes) would make "Render All Batches" usable at high batch counts too. Only
 worth doing if that mode turns out to be something people actually want at those
 counts — the focused view may simply be the right answer.
 
+## `add_state` overhead
+
+Measured 2026-10-19 on 5000 steps × 64 envs × 4 bodies (70 MB file, median of
+3): `add_state` loop 2.7 s, `add_trajectory` 0.34 s, `save` 0.8 s, server load
+0.22 s, viewer ready 1.4 s (vs 0.7 s for the tiny example). Only `add_state`
+stands out: `SimViewBodyState` converts tensors to lists, concatenates them, and
+`to_json` turns them back into an array to pack the blob — ~1 s of the 2.7 s.
+Packing straight from the arrays would roughly halve it, but `position`/
+`orientation` are public list attributes, and ~0.5 ms/frame is likely small
+next to the sim step being recorded. Left alone until someone reports slow
+recording; `add_trajectory` is the fast path for long runs.
+
 ## Smaller leftovers
 
 - `interactionController`/hover: hovering an `InstancedMesh` would scale all
