@@ -1473,7 +1473,8 @@ importmap. Entry point <code>main.js</code> → <code>SimView.js</code> (<code>S
 (<code>loadData</code>/<code>fetchBlobs</code>/<code>initFromModel</code>) and wires everything else together:</p>
 <ul>
 <li><strong><code>components/</code></strong> — <code>Scene</code> (THREE.js scene/camera/renderer + OrbitControls),
-  <code>StateStore</code> (decoded trajectory data + playback lookups), <code>AnimationController</code>
+  <code>StateStore</code> (decoded trajectory data + playback lookups: <code>ColumnarStateStore</code> for a
+  loaded scene, <code>LegacyStateStore</code> for per-frame/live data), <code>AnimationController</code>
   (playback loop, speed, interpolation), <code>BatchManager</code> (per-batch color/focus/visibility),
   <code>InteractionController</code> (mouse picking, terrain probe, click-to-similarity),
   <code>WindowedField</code> (range-fetched per-body vector fields).</li>
