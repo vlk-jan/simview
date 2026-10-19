@@ -177,10 +177,12 @@ export class Terrain {
             shininess: 10,
         });
 
-        const wireframeMaterial = new THREE.MeshBasicMaterial({
+        // Each grid edge is drawn once (see #createWireframeGeometry), where
+        // a `wireframe: true` mesh drew every interior edge twice at 0.2;
+        // 0.36 = 1 - (1 - 0.2)^2 keeps the same look.
+        const wireframeMaterial = new THREE.LineBasicMaterial({
             color: 0xffffff,
-            wireframe: true,
-            opacity: 0.2,
+            opacity: 0.36,
             transparent: true,
         });
 
@@ -194,6 +196,7 @@ export class Terrain {
         const { surfaceMaterial, wireframeMaterial } = this.#createMaterials();
 
         let singletonSurfaceGeometry = null;
+        let singletonWireframeGeometry = null;
         let singletonNormals = null;
 
         if (this.isSingleton) {
@@ -202,6 +205,7 @@ export class Terrain {
                 0,
                 normals?.[0]
             );
+            singletonWireframeGeometry = this.#createWireframeGeometry(singletonSurfaceGeometry);
             singletonNormals = this.#createNormalVectors(
                 heightData[0],
                 normals?.[0]
@@ -224,8 +228,16 @@ export class Terrain {
             surfaceMesh.castShadow = true;
             batchGroup.add(surfaceMesh);
 
-            const wireframeMesh = new THREE.Mesh(surfaceGeometry, wireframeMaterial);
+            const wireframeMesh = new THREE.LineSegments(
+                this.isSingleton
+                    ? singletonWireframeGeometry
+                    : this.#createWireframeGeometry(surfaceGeometry),
+                wireframeMaterial
+            );
             wireframeMesh.name = "wireframe";
+            // The probe only uses "surface" hits; raycasting millions of
+            // segments here just cost every click ~0.5 s.
+            wireframeMesh.raycast = () => {};
             batchGroup.add(wireframeMesh);
 
             const surfaceNormals = this.isSingleton
@@ -390,6 +402,45 @@ export class Terrain {
 
         // Apply colors
         this.#updateSurfaceColor(batchIndex, geometry, callableColormap);
+        return geometry;
+    }
+
+    // The surface's triangle edges as line segments, each edge once:
+    // horizontal, vertical, and the diagonal the two triangles of a cell
+    // share. Shares the surface's position buffer, so only the index is new --
+    // three's `wireframe: true` instead builds a JS array of every triangle's
+    // three edges (interior ones twice), ~10x slower on a 1.6M-vertex grid.
+    #createWireframeGeometry(surfaceGeometry) {
+        const { resolutionX, resolutionY } = this.dimensions;
+        const count = resolutionX * resolutionY;
+        const indices = new (count > 65535 ? Uint32Array : Uint16Array)(
+            2 *
+                ((resolutionX - 1) * resolutionY +
+                    resolutionX * (resolutionY - 1) +
+                    (resolutionX - 1) * (resolutionY - 1))
+        );
+        for (let r = 0, k = 0; r < resolutionY; r++) {
+            for (let col = 0; col < resolutionX; col++) {
+                const a = r * resolutionX + col;
+                const right = col < resolutionX - 1;
+                const down = r < resolutionY - 1;
+                if (right) {
+                    indices[k++] = a;
+                    indices[k++] = a + 1;
+                }
+                if (down) {
+                    indices[k++] = a;
+                    indices[k++] = a + resolutionX;
+                }
+                if (right && down) {
+                    indices[k++] = a + 1;
+                    indices[k++] = a + resolutionX;
+                }
+            }
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", surfaceGeometry.attributes.position);
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
         return geometry;
     }
 

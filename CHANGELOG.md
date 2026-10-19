@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2-batch terrain the terrain-build stall drops from ~1.3 s to ~0.25 s and
   time-to-interactive from ~3.0 s to ~1.9 s; rendering is unchanged. The
   unused `uv` attribute is no longer allocated.
+- The terrain wireframe is a `LineSegments` over the surface's position buffer
+  with each grid edge drawn once, instead of a `wireframe: true` mesh (which
+  built its line index in a JS array and drew every interior edge twice);
+  its opacity goes from 0.2 to 0.36 so the doubled-edge look is unchanged.
+  On the same terrain the first-draw stall drops from ~1.05 s to ~0.57 s and
+  the wireframe's per-frame GPU cost from ~24 ms to ~15 ms.
+- The terrain probe no longer raycasts the wireframe (only surface hits were
+  ever used), halving the time a probe click takes (~0.83 s -> ~0.40 s).
 
 ## [6.2.0] - 2026-10-08
 

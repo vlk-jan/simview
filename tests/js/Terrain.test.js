@@ -235,6 +235,40 @@ describe("Terrain surface geometry", () => {
             expect(pos.getZ(i)).toBe(heights[row * rx + (i % rx)]);
         }
     });
+
+    it("draws each surface triangle edge exactly once as the wireframe, without raycasting it", () => {
+        const [rx, ry] = [4, 3];
+        const terrain = new Terrain(
+            {
+                bounds: { minX: 0, maxX: 3, minY: 0, maxY: 2, minZ: 0, maxZ: 1 },
+                dimensions: { sizeX: 3, sizeY: 2, resolutionX: rx, resolutionY: ry },
+                heightData: new Float32Array(rx * ry),
+            },
+            fakeApp(1)
+        );
+        const batch = terrain.group.getObjectByName("batch0");
+        const surface = batch.getObjectByName("surface").geometry;
+        const wireframe = batch.getObjectByName("wireframe");
+        const key = (a, b) => `${Math.min(a, b)}-${Math.max(a, b)}`;
+
+        const triangleEdges = new Set();
+        const tri = surface.index.array;
+        for (let i = 0; i < tri.length; i += 3) {
+            triangleEdges.add(key(tri[i], tri[i + 1]));
+            triangleEdges.add(key(tri[i + 1], tri[i + 2]));
+            triangleEdges.add(key(tri[i + 2], tri[i]));
+        }
+        const lines = wireframe.geometry.index.array;
+        const lineEdges = [];
+        for (let i = 0; i < lines.length; i += 2) lineEdges.push(key(lines[i], lines[i + 1]));
+
+        expect(lineEdges.length).toBe(new Set(lineEdges).size);
+        expect(new Set(lineEdges)).toEqual(triangleEdges);
+        expect(wireframe.geometry.attributes.position).toBe(surface.attributes.position);
+        const hits = [];
+        wireframe.raycast({}, hits);
+        expect(hits).toEqual([]);
+    });
 });
 
 describe("Terrain robustness", () => {
