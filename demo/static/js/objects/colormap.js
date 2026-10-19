@@ -44,3 +44,22 @@ export function getCallableFromColorMapName(cmapName) {
     );
     return (value) => new THREE.Color(value, 0.2, 1 - value);
 }
+
+/**
+ * Samples a colormap callable at `size` evenly spaced values over [0, 1] into
+ * a flat RGB table, so colouring a million-vertex terrain is an array lookup
+ * per vertex instead of a colormap evaluation plus a THREE.Color allocation.
+ * @param {(value: number) => THREE.Color} callable
+ * @param {number} [size]
+ * @returns {Float32Array} size * 3 floats, r/g/b of sample k at k * 3
+ */
+export function colormapLUT(callable, size = 1024) {
+    const lut = new Float32Array(size * 3);
+    for (let k = 0; k < size; k++) {
+        const c = callable(k / (size - 1));
+        lut[k * 3] = c.r;
+        lut[k * 3 + 1] = c.g;
+        lut[k * 3 + 2] = c.b;
+    }
+    return lut;
+}
