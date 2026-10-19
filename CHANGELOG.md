@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Batch names, episode labels, terrain layer/property names and load errors
+  are now HTML-escaped in chart tooltips, the colour legend and the splash
+  screen. A scene file (or a batch rename) could previously inject markup and
+  script into the viewer page.
+- Locked dependencies bumped past known advisories: starlette 1.0.0 → 1.9.0,
+  anyio 4.13.0 → 4.14.2, idna 3.11 → 3.20.
+
 ## [6.2.1] - 2026-10-19
 
 ### Changed

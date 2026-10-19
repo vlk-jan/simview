@@ -9,6 +9,7 @@ import {
 import { makeChart, yIncrements } from "../utils/uplot.js";
 import { batchColumnsCsv, closestSeries, exportBar, finiteBounds } from "./chartControls.js";
 import { appendScalarFrames } from "../utils/scalarSeries.js";
+import { escapeHtml } from "../utils/html.js";
 
 export class ScalarPlotter {
     constructor(app, scalarNames) {
@@ -279,7 +280,7 @@ export class ScalarPlotter {
         if (!aggregate || aggregate.mean === null) return "";
         const format = (v) => (Math.abs(v) >= 1e4 ? v.toExponential(2) : v.toFixed(3));
         return (
-            `<br>${episodeLabel(aggregate)}: ` +
+            `<br>${escapeHtml(episodeLabel(aggregate))}: ` +
             `sum ${format(aggregate.sum)}, mean ${format(aggregate.mean)}`
         );
     }
@@ -384,7 +385,7 @@ export class ScalarPlotter {
         const color = this.app.batchManager.getColorForBatch(batchIndex);
         const batchLabel = this.app.batchManager.getBatchName(batchIndex);
         return (
-            `<span style="color:${color};">Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}` +
+            `<span style="color:${color};">Batch: ${escapeHtml(batchLabel)}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}` +
             this._episodeTooltipText(name, idx) +
             "</span>"
         );

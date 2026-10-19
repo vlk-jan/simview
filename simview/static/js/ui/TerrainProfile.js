@@ -2,6 +2,7 @@ import { FREQ_CONFIG, THEME } from "../config.js";
 import { downloadCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
+import { escapeHtml } from "../utils/html.js";
 import {
     batchColumnsCsv,
     closestSeries,
@@ -276,7 +277,7 @@ export class TerrainProfile {
         const color = this.app.batchManager.getColorForBatch(batchIndex);
         const batchLabel = this.app.batchManager.getBatchName(batchIndex);
         const layerLabel = LAYER_LABELS[this.layer] || this.layer;
-        return `<span style="color:${color};">Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>${layerLabel}: ${value.toFixed(3)}</span>`;
+        return `<span style="color:${color};">Batch: ${escapeHtml(batchLabel)}<br>Time: ${time.toFixed(3)}<br>${escapeHtml(layerLabel)}: ${value.toFixed(3)}</span>`;
     }
 
     // Moves the current-time marker line to match playback, redrawing only

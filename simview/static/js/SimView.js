@@ -21,6 +21,7 @@ import { hasBodyTrajectory } from "./utils/terrainSample.js";
 import { decodeStatesChunk, STATE_FIELD_WIDTHS } from "./utils/blobCodec.js";
 import { StateStore } from "./components/StateStore.js";
 import { WindowedField } from "./components/WindowedField.js";
+import { escapeHtml } from "./utils/html.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
 import { shiftEpisodes } from "./utils/episodes.js";
@@ -172,7 +173,7 @@ export class SimView {
         } catch (error) {
             console.error("Critical error during initial data fetch:", error);
             if (splash) {
-                splash.innerHTML = `<h1 class="sv-splash-error">Couldn't load the simulation</h1><p>${error.message}</p><p>See the browser console for details.</p>`;
+                splash.innerHTML = `<h1 class="sv-splash-error">Couldn't load the simulation</h1><p>${escapeHtml(error.message)}</p><p>See the browser console for details.</p>`;
             }
             throw error;
         }
@@ -559,7 +560,7 @@ export class SimView {
             console.error("Error during initFromModel:", error);
             const splash = document.getElementById("loading-splash");
             if (splash) {
-                splash.innerHTML = `<h1 class="sv-splash-error">Error during initialization</h1><p>${error.message}</p>`;
+                splash.innerHTML = `<h1 class="sv-splash-error">Error during initialization</h1><p>${escapeHtml(error.message)}</p>`;
             }
             throw error;
         }
@@ -584,7 +585,7 @@ export class SimView {
             console.error("Initialization failed:", error);
             const splash = document.getElementById("loading-splash");
             if (splash) {
-                splash.innerHTML = `<h1 class="sv-splash-error">Failed to connect or initialize</h1><p>${error.message}</p>`;
+                splash.innerHTML = `<h1 class="sv-splash-error">Failed to connect or initialize</h1><p>${escapeHtml(error.message)}</p>`;
             }
         }
     }
