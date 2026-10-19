@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.2] - 2026-10-19
+
 ### Security
 
 - Batch names, episode labels, terrain layer/property names and load errors
@@ -806,7 +808,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.2.1...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.2.2...HEAD
+[6.2.2]: https://github.com/vlk-jan/simview/compare/v6.2.1...v6.2.2
 [6.2.1]: https://github.com/vlk-jan/simview/compare/v6.2.0...v6.2.1
 [6.2.0]: https://github.com/vlk-jan/simview/compare/v6.1.2...v6.2.0
 [6.1.2]: https://github.com/vlk-jan/simview/compare/v6.1.1...v6.1.2
