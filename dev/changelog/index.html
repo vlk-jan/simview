@@ -1185,7 +1185,25 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.2.0...HEAD">Unreleased</a></h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.2.1...HEAD">Unreleased</a></h2>
+<h2 id="621-2026-10-19"><a href="https://github.com/vlk-jan/simview/compare/v6.2.0...v6.2.1">6.2.1</a> - 2026-10-19</h2>
+<h3 id="changed">Changed</h3>
+<ul>
+<li>Terrain geometry is built directly into typed arrays instead of through
+  <code>THREE.PlaneGeometry</code>, and surface colours come from a sampled colormap
+  lookup table instead of a colormap evaluation per vertex. On a 917x1808,
+  2-batch terrain the terrain-build stall drops from ~1.3 s to ~0.25 s and
+  time-to-interactive from ~3.0 s to ~1.9 s; rendering is unchanged. The
+  unused <code>uv</code> attribute is no longer allocated.</li>
+<li>The terrain wireframe is a <code>LineSegments</code> over the surface's position buffer
+  with each grid edge drawn once, instead of a <code>wireframe: true</code> mesh (which
+  built its line index in a JS array and drew every interior edge twice);
+  its opacity goes from 0.2 to 0.36 so the doubled-edge look is unchanged.
+  On the same terrain the first-draw stall drops from ~1.05 s to ~0.57 s and
+  the wireframe's per-frame GPU cost from ~24 ms to ~15 ms.</li>
+<li>The terrain probe no longer raycasts the wireframe (only surface hits were
+  ever used), halving the time a probe click takes (~0.83 s -&gt; ~0.40 s).</li>
+</ul>
 <h2 id="620-2026-10-08"><a href="https://github.com/vlk-jan/simview/compare/v6.1.2...v6.2.0">6.2.0</a> - 2026-10-08</h2>
 <h3 id="added">Added</h3>
 <ul>
@@ -1223,7 +1241,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>simview static-viewer DIR</code> copies the viewer page (<code>index.html</code> + <code>static/</code>) to
   <code>DIR</code>, so a site can host it as plain files next to <code>save_static()</code> bundles.</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed_1">Changed</h3>
 <ul>
 <li><code>SimViewModel.from_dict</code> no longer requires <code>dt</code>, <code>collapse</code> or <code>staticObjects</code>
   (matching the viewer and the format doc); a wrong-length <code>batchNames</code> is warned
@@ -1319,7 +1337,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   OrbitControls; terrain and static-object disposal release their GPU resources.</li>
 </ul>
 <h2 id="612-2026-10-08"><a href="https://github.com/vlk-jan/simview/compare/v6.1.1...v6.1.2">6.1.2</a> - 2026-10-08</h2>
-<h3 id="changed_1">Changed</h3>
+<h3 id="changed_2">Changed</h3>
 <ul>
 <li>The scalar plotter draws each series over the whole timeline, with a vertical line
   at the current playback time, instead of only the part played so far.</li>
@@ -1433,7 +1451,7 @@ redundant Python authoring entry points were removed, listed below.</p>
 <li><strong>The 71 matplotlib colormaps the viewer never offered</strong> from <code>js-colormaps.js</code>.
   Every map in the colormap dropdown is unchanged.</li>
 </ul>
-<h3 id="changed_2">Changed</h3>
+<h3 id="changed_3">Changed</h3>
 <ul>
 <li><strong><code>ViewerHandle</code> is now the background server itself</strong> (<code>simview.server.ViewerHandle</code>).
   <code>scene.show()</code>, <code>LiveViewer</code> and <code>simview render</code> share it instead of three
@@ -1482,7 +1500,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   contacts (contacts keep the key when present); the label reads "Show Point
   Clouds (C)" when the key applies.</li>
 </ul>
-<h3 id="changed_3">Changed</h3>
+<h3 id="changed_4">Changed</h3>
 <ul>
 <li><strong>Viewer UI restyled in Catppuccin Mocha.</strong> Every panel (Analysis, Body states,
   Batches, legends, playback bar, and now the lil-gui Controls panel, which floats
@@ -1539,7 +1557,7 @@ versa, and authoring code needs no edits.</p>
   in plain <code>torch</code>, which <code>model.py</code> already requires. If your own code imports
   <code>einops</code> while relying on <code>simview[authoring]</code> to install it, declare it yourself.</li>
 </ul>
-<h3 id="changed_4">Changed</h3>
+<h3 id="changed_5">Changed</h3>
 <ul>
 <li><strong>The CLI now uses real argparse subcommands.</strong> Every documented invocation is
   unchanged — <code>simview info &lt;file&gt;</code>, <code>simview diff &lt;file&gt; --batches 0 1</code>,
@@ -1668,7 +1686,7 @@ versa, and authoring code needs no edits.</p>
   resident, since trails, error metrics, the terrain profile and the scalar plots all
   walk the entire trajectory.</li>
 </ul>
-<h3 id="changed_5">Changed</h3>
+<h3 id="changed_6">Changed</h3>
 <ul>
 <li><code>SimulationScene.save()</code> writes columnar <code>states</code> by default. Files stay readable
   by <code>load</code>, <code>merge_simulation_files</code>, <code>simview info</code>/<code>diff</code>/<code>terrain</code> and the viewer
@@ -1832,7 +1850,7 @@ versa, and authoring code needs no edits.</p>
   developer guide, published to GitHub Pages. <code>README.md</code> is trimmed to a
   landing page that links to it.</li>
 </ul>
-<h3 id="changed_6">Changed</h3>
+<h3 id="changed_7">Changed</h3>
 <ul>
 <li>The Error Metrics panel auto-selects a sensible Batch A/B default from
   batch names (e.g. ground-truth vs. post-adaptation) instead of always
@@ -1854,7 +1872,7 @@ versa, and authoring code needs no edits.</p>
 <li><code>--csv</code> output for <code>simview diff</code> and <code>simview terrain</code>, alongside the
   existing <code>--json</code>.</li>
 </ul>
-<h3 id="changed_7">Changed</h3>
+<h3 id="changed_8">Changed</h3>
 <ul>
 <li>Only emit uvicorn's access log when running in debug mode.</li>
 </ul>
@@ -1865,7 +1883,7 @@ versa, and authoring code needs no edits.</p>
 <li>Test against Python 3.14 in CI and advertise it in the package classifiers.</li>
 <li>Dependabot configuration for GitHub Actions, npm, and Python dependencies.</li>
 </ul>
-<h3 id="changed_8">Changed</h3>
+<h3 id="changed_9">Changed</h3>
 <ul>
 <li>Bump the PyPI development-status classifier to <code>5 - Production/Stable</code>.</li>
 <li>Use uvicorn's modern sansio websocket implementation for the live server when
@@ -1883,7 +1901,7 @@ versa, and authoring code needs no edits.</p>
   hash so a view can be restored or handed off.</li>
 <li>Single-frame PNG screenshot export.</li>
 </ul>
-<h3 id="changed_9">Changed</h3>
+<h3 id="changed_10">Changed</h3>
 <ul>
 <li>Prepare packaging for PyPI publishing (metadata, build, publish workflow).</li>
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
@@ -1904,7 +1922,7 @@ versa, and authoring code needs no edits.</p>
 <li>Smooth interpolated playback (position lerp + quaternion slerp) with a toggle.</li>
 <li>Error-metric summary stats and CSV export in the analysis panel.</li>
 </ul>
-<h3 id="changed_10">Changed</h3>
+<h3 id="changed_11">Changed</h3>
 <ul>
 <li>Vendor three.js and chroma-js locally so the viewer works fully offline.</li>
 <li>Serve states as per-body whole-trajectory binary columns ("v4" columnar
