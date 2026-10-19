@@ -209,6 +209,34 @@ describe("Terrain surface shading normals", () => {
     });
 });
 
+describe("Terrain surface geometry", () => {
+    it("matches a bounds-centred THREE.PlaneGeometry, heights row-inverted", async () => {
+        const THREE = await import("three");
+        const [rx, ry, sizeX, sizeY] = [3, 4, 2, 6];
+        const bounds = { minX: 5, maxX: 7, minY: -1, maxY: 5, minZ: 0, maxZ: 12 };
+        const heights = Float32Array.from({ length: rx * ry }, (_, i) => i);
+        const terrain = new Terrain(
+            {
+                bounds,
+                dimensions: { sizeX, sizeY, resolutionX: rx, resolutionY: ry },
+                heightData: heights,
+            },
+            fakeApp(1)
+        );
+        const geometry = terrain.group.getObjectByName("batch0").getObjectByName("surface").geometry;
+        const plane = new THREE.PlaneGeometry(sizeX, sizeY, rx - 1, ry - 1).translate(6, 2, 0);
+
+        expect(Array.from(geometry.index.array)).toEqual(Array.from(plane.index.array));
+        const pos = geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            expect(pos.getX(i)).toBeCloseTo(plane.attributes.position.getX(i));
+            expect(pos.getY(i)).toBeCloseTo(plane.attributes.position.getY(i));
+            const row = ry - Math.floor(i / rx) - 1;
+            expect(pos.getZ(i)).toBe(heights[row * rx + (i % rx)]);
+        }
+    });
+});
+
 describe("Terrain robustness", () => {
     it("colours a NaN property cell neutral grey without hitting js-colormaps' alert()", () => {
         globalThis.alert = () => {

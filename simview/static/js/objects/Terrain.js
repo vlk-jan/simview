@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { TERRAIN_CONFIG, THEME } from "../config.js";
-import { getCallableFromColorMapName } from "./colormap.js";
+import { colormapLUT, getCallableFromColorMapName } from "./colormap.js";
 import { toFlatFloat32Array } from "./utils.js";
 
 export class Terrain {
@@ -308,64 +308,88 @@ export class Terrain {
     #createSurfaceGeometryFromHeightData(heightData, batchIndex, normals) {
         const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY, maxX, maxY } = this.bounds;
-        // Create a plane geometry with the right number of segments
-        const geometry = new THREE.PlaneGeometry(
-            sizeX,
-            sizeY,
-            resolutionX - 1,
-            resolutionY - 1
-        );
-        // Center the geometry based on bounds
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        geometry.translate(centerX, centerY, 0);
-        // Get attributes for direct manipulation
-        const position = geometry.attributes.position;
-        // Create color buffer
-        const colorAttribute = new THREE.BufferAttribute(
-            new Float32Array(position.count * 3),
-            3
-        );
-        geometry.setAttribute("color", colorAttribute);
+        const count = resolutionX * resolutionY;
+        // Same vertices and triangles as THREE.PlaneGeometry(sizeX, sizeY,
+        // resolutionX - 1, resolutionY - 1) centred on the bounds -- rows run
+        // top (max Y) to bottom, so vertex row r is data row resolutionY - r - 1
+        // -- but written straight into typed arrays: PlaneGeometry's JS-array
+        // build is ~10x slower on a 1.6M-vertex heightfield.
+        const left = (minX + maxX) / 2 - sizeX / 2;
+        const top = (minY + maxY) / 2 + sizeY / 2;
+        const stepX = sizeX / (resolutionX - 1);
+        const stepY = sizeY / (resolutionY - 1);
 
-        // Apply height data to geometry
-        // NOTE: THREE.js PlaneGeometry vertices are arranged in rows from bottom to top (Y increases)
+        // Supplied normals aren't guaranteed unit length (scene.py writes
+        // (-dz/dx, -dz/dy, 1) as-is); without any, they're computed below so
+        // slopes still get a shading cue.
+        const flatNormals = ArrayBuffer.isView(normals);
+        const normalCount = flatNormals ? normals.length / 3 : normals?.length ?? 0;
+        const useSuppliedNormals = normalCount === count;
+
+        const positions = new Float32Array(count * 3);
+        const normalArray = useSuppliedNormals ? new Float32Array(count * 3) : null;
+        for (let r = 0, i = 0; r < resolutionY; r++) {
+            const y = top - r * stepY;
+            const rowStart = (resolutionY - r - 1) * resolutionX;
+            for (let col = 0; col < resolutionX; col++, i += 3) {
+                const dataIndex = rowStart + col;
+                positions[i] = left + col * stepX;
+                positions[i + 1] = y;
+                positions[i + 2] = heightData[dataIndex];
+                if (!normalArray) continue;
+                let nx, ny, nz;
+                if (flatNormals) {
+                    const base = dataIndex * 3;
+                    nx = normals[base];
+                    ny = normals[base + 1];
+                    nz = normals[base + 2];
+                } else {
+                    [nx, ny, nz] = normals[dataIndex];
+                }
+                const inv = 1 / (Math.sqrt(nx * nx + ny * ny + nz * nz) || 1);
+                nx *= inv;
+                ny *= inv;
+                nz *= inv;
+                if (!Number.isFinite(nx + ny + nz)) {
+                    nx = 0;
+                    ny = 0;
+                    nz = 1;
+                }
+                normalArray[i] = nx;
+                normalArray[i + 1] = ny;
+                normalArray[i + 2] = nz;
+            }
+        }
+
+        const indices = new (count > 65535 ? Uint32Array : Uint16Array)(
+            (resolutionX - 1) * (resolutionY - 1) * 6
+        );
+        for (let r = 0, k = 0; r < resolutionY - 1; r++) {
+            for (let col = 0; col < resolutionX - 1; col++) {
+                const a = r * resolutionX + col;
+                const b = a + resolutionX;
+                indices[k++] = a;
+                indices[k++] = b;
+                indices[k++] = a + 1;
+                indices[k++] = b;
+                indices[k++] = b + 1;
+                indices[k++] = a + 1;
+            }
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+        if (normalArray) geometry.setAttribute("normal", new THREE.BufferAttribute(normalArray, 3));
+        else geometry.computeVertexNormals();
+
         const callableColormap = getCallableFromColorMapName(
             this.app.uiState.terrainColorMap
         );
 
-        // PlaneGeometry ships flat (0, 0, 1) normals, so without this the
-        // surface is lit as if it were level and slopes get no shading cue.
-        const normalCount = ArrayBuffer.isView(normals) ? normals.length / 3 : normals?.length ?? 0;
-        const useSuppliedNormals = normalCount === position.count;
-        const normal = geometry.attributes.normal;
-        const n = new THREE.Vector3();
-
-        for (let i = 0; i < position.count; i++) {
-            // Convert vertex index to grid coordinates
-            const col = i % resolutionX;
-            const invertedRow = Math.floor(i / resolutionX);
-            const row = resolutionY - invertedRow - 1; // Invert row index
-            // Calculate index in the flattened height data array
-            const dataIndex = row * resolutionX + col;
-            // Set Z coordinate (height)
-            position.setZ(i, heightData[dataIndex]);
-            if (useSuppliedNormals) {
-                // Supplied normals aren't guaranteed unit length (scene.py
-                // writes (-dz/dx, -dz/dy, 1) as-is).
-                n.fromArray(Terrain.#normalAt(normals, dataIndex)).normalize();
-                if (!Number.isFinite(n.x + n.y + n.z)) n.set(0, 0, 1);
-                normal.setXYZ(i, n.x, n.y, n.z);
-            }
-        }
-        if (useSuppliedNormals) normal.needsUpdate = true;
-        else geometry.computeVertexNormals();
-
         // Apply colors
         this.#updateSurfaceColor(batchIndex, geometry, callableColormap);
-
-        // Make sure changes are applied
-        position.needsUpdate = true;
         return geometry;
     }
 
@@ -508,6 +532,9 @@ export class Terrain {
         }
 
         // Update all colors based on the new colormap
+        const lut = colormapLUT(callableColormap);
+        const lutLast = lut.length / 3 - 1;
+        const colors = colorAttribute.array;
         for (let i = 0; i < position.count; i++) {
             let value;
             if (mode === "diff") {
@@ -567,8 +594,16 @@ export class Terrain {
                     value = this.calculateNormalizedHeight(position.getZ(i));
                 }
             }
-            const color = callableColormap(value);
-            colorAttribute.setXYZ(i, color.r, color.g, color.b);
+            if (Number.isFinite(value)) {
+                const k = Math.round(Math.max(0, Math.min(1, value)) * lutLast) * 3;
+                colors[i * 3] = lut[k];
+                colors[i * 3 + 1] = lut[k + 1];
+                colors[i * 3 + 2] = lut[k + 2];
+            } else {
+                // No data: the callable's neutral grey, not a colormap end.
+                const color = callableColormap(value);
+                colorAttribute.setXYZ(i, color.r, color.g, color.b);
+            }
         }
         // Update the buffer
         colorAttribute.needsUpdate = true;

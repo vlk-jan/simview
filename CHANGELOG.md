@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Terrain geometry is built directly into typed arrays instead of through
+  `THREE.PlaneGeometry`, and surface colours come from a sampled colormap
+  lookup table instead of a colormap evaluation per vertex. On a 917x1808,
+  2-batch terrain the terrain-build stall drops from ~1.3 s to ~0.25 s and
+  time-to-interactive from ~3.0 s to ~1.9 s; rendering is unchanged. The
+  unused `uv` attribute is no longer allocated.
+
 ## [6.2.0] - 2026-10-08
 
 ### Added
