@@ -54,12 +54,13 @@ export function bilinearSample(grid, dimensions, bounds, x, y) {
     );
 }
 
-// Builds one {x: time, y: value}[] series per batch for a terrain layer.
+// Builds one per-frame value array per batch for a terrain layer, indexed
+// like `times`.
 //
 // `paths`: per-batch array of per-frame [x, y] points (e.g. a body's world
 // position history), one entry per batch. A frame entry may be null/
 // undefined (or contain a non-finite coordinate) to mark that batch as
-// having no body data at that frame -- such frames become a `y: null` gap
+// having no body data at that frame -- such frames become a `null` gap
 // at the same index (uPlot's gap value), so series[b][i] always lines up
 // with times[i] for the chart's x column and the CSV export.
 // `grids`: per-batch flat row-major grid arrays for the layer being sampled,
@@ -84,20 +85,17 @@ export function buildTerrainSeries({
         const pathBatch = referenceBatch === null ? b : referenceBatch;
         const path = paths[pathBatch];
         const grid = grids[isSingleton ? 0 : b];
-        const points = [];
+        const values = [];
         if (path && grid) {
             const numFrames = Math.min(times.length, path.length);
             for (let s = 0; s < numFrames; s++) {
                 const p = path[s];
                 const valid =
                     p && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
-                points.push({
-                    x: times[s],
-                    y: valid ? bilinearSample(grid, dimensions, bounds, p[0], p[1]) : null,
-                });
+                values.push(valid ? bilinearSample(grid, dimensions, bounds, p[0], p[1]) : null);
             }
         }
-        series[b] = points;
+        series[b] = values;
     }
     return series;
 }

@@ -9,7 +9,7 @@ import {
     rmse,
 } from "../utils/errorMath.js";
 import { makeChart } from "../utils/uplot.js";
-import { exportBar, selectGroup } from "./chartControls.js";
+import { checkboxGroup, exportBar, selectGroup } from "./chartControls.js";
 
 // One place for the per-series colors: the plot strokes, the hover tooltip and
 // the swatches in front of the readout labels all have to agree, otherwise the
@@ -87,8 +87,8 @@ export class ErrorMetrics {
         this.bodySelect = selectGroup(this.controlsContainer, "Body:", bodyOptions, this.selectedBody);
         this.batchASelect = selectGroup(this.controlsContainer, "Batch A:", batchOptions, this.batchA);
         this.batchBSelect = selectGroup(this.controlsContainer, "Batch B:", batchOptions, this.batchB);
-        this.axesToggle = this._addCheckboxGroup("Per-axis:", this.showAxes);
-        this.statsToggle = this._addCheckboxGroup("Details:", this.showStats);
+        this.axesToggle = checkboxGroup(this.controlsContainer, "Per-axis:", this.showAxes);
+        this.statsToggle = checkboxGroup(this.controlsContainer, "Details:", this.showStats);
 
         this.readout = this._makeRows("error-metrics-readout", READOUT_ROWS);
         this.content.appendChild(this.readout);
@@ -96,7 +96,8 @@ export class ErrorMetrics {
 
         this.stats = this._makeRows("error-metrics-stats", STATS_ROWS);
         this.content.appendChild(this.stats);
-        this._applyStatsVisibility();
+        // RMSE/max-error/drift summary block, behind the "Details" toggle.
+        this.stats.hidden = !this.showStats;
 
         this.content.appendChild(exportBar(() => this._exportCsv()));
 
@@ -135,32 +136,12 @@ export class ErrorMetrics {
         return block;
     }
 
-    _addCheckboxGroup(labelText, checked) {
-        const group = document.createElement("div");
-        group.className = "sv-control-group";
-        const label = document.createElement("label");
-        label.textContent = labelText;
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = checked;
-        group.appendChild(label);
-        group.appendChild(checkbox);
-        this.controlsContainer.appendChild(group);
-        return checkbox;
-    }
-
     // Shows the combined-magnitude readout row or the per-axis rows,
     // whichever matches the current toggle state.
     _applyAxesVisibility() {
         const rows = this.readout.rows;
         rows.pos.hidden = this.showAxes;
         rows.x.hidden = rows.y.hidden = rows.z.hidden = !this.showAxes;
-    }
-
-    // Shows/hides the RMSE/max-error/drift summary block based on the
-    // "Details" toggle.
-    _applyStatsVisibility() {
-        this.stats.hidden = !this.showStats;
     }
 
     // Called after a batch is renamed elsewhere (e.g. the BatchLegend), so the
@@ -194,7 +175,7 @@ export class ErrorMetrics {
         });
         this.statsToggle.addEventListener("change", (e) => {
             this.showStats = e.target.checked;
-            this._applyStatsVisibility();
+            this.stats.hidden = !this.showStats;
         });
     }
 
@@ -217,7 +198,10 @@ export class ErrorMetrics {
         this._historyDirty = true;
     }
 
+    // Per-frame plain arrays: `times` is the x of every series, the rest are
+    // the error values (NaN at a trajectory gap).
     _clearSeries() {
+        this.times = [];
         this.posSeries = [];
         this.rotSeries = [];
         this.axisSeries = { x: [], y: [], z: [] };
@@ -245,6 +229,7 @@ export class ErrorMetrics {
         }
 
         const n = body.validStates;
+        const times = new Array(n);
         const posSeries = new Array(n);
         const rotSeries = new Array(n);
         const axisXSeries = new Array(n);
@@ -255,13 +240,14 @@ export class ErrorMetrics {
             const posErr = positionError(posA, posB, s);
             const rotErrDeg = (quaternionAngleError(quatA, quatB, s) * 180) / Math.PI;
 
-            const t = s < store.length ? store.timeAt(s) : s;
-            posSeries[s] = { x: t, y: posErr };
-            rotSeries[s] = { x: t, y: rotErrDeg };
-            axisXSeries[s] = { x: t, y: dx };
-            axisYSeries[s] = { x: t, y: dy };
-            axisZSeries[s] = { x: t, y: dz };
+            times[s] = s < store.length ? store.timeAt(s) : s;
+            posSeries[s] = posErr;
+            rotSeries[s] = rotErrDeg;
+            axisXSeries[s] = dx;
+            axisYSeries[s] = dy;
+            axisZSeries[s] = dz;
         }
+        this.times = times;
         this.posSeries = posSeries;
         this.rotSeries = rotSeries;
         this.axisSeries = { x: axisXSeries, y: axisYSeries, z: axisZSeries };
@@ -287,8 +273,8 @@ export class ErrorMetrics {
 
         // NaN frames (gaps in the trajectory) are skipped by rmse/maxWithIndex
         // and shown as "-" here, matching the scalar plots' gap handling.
-        const posValues = this.posSeries.map((p) => p.y);
-        const rotValues = this.rotSeries.map((p) => p.y);
+        const posValues = this.posSeries;
+        const rotValues = this.rotSeries;
 
         const posRmse = rmse(posValues);
         const posMax = maxWithIndex(posValues);
@@ -300,7 +286,7 @@ export class ErrorMetrics {
         v.posMax.textContent =
             posMax.index < 0
                 ? "-"
-                : `${posMax.value.toFixed(3)} m (t=${this.posSeries[posMax.index].x.toFixed(3)})`;
+                : `${posMax.value.toFixed(3)} m (t=${this.times[posMax.index].toFixed(3)})`;
         v.drift.textContent = fmt(drift, 3, " m");
         v.rotRmse.textContent = fmt(rotRmse, 2, "°");
         v.rotMax.textContent = rotMax.index < 0 ? "-" : `${rotMax.value.toFixed(2)}°`;
@@ -312,13 +298,13 @@ export class ErrorMetrics {
     _exportCsv() {
         if (this.posSeries.length === 0) return;
         const header = ["time", "pos_error", "err_x", "err_y", "err_z", "angle_error_deg"];
-        const rows = this.posSeries.map((p, i) => [
-            p.x,
-            p.y,
-            this.axisSeries.x[i].y,
-            this.axisSeries.y[i].y,
-            this.axisSeries.z[i].y,
-            this.rotSeries[i].y,
+        const rows = this.times.map((t, i) => [
+            t,
+            this.posSeries[i],
+            this.axisSeries.x[i],
+            this.axisSeries.y[i],
+            this.axisSeries.z[i],
+            this.rotSeries[i],
         ]);
         const csv = rowsToCsv(header, rows);
         const bodyPart = sanitizeForFilename(this.selectedBody);
@@ -337,11 +323,10 @@ export class ErrorMetrics {
             return;
         }
 
-        const xValues = this.posSeries.map((p) => p.x);
-        const rotValues = this.rotSeries.map((p) => gapOrValue(p.y));
+        const rotValues = this.rotSeries.map(gapOrValue);
 
         const seriesConfigs = [{}];
-        const dataArrays = [xValues];
+        const dataArrays = [this.times];
         if (this.showAxes) {
             seriesConfigs.push(
                 { label: "X error", stroke: SERIES_COLORS.x, width: 1, points: { show: false }, scale: "pos" },
@@ -349,9 +334,9 @@ export class ErrorMetrics {
                 { label: "Z error", stroke: SERIES_COLORS.z, width: 1, points: { show: false }, scale: "pos" }
             );
             dataArrays.push(
-                this.axisSeries.x.map((p) => gapOrValue(p.y)),
-                this.axisSeries.y.map((p) => gapOrValue(p.y)),
-                this.axisSeries.z.map((p) => gapOrValue(p.y))
+                this.axisSeries.x.map(gapOrValue),
+                this.axisSeries.y.map(gapOrValue),
+                this.axisSeries.z.map(gapOrValue)
             );
         } else {
             seriesConfigs.push({
@@ -361,7 +346,7 @@ export class ErrorMetrics {
                 points: { show: false },
                 scale: "pos",
             });
-            dataArrays.push(this.posSeries.map((p) => gapOrValue(p.y)));
+            dataArrays.push(this.posSeries.map(gapOrValue));
         }
         seriesConfigs.push({
             label: "Orientation error",
@@ -458,23 +443,21 @@ export class ErrorMetrics {
 
     _updateReadoutAndMarker() {
         if (!this.app.animationController) return;
-        const idx = this.app.animationController.getCurrentStateIndex();
-        const pos = this.posSeries[idx];
-        const rot = this.rotSeries[idx];
+        const idx = this.app.animationController.currentStateIndex;
         const v = this.readout.values;
         if (this.showAxes) {
             for (const key of ["x", "y", "z"]) {
-                const p = this.axisSeries[key][idx];
-                v[key].textContent = fmt(p?.y, 3, " m");
+                v[key].textContent = fmt(this.axisSeries[key][idx], 3, " m");
             }
         } else {
-            v.pos.textContent = fmt(pos?.y, 3, " m");
+            v.pos.textContent = fmt(this.posSeries[idx], 3, " m");
         }
-        v.rot.textContent = fmt(rot?.y, 2, "°");
+        v.rot.textContent = fmt(this.rotSeries[idx], 2, "°");
 
-        if (this.chart && pos) {
-            if (this.markerTime !== pos.x) {
-                this.markerTime = pos.x;
+        const time = this.times[idx];
+        if (this.chart && time !== undefined) {
+            if (this.markerTime !== time) {
+                this.markerTime = time;
                 this.chart.redraw(false, false);
             }
         }

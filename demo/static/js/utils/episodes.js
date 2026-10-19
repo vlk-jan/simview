@@ -87,8 +87,8 @@ export function previousEpisodeStart(episodes, frameIndex) {
 }
 
 // Per-episode aggregates of one scalar series, for the plotter's overlay.
-// `series` is the per-batch array of {x, y} points the store hands back
-// (StateStore.getScalarSeries), indexed by frame. `sum` is what an RL "return"
+// `series` is one batch's per-frame values from the store
+// (getScalarSeries), indexed by frame. `sum` is what an RL "return"
 // is; `mean`/`min`/`max`/`final` cover the other usual questions.
 export function episodeAggregates(episodes, series, frameCount) {
     return episodeSegments(episodes, frameCount).map((segment) => {
@@ -100,7 +100,7 @@ export function episodeAggregates(episodes, series, frameCount) {
         let max = -Infinity;
         let final = null;
         for (let i = segment.start; i < segment.end && i < series.length; i++) {
-            const y = series[i]?.y;
+            const y = series[i];
             if (!Number.isFinite(y)) continue;
             count++;
             sum += y;

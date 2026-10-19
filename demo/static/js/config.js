@@ -155,22 +155,18 @@ export const BODY_VECTOR_CONFIG = {
     // Linear velocity
     velocity: {
         color: THEME.green,
-        scale: 1.0,
     },
     // Angular velocity
     angularVelocity: {
         color: THEME.yellow,
-        scale: 1.0,
     },
     // Force
     force: {
         color: THEME.peach,
-        scale: 1.0,
     },
     // Torque
     torque: {
         color: THEME.red,
-        scale: 1.0,
     },
 };
 

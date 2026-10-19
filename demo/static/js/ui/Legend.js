@@ -1,4 +1,5 @@
 import { getCallableFromColorMapName } from "../objects/colormap.js";
+import { escapeHtml } from "../utils/html.js";
 
 export class Legend {
     constructor(app) {
@@ -119,7 +120,7 @@ export class Legend {
 
     #renderGradient(container, title, unit, minVal, maxVal, decimals, cmapName) {
         container.innerHTML = `
-            <div class="sv-legend-title">${title} ${unit ? `(${unit})` : ""}</div>
+            <div class="sv-legend-title">${escapeHtml(title)} ${unit ? `(${escapeHtml(unit)})` : ""}</div>
             <div class="legend-gradient"></div>
             <div class="sv-legend-range">
                 <span>${minVal.toFixed(decimals)}</span>
@@ -141,11 +142,7 @@ export class Legend {
     }
 
     dispose() {
-        if (this.container && this.container.parentElement) {
-            this.container.parentElement.removeChild(this.container);
-        }
-        if (this.pointContainer && this.pointContainer.parentElement) {
-            this.pointContainer.parentElement.removeChild(this.pointContainer);
-        }
+        this.container?.remove();
+        this.pointContainer?.remove();
     }
 }

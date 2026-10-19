@@ -2,6 +2,7 @@ import { FREQ_CONFIG, THEME } from "../config.js";
 import { downloadCsv, sanitizeForFilename } from "../utils/csv.js";
 import { buildTerrainSeries } from "../utils/terrainSample.js";
 import { makeChart, yIncrements } from "../utils/uplot.js";
+import { escapeHtml } from "../utils/html.js";
 import {
     batchColumnsCsv,
     closestSeries,
@@ -40,7 +41,7 @@ export class TerrainProfile {
         this.pathMode = "own"; // "own", or a batch index (string) to sample every batch along
 
         this.times = [];
-        this.fullSeries = []; // per batch: {x: time, y: value}[], the complete precomputed series
+        this.fullSeries = []; // per batch: per-frame values (x is this.times), the complete precomputed series
         this.markerTime = null;
         this.chart = null;
         this.minRenderDelay = 1000 / FREQ_CONFIG.terrainProfile;
@@ -213,7 +214,7 @@ export class TerrainProfile {
         if (this.fullSeries.length === 0 || this.times.length === 0) return;
 
         const numBatches = this.app.batchManager.simBatches;
-        // Gap frames are `y: null` (see terrainSample.js); finiteBounds skips
+        // Gap frames are `null` (see terrainSample.js); finiteBounds skips
         // them where `null < min` would have coerced to 0.
         let [min, max] = finiteBounds(this.fullSeries);
         const limOffset = 1e-2;
@@ -229,8 +230,7 @@ export class TerrainProfile {
                 width: 1,
                 points: { show: false },
             });
-            const batchSeries = this.fullSeries[i] || [];
-            dataArrays.push(batchSeries.map((p) => p.y));
+            dataArrays.push(this.fullSeries[i] || []);
         }
 
         this.chart = makeChart(
@@ -276,7 +276,7 @@ export class TerrainProfile {
         const color = this.app.batchManager.getColorForBatch(batchIndex);
         const batchLabel = this.app.batchManager.getBatchName(batchIndex);
         const layerLabel = LAYER_LABELS[this.layer] || this.layer;
-        return `<span style="color:${color};">Batch: ${batchLabel}<br>Time: ${time.toFixed(3)}<br>${layerLabel}: ${value.toFixed(3)}</span>`;
+        return `<span style="color:${color};">Batch: ${escapeHtml(batchLabel)}<br>Time: ${time.toFixed(3)}<br>${escapeHtml(layerLabel)}: ${value.toFixed(3)}</span>`;
     }
 
     // Moves the current-time marker line to match playback, redrawing only
@@ -284,7 +284,7 @@ export class TerrainProfile {
     // shifts -- mirrors ErrorMetrics._updateReadoutAndMarker.
     _updateMarker(force = false) {
         if (!this.chart || this.times.length === 0 || !this.app.animationController) return;
-        const idx = this.app.animationController.getCurrentStateIndex();
+        const idx = this.app.animationController.currentStateIndex;
         const clamped = Math.max(0, Math.min(idx, this.times.length - 1));
         const time = this.times[clamped];
         if (this.markerTime === time && !force) return;

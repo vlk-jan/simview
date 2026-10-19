@@ -29,8 +29,9 @@ export function getCallableFromColorMapName(cmapName) {
         return (value) => {
             // A non-finite value (NaN cell in a property blob, NaN embedding)
             // is "no data": neutral grey rather than a colormap end. Finite
-            // values are clamped because js-colormaps alert()s on anything
-            // outside [0, 1] -- including float rounding past 1.
+            // values are clamped because js-colormaps indexes its table with
+            // x unchecked -- anything outside [0, 1], including float
+            // rounding past 1, reads past the end.
             if (!Number.isFinite(value)) return NO_DATA_COLOR.clone();
             const [r, g, b] = evaluate_cmap(
                 Math.min(1, Math.max(0, value)),

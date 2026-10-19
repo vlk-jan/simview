@@ -30,7 +30,7 @@ export class BodyStateWindow {
 
         // --- Header setup ---
         this.header = document.createElement("summary");
-        this.header.classList.add("body-state-window-header"); // Use CSS class
+        this.header.classList.add("body-state-window-header");
         this.window.appendChild(this.header);
 
         const title = document.createElement("span");
@@ -41,15 +41,15 @@ export class BodyStateWindow {
         const batchSize = this.app.batchManager.simBatches;
         if (batchSize > 1) {
             const selectorContainer = document.createElement("div");
-            selectorContainer.classList.add("batch-selector-container"); // Use CSS class
+            selectorContainer.classList.add("batch-selector-container");
 
             const label = document.createElement("span");
             label.textContent = "Batch: ";
-            label.classList.add("batch-selector-label"); // Use CSS class
+            label.classList.add("batch-selector-label");
             selectorContainer.appendChild(label);
 
             const batchSelector = document.createElement("select");
-            batchSelector.classList.add("batch-selector"); // Use CSS class
+            batchSelector.classList.add("batch-selector");
 
             for (let i = 0; i < batchSize; i++) {
                 const option = document.createElement("option");
@@ -73,16 +73,16 @@ export class BodyStateWindow {
 
         // --- Content Area (for scrolling) ---
         this.content = document.createElement("div");
-        this.content.classList.add("body-state-window-content"); // Use CSS class for scrolling
+        this.content.classList.add("body-state-window-content");
         this.window.appendChild(this.content);
 
         // --- Body List and Details Containers (inside the content area) ---
         this.bodyListContainer = document.createElement("div");
-        this.bodyListContainer.classList.add("body-list-container"); // Use CSS class
+        this.bodyListContainer.classList.add("body-list-container");
         this.content.appendChild(this.bodyListContainer);
 
         this.detailsContainer = document.createElement("div");
-        this.detailsContainer.classList.add("details-container"); // Use CSS class
+        this.detailsContainer.classList.add("details-container");
         this.content.appendChild(this.detailsContainer);
 
         document.body.appendChild(this.window);
@@ -103,18 +103,18 @@ export class BodyStateWindow {
 
         const title = document.createElement("div");
         title.textContent = "Bodies:";
-        title.classList.add("body-list-title"); // Use CSS class
+        title.classList.add("body-list-title");
         this.bodyListContainer.appendChild(title);
 
         const list = document.createElement("ul");
-        list.classList.add("body-list"); // Use CSS class
+        list.classList.add("body-list");
 
         for (const [name, body] of this.app.bodies) {
             // Listing a static point cloud only offers a permanently-zero
             // Position/Rotation row.
             if (!body.hasPose) continue;
             const item = document.createElement("li");
-            item.classList.add("body-list-item"); // Use CSS class
+            item.classList.add("body-list-item");
             item.textContent = name;
             item.dataset.bodyName = name; // Store name for easier access if needed
 
@@ -146,7 +146,7 @@ export class BodyStateWindow {
                 const container = this.createBodyDetailContainer(body);
                 this.detailsContainer.appendChild(container);
                 this.detailContainers.set(name, container);
-                this.updateBodyListItemStyle(name); // Update style via class
+                this.updateBodyListItemStyle(name);
             }
         }
     }
@@ -159,32 +159,23 @@ export class BodyStateWindow {
                 this.detailsContainer.removeChild(container);
                 this.detailContainers.delete(name);
             }
-            this.updateBodyListItemStyle(name); // Update style via class
+            this.updateBodyListItemStyle(name);
         }
     }
 
     updateBodyListItemStyle(name) {
         const item = this.bodyListItems.get(name);
-        if (item) {
-            // Toggle 'selected' class based on the set
-            if (this.selectedBodies.has(name)) {
-                item.classList.add("selected");
-            } else {
-                item.classList.remove("selected");
-            }
-            // Hover styles are now handled purely by CSS :hover pseudo-class
-        }
+        if (item) item.classList.toggle("selected", this.selectedBodies.has(name));
     }
 
     createBodyDetailContainer(body) {
         const container = document.createElement("div");
-        container.classList.add("body-detail-container"); // Use CSS class
+        container.classList.add("body-detail-container");
 
         // Close button
         const closeButton = document.createElement("div");
-        closeButton.innerHTML = "✕"; // Keep content
-        closeButton.classList.add("body-detail-close-button"); // Use CSS class
-        // Hover effect is handled by CSS
+        closeButton.innerHTML = "✕";
+        closeButton.classList.add("body-detail-close-button");
 
         closeButton.addEventListener("click", (e) => {
             e.stopPropagation(); // Prevent triggering other clicks
@@ -194,21 +185,17 @@ export class BodyStateWindow {
 
         // Details header
         const detailsHeader = document.createElement("div");
-        detailsHeader.classList.add("body-detail-header"); // Use CSS class
+        detailsHeader.classList.add("body-detail-header");
         container.appendChild(detailsHeader);
         container.header = detailsHeader; // Keep reference for updates
 
         // Details table
         const table = document.createElement("table");
-        table.classList.add("body-detail-table"); // Use CSS class
+        table.classList.add("body-detail-table");
 
         const properties = [
             { key: "positions", label: "Position" },
             { key: "rotations", label: "Rotation" },
-            // { key: "linearVelocity", label: "Velocity" }, // Abbreviate slightly if needed
-            // { key: "angularVelocity", label: "Ang. Vel." },
-            // { key: "linearForce", label: "Force" },
-            // { key: "torque", label: "Torque" },
         ];
 
         const valueCells = {}; // Keep reference for updates
@@ -217,9 +204,7 @@ export class BodyStateWindow {
                 const row = table.insertRow();
                 const labelCell = row.insertCell(0);
                 labelCell.textContent = prop.label;
-                // Styling handled by CSS '.body-detail-table td:first-child'
                 const valueCell = row.insertCell(1);
-                // Styling handled by CSS '.body-detail-table td:last-child'
                 valueCells[prop.key] = valueCell; // Store reference to the cell
             }
         }
@@ -231,10 +216,6 @@ export class BodyStateWindow {
         this.updateBodyDetailContainer(container, body);
         return container;
     }
-
-    // --- update, updateBodyDetailContainer, setSelectedBatch, dispose, forceRedraw, animate ---
-    // These methods should remain largely unchanged as they deal with data logic,
-    // not the initial setup and styling which we've refactored.
 
     update() {
         // Only update existing detail containers
@@ -290,9 +271,9 @@ export class BodyStateWindow {
 
     dispose() {
         window.removeEventListener("keydown", this.keydownListener);
-        if (this.window && this.window.parentNode) {
-            this.window.parentNode.removeChild(this.window);
-            this.window = null; // Clear reference
+        if (this.window?.parentNode) {
+            this.window.remove();
+            this.window = null;
         }
     }
 

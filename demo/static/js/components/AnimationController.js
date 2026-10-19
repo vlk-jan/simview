@@ -309,22 +309,6 @@ export class AnimationController {
         return true;
     }
 
-    getTotalTime() {
-        return this.totalTime;
-    }
-
-    getCurrentTime() {
-        return this.currentTime;
-    }
-
-    getCurrentStateIndex() {
-        return this.currentStateIndex;
-    }
-
-    getFirstTime() {
-        return this.firstTime;
-    }
-
     // A windowed field (see WindowedField.js) just landed. While playing the
     // next tick picks it up anyway; paused, nothing would re-render the frame
     // the user scrubbed to, so redo it now (dropping the interpolation memo,
