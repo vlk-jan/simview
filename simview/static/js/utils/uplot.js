@@ -1,4 +1,4 @@
-import uPlot from "../../lib/uPlot.esm.js";
+import uPlot from "../../lib/uPlot-1.6.32/uPlot.esm.js";
 import { THEME } from "../config.js";
 
 // Shared chart plumbing for the three Analysis-panel charts (ScalarPlotter,

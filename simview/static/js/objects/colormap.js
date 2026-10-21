@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { colorMapOptions, evaluate_cmap } from "../../lib/js-colormaps.js";
+import { colorMapOptions, evaluate_cmap } from "../vendor/js-colormaps.js";
 
 // Aliases for old hand-rolled fallback names, now served by js-colormaps.js.
 // "Greys" runs white(0)->black(1); the old hand-rolled grayscale ran

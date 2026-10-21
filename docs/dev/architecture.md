@@ -130,12 +130,17 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
 
 [**uPlot**](https://github.com/leeoniya/uPlot) (MIT), [**three.js**](https://github.com/mrdoob/three.js)
 (MIT) and `js-colormaps.js` (the matplotlib color-map tables, trimmed to the ones the
-viewer offers) are vendored under
-`simview/static/lib/` (version-stamped directories, e.g. `lib/three-0.174.0/`) rather
+viewer offers) are vendored locally rather
 than loaded from a CDN, so the viewer works fully offline. All third-party libraries
 used by SimView are permissively licensed (MIT/BSD), so there are no licensing
 restrictions on commercial use. Don't add new CDN-loaded dependencies without a reason
 to break that pattern.
+
+`simview/static/lib/` is served with an immutable `Cache-Control` header, so every
+library there lives in a version-stamped directory (`lib/three-0.174.0/`,
+`lib/uPlot-1.6.32/`); upgrading one must change its directory name. `js-colormaps.js`
+is edited locally (trimmed), so it lives in `simview/static/js/vendor/` with the
+normal short cache instead.
 
 ## Wire format
 
@@ -175,8 +180,9 @@ simview/
 │       │   ├── components/
 │       │   ├── objects/
 │       │   ├── ui/
-│       │   └── utils/
-│       ├── lib/                       # vendored three.js, uPlot, js-colormaps
+│       │   ├── utils/
+│       │   └── vendor/                # js-colormaps (locally trimmed)
+│       ├── lib/                       # vendored three.js, uPlot (version-stamped)
 │       └── textures/
 ├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
 ├── example.py                 # authoring example (see Quick Start)

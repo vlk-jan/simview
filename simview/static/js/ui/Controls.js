@@ -1,6 +1,6 @@
 import { isEditableTarget } from "../utils/keyboard.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
-import { colorMapOptions } from "../../lib/js-colormaps.js";
+import { colorMapOptions } from "../vendor/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
 import { serializeViewState } from "../utils/viewState.js";
 

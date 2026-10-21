@@ -15,7 +15,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23181825'/%3E%3Cg stroke='%23181825' stroke-linejoin='round'%3E%3Cpath d='M16 3.5 27.5 10 16 16.5 4.5 10Z' fill='%23b4befe'/%3E%3Cpath d='M4.5 10 16 16.5V29L4.5 22.5Z' fill='%2389b4fa'/%3E%3Cpath d='M16 16.5 27.5 10V22.5L16 29Z' fill='%235e7fc0'/%3E%3C/g%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="./static/css/controls.css" />
-    <link rel="stylesheet" href="./static/lib/uPlot.min.css" />
+    <link rel="stylesheet" href="./static/lib/uPlot-1.6.32/uPlot.min.css" />
   </head>
   <body>
     <div id="container"></div>
@@ -28,10 +28,10 @@
          (same-origin, so no SRI is needed) and the viewer works with no
          internet access. lib/ is served with a long-lived, immutable
          Cache-Control header (see _IMMUTABLE_STATIC_DIRS in
-         simview/server.py), so a version bump must change the URL. Only
-         three.js (with OrbitControls and lil-gui) lives in a version-stamped
-         directory, lib/three-0.174.0/; uPlot and js-colormaps.js sit
-         unversioned directly in lib/. -->
+         simview/server.py), so each library lives in a version-stamped
+         directory (lib/three-0.174.0/, lib/uPlot-1.6.32/) and a version bump
+         changes the URL. js-colormaps.js is trimmed locally, so it lives
+         under js/vendor/ with the normal short cache instead. -->
     <script type="importmap">
       {
         "imports": {
