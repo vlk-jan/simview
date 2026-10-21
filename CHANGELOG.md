@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.2.3] - 2026-10-21
+
+### Security
+
+- The JavaScript-error splash screen inserted the error message and URL as raw
+  HTML; they are now rendered as plain text.
+
+### Fixed
+
+- The point-similarity legend is now shown in scenes without terrain.
+  Previously it was hidden there, so a recolored point cloud had no legend.
+- `viewerDefaults.ui` can now set `pointColorMode`; it was rejected as an
+  unknown key.
+- uPlot and `js-colormaps.js` were served unversioned under the
+  immutable-cached `static/lib/`, so updating them never reached browsers with
+  a cached copy. uPlot now lives in `lib/uPlot-1.6.32/` and the locally trimmed
+  `js-colormaps.js` in `js/vendor/` (normal short cache).
+- `js-colormaps.js` now carries its upstream MIT license notice.
+- The scene's duplicate directional light is folded into `LIGHTING_CONFIG`
+  (rendering unchanged).
+
+### Documentation
+
+- Comments and docstrings unified in style and stale references fixed across
+  the codebase; public classes and methods that lacked docstrings now have them.
+- User and developer docs brought up to date with the code (terrain-similarity
+  clicks need Data Probe on, Error Metrics "Details" toggle, terrain diff mode,
+  chart click-to-seek, Body States panel, inline binary model fields, missing
+  test files). The docs build now runs with `--strict` in CI.
+
 ## [6.2.2] - 2026-10-19
 
 ### Security
@@ -808,7 +838,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.2.2...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.2.3...HEAD
+[6.2.3]: https://github.com/vlk-jan/simview/compare/v6.2.2...v6.2.3
 [6.2.2]: https://github.com/vlk-jan/simview/compare/v6.2.1...v6.2.2
 [6.2.1]: https://github.com/vlk-jan/simview/compare/v6.2.0...v6.2.1
 [6.2.0]: https://github.com/vlk-jan/simview/compare/v6.1.2...v6.2.0
