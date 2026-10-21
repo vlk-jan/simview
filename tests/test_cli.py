@@ -1,5 +1,5 @@
-"""Tests for the simview CLI (gameplan item 13: --version/--host/--port/
---no-browser/--save-merged)."""
+"""Tests for the simview CLI (--version/--host/--port/--no-browser/
+--save-merged)."""
 
 import base64
 import csv

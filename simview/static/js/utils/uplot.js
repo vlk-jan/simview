@@ -6,10 +6,9 @@ import { THEME } from "../config.js";
 // ui/chartControls.js.
 
 // Candidate y-axis tick steps for `incrs`. uPlot walks the list and takes the
-// first step whose ticks fit the axis's length (at least `space` px apart).
-// Offering exactly one (range/steps) meant that in a short panel -- which is
-// what the Analysis panel gives us -- no step fit, and uPlot drew no ticks or
-// labels at all. Coarser multiples let it degrade instead of giving up.
+// first step whose ticks fit the axis's length (at least `space` px apart),
+// so the coarser multiples keep a short Analysis panel from ending up with no
+// ticks or labels at all.
 export function yIncrements(min, max, steps = 5) {
     const diff = max - min;
     const base = diff === 0 ? Math.max(Math.abs(max) / steps, 1e-3) : diff / steps;

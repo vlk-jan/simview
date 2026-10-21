@@ -4,6 +4,8 @@ import { colorMapOptions } from "../../lib/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
 import { serializeViewState } from "../utils/viewState.js";
 
+// The lil-gui Controls panel (Body/Terrain/Camera Options, Scene Info) and
+// its global keyboard shortcuts.
 export class UIControls {
     constructor(app) {
         this.app = app;
@@ -15,7 +17,7 @@ export class UIControls {
         this.setupKeyboardControls(app);
     }
 
-    // Determine which attributes are available across all bodies
+    // Which per-body attributes (contacts, velocity, ...) any body has.
     determineAttributeAvailability() {
         const attributeTypes = [
             "contacts",
@@ -71,6 +73,9 @@ export class UIControls {
         return [...this.app.bodies.values()].some((body) => body.isPointCloud);
     }
 
+    // Shift+Arrow batch navigation: moves the active batch one cell on the
+    // batch grid in the arrow's direction as seen from the camera, by snapping
+    // the camera azimuth to the nearest grid axis.
     changeTargetBatch(key) {
         const { scene, batchManager } = this.app;
         const currentBatchTarget = batchManager.currentlyActiveBatch;
@@ -110,6 +115,8 @@ export class UIControls {
         batchManager.setActiveBatchByRowCol(newRow, newCol);
     }
 
+    // Builds the whole panel from the scene's bodies, terrain and metadata,
+    // seeding each control from uiState. Returns the GUI.
     createDatGUI() {
         this.gui = new GUI();
 
@@ -239,7 +246,7 @@ export class UIControls {
                     });
             }
 
-            // Only create toggles for attributes actually present in the loaded data
+            // Only create toggles for attributes actually present in the loaded data.
             const attributeControls = [
                 { property: "showContacts", name: "Show Contacts (C)", type: "contacts" },
                 {
@@ -274,7 +281,7 @@ export class UIControls {
             this.bodyFolder.open();
         }
 
-        // Terrain controls (unchanged)
+        // Terrain controls.
         this.terrainFolder = this.gui.addFolder("Terrain Options");
 
         const availableColorModes = this.app.terrain
@@ -335,7 +342,7 @@ export class UIControls {
 
         // "diff" mode's own layer/batch-pair pickers -- only meaningful (and
         // only shown) when Color Mode is "diff". Mirrors the Camera Options
-        // folder's splitBatchA/B show/hide-on-toggle pattern above.
+        // folder's splitBatchA/B show/hide-on-toggle pattern below.
         let diffLayerCtrl = null;
         let diffBatchACtrl = null;
         let diffBatchBCtrl = null;
@@ -482,7 +489,7 @@ export class UIControls {
                 const input = ctrl.domElement.querySelector("input");
                 if (!input) return;
 
-                // Build a <div> that looks like the input but is scrollable
+                // Build a <div> that looks like the input but wraps.
                 const div = document.createElement("div");
                 div.className = input.className + " simview-meta-input";
                 div.title = "Click to copy";
@@ -585,15 +592,10 @@ export class UIControls {
         );
     }
 
-    // Applies a decoded view-state's toggles/bodyVisualizationMode/
-    // terrainColorMode (see utils/viewState.js + SimView.js's apply-on-load
-    // hook) through this panel's own lil-gui controllers -- setValue() runs
-    // each control's existing onChange handler (so e.g. body meshes actually
-    // toggle their axes/trails/etc, exactly like a user clicking the
-    // checkbox would) and refreshes the widget's on-screen display, so
-    // lil-gui never drifts out of sync with uiState. Missing/unknown
-    // controllers (e.g. an attribute not present in this scene) are
-    // silently skipped -- this must tolerate a partial state.
+    // Applies a decoded view state (see utils/viewState.js) through the
+    // lil-gui controllers, so setValue() runs each onChange exactly as a click
+    // would and the widgets stay in sync with uiState. Unknown keys and
+    // controllers missing from this scene are skipped.
     applyViewState(state) {
         if (!state || typeof state !== "object") return;
 
@@ -653,8 +655,6 @@ export class UIControls {
     }
 
     setupKeyboardControls(app) {
-        // Stored (not addEventListener's undefined return) so dispose() can
-        // actually remove it.
         // Plain toggles. Attribute controls (V/W/F/T) only exist when the
         // data has that attribute, so toggleControl's lookup is the guard.
         const toggleForKey = {
@@ -666,6 +666,7 @@ export class UIControls {
             f: "showForce",
             t: "showTorque",
         };
+        // Kept on the instance so dispose() can remove it.
         this.keyboardControlsListener = (event) => {
             if (isEditableTarget(event)) return;
             const key = event.key.toLowerCase();
@@ -714,12 +715,9 @@ export class UIControls {
         window.addEventListener("keydown", this.keyboardControlsListener, { capture: true });
     }
 
-    // Searches every folder (Body/Terrain/Camera Options), not just
-    // bodyFolder, so callers (keyboard shortcuts, and applyViewState below)
-    // can find and setValue() any control -- setValue() both updates the
-    // underlying uiState (via each controller's onChange) and refreshes the
-    // widget's on-screen display, so this is the single path that keeps
-    // lil-gui and uiState in sync.
+    // The controller bound to `property` in any folder, or null. Callers
+    // setValue() through it so uiState (via onChange) and the widget stay in
+    // sync.
     findController(property) {
         if (!this.gui) return null;
         for (const controller of this.gui.controllersRecursive()) {
@@ -788,10 +786,8 @@ export class UIControls {
         for (const ctrl of this.diffControlsElements) ctrl.show(mode === "diff");
     }
 
-    // Re-renders the terrain diff overlay after the layer/batch-pair pickers
-    // change, without going through the full setColorMode/setColorMap path
-    // (the color *mode* itself -- "diff" -- hasn't changed, just which
-    // layer/batches it diffs).
+    // Re-runs setColorMode("diff") after the layer/batch-pair pickers change,
+    // so the overlay and legend pick up the new layer/batches.
     refreshTerrainDiff() {
         if (this.app.terrain) {
             this.app.terrain.setColorMode("diff");

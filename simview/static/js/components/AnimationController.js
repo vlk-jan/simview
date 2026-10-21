@@ -390,10 +390,7 @@ export class AnimationController {
         if (!this.isRecording) return;
 
         if (this._captureTrack) {
-            // Manual-mode capture stream (see #startVideoRecording): pull
-            // exactly one new frame per actually-rendered frame, so the
-            // output is frame-for-frame deterministic rather than racing a
-            // realtime clock.
+            // Manual-mode capture stream: see #startVideoRecording.
             this._captureTrack.requestFrame();
         }
         // Realtime (non-manual) MediaRecorder streams need no per-frame call
@@ -406,14 +403,10 @@ export class AnimationController {
         }
     }
 
-    // Single-frame PNG screenshot (see ui/PlaybackControls.js's camera button
-    // and the "S" keyboard shortcut). Renders the scene once immediately
-    // before capturing -- the renderer is created with preserveDrawingBuffer
-    // (see config.js RENDERER_CONFIG), so the canvas already holds the last
-    // rendered frame's pixels, but re-rendering synchronously first guards
-    // against capturing a stale frame if this fires between animation ticks
-    // (e.g. right after a scrub, before the next rAF has redrawn). Downloads
-    // as `simview_t<currentTime>s.png` via downloadBlob().
+    // Single-frame PNG screenshot (PlaybackControls camera button / "S" key),
+    // downloaded as `simview_t<currentTime>s.png`. Re-renders synchronously
+    // first so a capture between rAF ticks (e.g. right after a scrub) isn't
+    // a stale frame.
     captureScreenshot() {
         const { scene, renderer } = this.app.scene;
         const camera = this.app.scene.camera;
@@ -456,13 +449,13 @@ export class AnimationController {
         this.app.polylines?.forEach(apply);
     }
 
-    // Exactly today's behavior: render the nearest recorded frame, no
-    // interpolation. Used whenever smooth interpolation is turned off.
+    // Renders the nearest recorded frame, no interpolation. Used whenever
+    // smooth interpolation is turned off.
     updateSceneSnapped() {
         const state = this.store.getFrame(this.currentStateIndex);
         // Resolve parent-relative (rigid/articulated) transforms and expand
         // grouped names into ordinary absolute-world transforms, then update
-        // each body exactly as before.
+        // each body.
         const resolved = resolveStateBodies(
             this.app.bodyMeta,
             this.app.bodyTopoOrder,

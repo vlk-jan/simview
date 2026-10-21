@@ -10,6 +10,8 @@ import {
     previousEpisodeStart,
 } from "../utils/episodes.js";
 
+// Bottom-center playback bar: transport, speed, recording/screenshot,
+// episode navigation and the seekable progress bar, plus their shortcuts.
 export class PlaybackControls {
     constructor(animationController) {
         this.animationController = animationController;
@@ -73,7 +75,6 @@ export class PlaybackControls {
         };
 
         const speedSelectChange = (e) => {
-            console.debug("Speed changed to", e.target.value);
             this.animationController.setSpeed(parseFloat(e.target.value));
         };
 
@@ -280,8 +281,8 @@ export class PlaybackControls {
         this.updateElements();
     }
 
-    // Called by SimView once the model is known, and again whenever live mode
-    // pushes updated boundaries mid-run (see the onmessage handler there).
+    // Called by SimView.applyEpisodes once the model is known, and again
+    // whenever live mode pushes updated boundaries mid-run.
     setEpisodes(rawEpisodes) {
         this.rawEpisodes = rawEpisodes;
         this.refreshEpisodes();

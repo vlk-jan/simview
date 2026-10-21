@@ -5,9 +5,7 @@ export class InteractionController {
     constructor(app) {
         this.app = app;
         this.raycaster = new THREE.Raycaster();
-        // Default THREE.Raycaster Points.threshold is 1 world unit -- far too
-        // generous for points rendered at BODY_CONFIG.points.size (0.1), where
-        // it would make every click ambiguous among many nearby points.
+        // See RAYCAST_CONFIG in config.js for why the default is too loose.
         this.raycaster.params.Points.threshold = RAYCAST_CONFIG.pointsThreshold;
         this.mouse = new THREE.Vector2();
         this.selectedObject = null;
@@ -110,12 +108,7 @@ export class InteractionController {
         // mode batch's point cloud that was built earlier, a hidden body) are
         // filtered out here or a click lands on something not on screen.
         const intersects = this.raycaster.intersectObjects(
-            // this.app.bodies is a Map (SimView.js), not a plain object --
-            // Object.values() on a Map always returns [], which silently
-            // made every click here a no-op until this fix. body.children
-            // doesn't exist either (Body wraps a THREE.Group, exposed via
-            // getObject3D()) -- filter includes isPoints too, so a click can
-            // land on a rendered point cloud, not just mesh bodies.
+            // Each visible body group's mesh and point-cloud children.
             Array.from(this.app.bodies.values()).flatMap((body) => {
                 const group = body.getObject3D();
                 if (!group || group.visible === false) return [];
@@ -218,7 +211,7 @@ export class InteractionController {
             }
             current = current.parent;
         }
-        
+
         const props = this.app.terrain.getPropertiesAt(point.x, point.y, batchIndex);
         if (!props) return;
 

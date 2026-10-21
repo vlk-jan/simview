@@ -13,7 +13,7 @@
 // trajectory, so windowing them would just move the cost around.
 //
 // Pure arithmetic, no fetch/DOM, so it's unit-testable on its own
-// (tests/js/blobWindow.test.js). WindowedField in StateStore.js does the I/O.
+// (tests/js/blobWindow.test.js). components/WindowedField.js does the I/O.
 
 // Fields worth windowing: read only for the frame currently on screen, and
 // absent-from-a-frame is already a case every consumer handles (they're
@@ -36,14 +36,19 @@ const MIN_WINDOW_FRAMES = 64;
 const MAX_WINDOW_FRAMES = 8192;
 
 // How many windows to keep before evicting the least recently used. Three
-// covers the playhead's window plus the neighbours on either side, so ordinary
+// covers the playhead's window plus the neighbors on either side, so ordinary
 // playback and small scrubs never refetch.
 export const MAX_RESIDENT_WINDOWS = 3;
 
+// Bytes one frame of a (T, B, width) float32 field occupies. A batch count
+// of 0 still counts as one row, so the result is never 0.
 export function bytesPerFrame(batchCount, width) {
     return Math.max(1, batchCount) * width * 4; // float32
 }
 
+// Whether a field is worth fetching in windows: it must be one of
+// WINDOWABLE_FIELDS and larger than `threshold` bytes (default
+// WINDOW_THRESHOLD_BYTES; tests pass a lower one to force windowing).
 export function shouldWindowField(fieldName, totalBytes, threshold) {
     const limit = Number.isFinite(threshold) ? threshold : WINDOW_THRESHOLD_BYTES;
     return WINDOWABLE_FIELDS.has(fieldName) && totalBytes > limit;
@@ -56,6 +61,8 @@ export function framesPerWindow(perFrameBytes) {
     return Math.min(MAX_WINDOW_FRAMES, Math.max(MIN_WINDOW_FRAMES, frames));
 }
 
+// Index of the window containing `frameIndex`. Negative frames clamp to
+// window 0.
 export function windowIndexFor(frameIndex, windowFrames) {
     if (!(windowFrames > 0)) return 0;
     return Math.floor(Math.max(0, frameIndex) / windowFrames);

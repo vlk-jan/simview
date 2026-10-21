@@ -38,12 +38,9 @@ const DEFAULT_ARROW_CONFIG = {
     color: 0xff0000,
 };
 
-/**
- * Creates a THREE.js geometry based on the shape type and configuration
- * @param {Object} shape - Object containing shape parameters (type, dimensions)
- * @param {GeometryConfig} [geometryConfig={}] - Configuration for geometry segments
- * @returns {THREE.BufferGeometry|null} The created geometry or null if shape type is invalid
- */
+// Creates a THREE geometry for a box/sphere/cylinder/mesh shape using the
+// given segment config. Returns null for point clouds (built by the caller)
+// and for invalid shape types.
 export function createGeometry(shape, geometryConfig) {
     if (!shape || !shape.type) return null;
     // No box/sphere/cylinder defaults here: every real caller (Body.js,
@@ -100,7 +97,7 @@ export function createGeometry(shape, geometryConfig) {
             geometry.computeVertexNormals();
             break;
         case "pointcloud":
-            geometry = null; // Handled separately in createVisualRepresentations
+            geometry = null; // Built by the caller (Body/StaticObject)
             break;
         default:
             console.error("Invalid shape type:", shape.type);
@@ -109,16 +106,9 @@ export function createGeometry(shape, geometryConfig) {
     return geometry;
 }
 
-/**
- * Creates a THREE.js Points object from a point cloud
- * @param {Array<Array<number>>|Float32Array} pointCloud - 3D points, nested or flat
- * @param {PointsConfig} [pointsConfig={}] - Configuration for points appearance
- * @param {boolean} [visible=false] - Initial visibility of the points
- * @param {Array<Array<number>>|Float32Array|null} [colors=null] - Optional
- *   per-point RGB in [0,1], nested or flat, same length as pointCloud. When
- *   present, enables per-vertex coloring (material.vertexColors = true).
- * @returns {THREE.Points|null} The created Points object or null if pointCloud is empty
- */
+// Creates a THREE.Points from a nested or flat point cloud (visible by
+// default). Optional `colors` (per-point RGB in [0,1], nested or flat, same
+// length) enables vertex coloring. Returns null if the cloud is empty.
 export function createPoints(pointCloud, pointsConfig, visible = true, colors = null) {
     if (!pointCloud || pointCloud.length === 0) return null;
     const config = { ...DEFAULT_POINTS_CONFIG, ...pointsConfig };
@@ -160,13 +150,9 @@ export function createPoints(pointCloud, pointsConfig, visible = true, colors = 
     return points;
 }
 
-/**
- * Creates a THREE.js Points object from a point cloud
- * @param {Array<Array<number>>} pointCloud - Array of 3D points
- * @param {PointsConfig} [pointsConfig={}] - Configuration for points appearance
- * @param {boolean} [visible=false] - Initial visibility of the points
- * @returns {THREE.Points|null} The created Points object or null if pointCloud is empty
- */
+// Creates the contact-marker THREE.Points: a shader material whose per-point
+// `size` attribute (added by the caller, 0 = hidden) decides which points
+// show. Returns null if the cloud is empty.
 export function createContactPoints(pointCloud, pointsConfig) {
     if (!pointCloud || pointCloud.length === 0) return null;
 
@@ -245,13 +231,8 @@ export function createContactPoints(pointCloud, pointsConfig) {
     return new THREE.Points(geometry, material);
 }
 
-/**
- * Creates a wireframe representation of a geometry
- * @param {THREE.BufferGeometry} geometry - The geometry to create wireframe from
- * @param {WireframeConfig} [wireframeConfig={}] - Configuration for wireframe appearance
- * @param {boolean} [visible=false] - Initial visibility of the wireframe
- * @returns {THREE.LineSegments} The created wireframe object
- */
+// Creates a LineSegments wireframe of `geometry` (visible by default), or
+// null without one.
 export function createWireframe(geometry, wireframeConfig, visible = true) {
     if (!geometry) return null;
 
@@ -265,13 +246,8 @@ export function createWireframe(geometry, wireframeConfig, visible = true) {
     return wireframe;
 }
 
-/**
- * Creates a THREE.js mesh with a standard material
- * @param {THREE.BufferGeometry} geometry - The geometry for the mesh
- * @param {MeshConfig} [meshConfig={}] - Configuration for mesh appearance
- * @param {boolean} [visible=true] - Initial visibility of the mesh
- * @returns {THREE.Mesh} The created mesh object
- */
+// Creates a THREE.Mesh with a double-sided MeshStandardMaterial (visible by
+// default), or null without a geometry.
 export function createMesh(geometry, meshConfig, visible = true) {
     if (!geometry) return null;
 
@@ -291,13 +267,7 @@ export function createMesh(geometry, meshConfig, visible = true) {
     return mesh;
 }
 
-/**
- * Creates a single arrow
- * @param {THREE.Vector3} start - Starting point of the arrow
- * @param {THREE.Vector3} end - End point of the arrow
- * @param {ArrowConfig} [arrowConfig={}] - Arrow configuration
- * @returns {THREE.ArrowHelper} The created arrow object
- */
+// Creates an ArrowHelper from `start` towards `end`.
 export function createArrow(start, end, arrowConfig = {}) {
     const config = { ...DEFAULT_ARROW_CONFIG, ...arrowConfig };
     const dir = end.clone().sub(start);

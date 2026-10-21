@@ -11,6 +11,8 @@ import { batchColumnsCsv, closestSeries, exportBar, finiteBounds } from "./chart
 import { appendScalarFrames } from "../utils/scalarSeries.js";
 import { escapeHtml } from "../utils/html.js";
 
+// Analysis-panel Scalars section: one tab and uPlot chart per scalar, one
+// series per batch, with episode overlays and a playback marker.
 export class ScalarPlotter {
     constructor(app, scalarNames) {
         this.app = app;
@@ -137,6 +139,8 @@ export class ScalarPlotter {
         this.setFocusedBatch(this.currentFocusedBatch, true);
     }
 
+    // Builds every chart from the loaded store's whole-trajectory scalar
+    // series. Called once the store is ready.
     initFromStore(store) {
         const batchSize = this.app.batchManager.simBatches;
         this.store = store;
@@ -319,14 +323,9 @@ export class ScalarPlotter {
                 {
                     series,
                     scales: {
-                        // uPlot treats a scale's `min`/`max` as outputs, not as
-                        // a pin: the initial autoscale over the empty data
-                        // passed below nulls them, and every later update goes
-                        // through setData(data, false), which never revisits x.
-                        // That left x null forever -- valToPos NaN, nothing
-                        // drawn. `range` is the actual pin (the same thing
-                        // ErrorMetrics does), and this axis is meant to span the
-                        // whole timeline regardless, with the line growing into it.
+                        // `range` pins x to the whole timeline: uPlot treats a
+                        // scale's `min`/`max` as outputs, which autoscaling
+                        // can null, leaving nothing drawn.
                         x: { time: false, range: () => this._timeExtent() },
                         y: { min, max },
                     },
@@ -391,6 +390,8 @@ export class ScalarPlotter {
         );
     }
 
+    // Moves the playback marker to frame `newEndIndex`; the redraw happens on
+    // the next throttled animate() tick.
     setEndIndex(newEndIndex, force = false) {
         if (this.times.length === 0) return; // store not loaded yet (initFromStore pending)
         if (newEndIndex < 0 || newEndIndex >= this.times.length) {
@@ -406,6 +407,8 @@ export class ScalarPlotter {
         this.markerDirty = true;
     }
 
+    // Highlights `batchIndex` (others drop to inactiveBatchOpacity) on the
+    // active chart; applied on the next animate() tick.
     setFocusedBatch(batchIndex, force = false) {
         if (batchIndex < 0 || batchIndex >= this.app.batchManager.simBatches) {
             console.warn("Invalid batch index.");
@@ -437,6 +440,8 @@ export class ScalarPlotter {
         };
     }
 
+    // "#rrggbb" plus opacity -> "rgba(...)". Assumes a 6-digit hex string,
+    // which is what getColorForBatch returns for a valid batch.
     _hexToRgba(hex, opacity) {
         hex = hex.replace("#", "");
         const r = parseInt(hex.substring(0, 2), 16);

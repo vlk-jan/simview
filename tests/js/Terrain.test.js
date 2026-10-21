@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 // Terrain.js pulls in config.js, which reads `window.devicePixelRatio` at
-// module load time (same stub AnimationController's/ErrorMetrics' suites
-// use) -- js-colormaps.js (the other sibling import) is pure data/functions
+// module load time (same stub the AnimationController suite
+// uses) -- js-colormaps.js (the other sibling import) is pure data/functions
 // with no module-load DOM access, so no other stubbing is needed to
 // construct a real Terrain instance under Node.
 globalThis.window ??= { devicePixelRatio: 1 };
@@ -37,11 +37,10 @@ function fakeApp(simBatches = 2) {
 }
 
 function makeTerrainData(isSingleton = false) {
-    // A real singleton terrain's wire data is the *same* values broadcast to
-    // every batch (see model.py's `SimViewTerrain.create` repeat()), so a
-    // singleton fixture must use identical per-batch chunks -- unlike the
-    // non-singleton fixture below, which deliberately differs so diff/probe
-    // math has something to detect.
+    // The legacy broadcast singleton layout (the same values repeated per batch),
+    // so a singleton fixture uses identical per-batch chunks -- unlike the
+    // non-singleton fixture, which deliberately differs so diff/probe math
+    // has something to detect. The single-copy layout is tested below.
     const frictionB = isSingleton ? FRICTION_A : FRICTION_B;
     return {
         bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 3 },
@@ -107,7 +106,7 @@ describe("Terrain.getPropertiesAt / getPropertiesAtAllBatches", () => {
 describe("Terrain singleton data layouts", () => {
     it("splits a deduplicated singleton terrain (one shared copy) into a single batch entry", () => {
         // Modern singleton wire format: exactly one resolution-sized copy of
-        // every field, isSingleton=true (see model.py create_terrain).
+        // every field, isSingleton=true (see SimulationScene.create_terrain in scene.py).
         const data = {
             bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 3 },
             dimensions: { sizeX: 1, sizeY: 1, resolutionX: RESOLUTION, resolutionY: RESOLUTION },

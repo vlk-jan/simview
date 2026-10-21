@@ -3,19 +3,22 @@
 // testable on its own (see tests/js/cameraRange.test.js).
 //
 // The defaults in config.js are sized for the small scenes SimView started
-// with (a few tens of metres). On a real recording -- a robot driving a few
-// hundred metres across a mapped terrain -- a fixed 500 m far plane clips the
+// with (a few tens of meters). On a real recording -- a robot driving a few
+// hundred meters across a mapped terrain -- a fixed 500 m far plane clips the
 // terrain, and a fixed 500 m orbit limit means the whole run can never be
 // framed at once. Both are treated as floors and widened from the terrain
 // bounds instead.
 
 // Framing a scene of diameter D at SimView's ~40 degree vertical FOV needs the
-// camera roughly D / (2 * tan(fov/2)) ~= 1.4 * D away from the centre, so the
+// camera roughly D / (2 * tan(fov/2)) ~= 1.4 * D away from the center, so the
 // orbit limit is 1.5 * D and the far plane covers that viewpoint plus the far
 // side of the scene (2.5 * D), with a little margin on top.
 const ORBIT_FACTOR = 1.5;
 const FAR_FACTOR = 3;
 
+// The {far, maxDistance} pair for a scene with the given terrain `bounds`
+// ({minX, maxX, minY, maxY}). `defaults.far`/`defaults.maxDistance` are
+// floors; missing or degenerate bounds return the floors unchanged.
 export function cameraRangeForBounds(bounds, defaults = {}) {
     const far = Number.isFinite(defaults.far) ? defaults.far : 0;
     const maxDistance = Number.isFinite(defaults.maxDistance)

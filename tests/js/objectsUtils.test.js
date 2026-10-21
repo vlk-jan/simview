@@ -6,11 +6,9 @@ import {
     createPoints,
 } from "../../simview/static/js/objects/utils.js";
 
-// Regression coverage for the bug this session found: blob-decoded point
-// data (SimView.js::fetchBlobs) arrives as a flat Float32Array with no
-// reshape metadata, but createPoints/createContactPoints used to call
-// `.flat()` unconditionally -- which doesn't exist on TypedArrays -- so any
-// real (blob-encoded) pointcloud body crashed on load.
+// Regression: blob-decoded point data (SimView.js::fetchBlobs) arrives as a
+// flat Float32Array with no reshape metadata, and TypedArrays have no
+// `.flat()`, so createPoints/createContactPoints must not call it.
 describe("createPoints", () => {
     it("accepts a flat Float32Array (post-blob-decode) without throwing", () => {
         const flat = new Float32Array([0, 0, 0, 1, 1, 1, 2, 2, 2]);

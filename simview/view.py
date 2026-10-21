@@ -33,7 +33,8 @@ BOOLEAN_FLAG_KEYS = (
 
 
 def _num(n: float) -> str:
-    # JS fmtNum: non-finite -> "0", else Number(n.toFixed(6)).toString().
+    """Format `n` like JS `fmtNum`: non-finite -> ``"0"``, else
+    `Number(n.toFixed(6)).toString()`."""
     n = float(n)
     if not math.isfinite(n):
         return "0"

@@ -15,7 +15,8 @@ Needs the `playwright` package (`pip install simview[render]`, then a
 one-time `playwright install chromium` to fetch the browser binary), which
 isn't part of the base install -- lazily imported by `render_screenshot` so
 `import simview` and the rest of the CLI stay usable without it, matching
-the `authoring` extra's lazy-import rationale in CLAUDE.md.
+the `authoring` extra's lazy imports (docs/dev/architecture.md, "Lazy
+imports").
 
 Runs the server via `simview.server.ViewerHandle`, the same non-blocking
 background-thread server `SimulationScene.show`/`LiveViewer` use; it lives
@@ -45,7 +46,7 @@ def render_screenshot(
     width: int = 1280,
     height: int = 720,
 ) -> None:
-    """Loads `sim_path` in a headless browser and saves a PNG screenshot to
+    """Load `sim_path` in a headless browser and save a PNG screenshot to
     `output_path`.
 
     `view` is a shareable view-link hash (with or without a leading '#' --
@@ -55,8 +56,9 @@ def render_screenshot(
     state.
 
     Raises `ImportError` if the `playwright` package isn't installed,
-    `FileNotFoundError` if `sim_path` doesn't exist, or `RuntimeError` if the
-    page doesn't finish loading within a timeout.
+    `FileNotFoundError` if `sim_path` doesn't exist, or playwright's
+    `TimeoutError` if the page doesn't finish loading within
+    `_LOAD_TIMEOUT_MS`.
     """
     try:
         from playwright.sync_api import sync_playwright

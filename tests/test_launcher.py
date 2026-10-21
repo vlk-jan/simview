@@ -1,4 +1,4 @@
-"""Tests for simview.launcher (bug B8: exceptions from the server must not be
+"""Tests for simview.launcher (exceptions from the server must not be
 swallowed -- the caller should learn the server crashed, while cleanup and
 KeyboardInterrupt handling stay graceful)."""
 

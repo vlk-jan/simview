@@ -42,7 +42,6 @@ export class StaticObject {
         this.createBatchGroups(objectData);
     }
 
-    /** Initialize the main Three.js group */
     initializeGroup() {
         this.group = new THREE.Group();
         this.group.name = this.name;
@@ -100,8 +99,6 @@ export class StaticObject {
                 this.representations["wireframe"] = instancedWireframe;
             }
         } else {
-            // Non-singleton: reuse geometry if possible (if all shapes are same type and same dimensions)
-            // For now, keep as is but optimize material/geometry creation if they are identical
             for (let i = 0; i < this.batchSize; i++) {
                 const batchGroup = new THREE.Group();
                 batchGroup.name = `${this.name}_batch_${i}`;
@@ -162,7 +159,6 @@ export class StaticObject {
         this.group.visible = flag;
     }
 
-    /** Update visualization mode (mesh, wireframe, points) */
     updateVisualizationMode(mode) {
         // A singleton point cloud is one object per batch outside any batch
         // group, so a hidden batch has to be respected here (non-singleton
@@ -177,12 +173,10 @@ export class StaticObject {
         }
     }
 
-    /** Return the Three.js group for scene integration */
     getObject3D() {
         return this.group;
     }
 
-    /** Clean up resources */
     dispose() {
         if (this.group) {
             if (
@@ -193,8 +187,8 @@ export class StaticObject {
             } else if (this.group.parent) {
                 this.group.parent.remove(this.group);
             }
-            // Geometry/materials are shared between the mesh and wireframe
-            // of a batch, so dedupe before disposing.
+            // The singleton path shares one geometry between its mesh and
+            // wireframe InstancedMeshes, so dedupe before disposing.
             const geometries = new Set();
             const materials = new Set();
             this.group.traverse((child) => {

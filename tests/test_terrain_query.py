@@ -1,6 +1,6 @@
 """Tests for simview.terrain -- pure stdlib, deliberately no
 pytest.importorskip("torch") since the module itself must work on a base
-install (see CLAUDE.md's "authoring" extra guard).
+install (see docs/dev/architecture.md, "Lazy imports").
 
 Not to be confused with tests/test_terrain.py, which covers authoring-side
 terrain batch/singleton handling in SimulationScene.create_terrain."""

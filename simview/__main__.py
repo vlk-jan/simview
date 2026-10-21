@@ -1,3 +1,5 @@
+"""The `simview` command-line interface."""
+
 import argparse
 import gzip
 import json
@@ -436,8 +438,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help=(
             "Merge the given input files and write the result to PATH instead of "
-            "launching the viewer. Requires at least 2 input files. Gzips the "
-            "output if PATH ends in .gz."
+            "launching the viewer. Requires at least 2 input files, or 1 with a "
+            "'#<batches>' selection. Gzips the output if PATH ends in .gz."
         ),
     )
     _add_remote_flags(view)
@@ -654,9 +656,8 @@ def main():
     _configure_logging()
     argv = sys.argv[1:]
 
-    # Checked first, and unconditionally, to match every other flag/subcommand
-    # combination -- mirrors the old flat parser, where --version short-circuited
-    # before any other validation ran.
+    # Checked before parsing so --version works alongside any other
+    # arguments, without tripping their validation.
     if "--version" in argv:
         print(_package_version())
         return

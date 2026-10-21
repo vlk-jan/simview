@@ -56,10 +56,11 @@ export class SimView {
         // viewer's frame 0 -- a late-joining tab only gets the catch-up window.
         // null until the first chunk arrives; see shiftEpisodes.
         this.liveFrameOffset = null;
-        // Static demo mode: when window.__simviewStaticBase is set by the
-        // GitHub Pages demo index.html, all data fetches are redirected to
-        // flat static files (model.json, states.json, blob/N) instead of the
-        // Python backend API endpoints. Set to null in normal server mode.
+        // Static demo mode: set from window.__simviewStaticBase (the GitHub
+        // Pages demo index.html) or the `data=` startup hash key; all data
+        // fetches then go to flat static files (model.json, states.json,
+        // blob/N) instead of the Python backend API endpoints. null in
+        // normal server mode.
         this.staticBase = null;
         // `play=1` startup hash key: start playback once the scene is loaded.
         this.autoplay = false;
@@ -148,7 +149,7 @@ export class SimView {
                 this.store = new LegacyStateStore([]);
                 this.startLiveStream(splash);
             } else if (statesPayload && statesPayload.version === 4) {
-                // Columnar wire shape (see server.py::_columnarize_states):
+                // Columnar wire shape (see columnar.py::columnarize_states):
                 // a lightweight index plus /blob/... URLs for the actual
                 // whole-trajectory float32 data, fetched in parallel below.
                 console.debug(`Received ${statesPayload.times.length} states (columnar)`);
@@ -165,9 +166,8 @@ export class SimView {
                 throw new Error("Unrecognized /states payload shape");
             }
 
-            // Live mode keeps the splash up (repurposed as a "waiting for
-            // first state" indicator by startLiveStream) until the first
-            // frame actually arrives -- see the onmessage handler there.
+            // Live mode leaves the splash up until the first frame arrives
+            // (startLiveStream's onmessage handler removes it).
             if (splash && !this.liveSocket) splash.remove();
             console.log("Initialization complete!");
         } catch (error) {
@@ -276,8 +276,8 @@ export class SimView {
     // every frame buffered so far, then one message per subsequently pushed
     // frame -- and is run through the same processStatesChunk path the
     // static per-frame legacy wire shape uses. `splash` (the loading-splash
-    // element, already repurposed as a "waiting for first state" message by
-    // the caller) is removed once the first frame actually arrives.
+    // element, still showing its last loading message) is removed once the
+    // first frame arrives.
     startLiveStream(splash) {
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
         const socket = new WebSocket(`${protocol}//${location.host}/ws/states`);
@@ -341,16 +341,11 @@ export class SimView {
         }
     }
 
-    // Legacy wire shape entry point: decodes any inline __b64__ fields, wraps
-    // the array in a LegacyStateStore, and (dis)patches it exactly like the
-    // columnar path below via onStoreReady.
-    //
-    // Branches on whether the animation has been loaded yet (not on whether
-    // `this.store` exists) so the live-streaming path works too: there
-    // `this.store` is created empty up front (see startLiveStream), and the
-    // first inbound chunk must still go through the "first load" branch
-    // (loadAnimation/initFromStore) rather than being treated as an append to
-    // an already-running animation.
+    // Legacy wire shape entry point (also every live chunk): decodes inline
+    // __b64__ fields and adds the frames to a LegacyStateStore. Branches on
+    // whether the animation is loaded yet rather than on `this.store`,
+    // because live mode creates an empty store up front and its first chunk
+    // must still take the first-load path (onStoreReady).
     processStatesChunk(chunk) {
         decodeStatesChunk(chunk);
         const firstLoad = !this.animationController || !this.animationController.store;
@@ -380,7 +375,7 @@ export class SimView {
 
     // Called once the store (legacy or columnar) has its full initial
     // timeline available -- wires it into the animation/scalar/history
-    // consumers that were previously handed the raw states array directly.
+    // consumers.
     onStoreReady() {
         if (this.animationController) {
             this.animationController.loadAnimation(this.store);
@@ -403,14 +398,10 @@ export class SimView {
         this.maybeAttachTerrainProfile();
     }
 
-    // Terrain tab needs an actual body *path* to sample terrain along, not
-    // just a body existing (a static point cloud with no states, e.g. a
-    // WaffleIron feature-similarity export, is a body with terrain but
-    // nothing to plot a profile against). Only knowable here, after
-    // appendBodyHistories() has populated each body's validStates -- doing
-    // this check at initFromModel() time (before states are even fetched)
-    // showed the tab unconditionally whenever a scene had terrain + any
-    // body, trajectory or not.
+    // The Terrain tab needs a body with an actual trajectory to sample
+    // terrain along (a static point cloud with no states doesn't count),
+    // which is only known once appendBodyHistories() has filled each body's
+    // validStates.
     maybeAttachTerrainProfile() {
         if (!this.terrain || this.terrainProfile) return;
         if (!hasBodyTrajectory(this.bodies)) return;
@@ -448,6 +439,9 @@ export class SimView {
         this.bodies.forEach((body) => body.finalizeTrails());
     }
 
+    // Builds the scene and every panel from the fetched model: batches,
+    // bodies, static objects, polylines, terrain and UI. States arrive
+    // afterwards (see loadData) and are wired in by onStoreReady.
     initFromModel(model) {
         try {
             this.disposeOfAll();
@@ -518,7 +512,6 @@ export class SimView {
                 this.scene.addObject3D(polyline.getObject3D());
                 return polyline;
             });
-            console.debug("Using terrain data");
             this.terrain = new Terrain(model.terrain, this);
             this.scene.addObject3D(this.terrain.getObject3D());
             // Terrain extent is what tells us how far this scene reaches,
@@ -526,12 +519,8 @@ export class SimView {
             this.scene.applySceneExtent(this.terrain.bounds);
             const hasScalars = model.scalarNames && model.scalarNames.length > 0;
             const hasErrorMetrics = this.batchManager.simBatches >= 2;
-            // Terrain tab needs an actual body *path* to sample against -- not
-            // just a body existing, a body with real trajectory data -- which
-            // isn't known yet at this point (states haven't been fetched;
-            // that happens after initFromModel returns, see loadData()).
-            // Deferred to onStoreReady(), once appendBodyHistories() has run
-            // and each body's validStates reflects what it actually got.
+            // The Terrain tab is attached later, from onStoreReady (see
+            // maybeAttachTerrainProfile).
             if (hasScalars || hasErrorMetrics) {
                 this.analysisPanel = new AnalysisPanel(this);
             }
@@ -577,8 +566,8 @@ export class SimView {
             if (this.autoplay && this.animationController?.store) this.animationController.play();
             window.addEventListener("hashchange", this._onHashChange);
             this.animate();
-            // Live mode keeps the splash as its "waiting for first state"
-            // indicator until the first frame arrives (see startLiveStream).
+            // Live mode leaves the splash up until the first frame arrives
+            // (see startLiveStream).
             const splash = document.getElementById("loading-splash");
             if (splash && !this.liveSocket) splash.remove();
             window.dispatchEvent(new CustomEvent("simview:ready", { detail: { simview: this } }));
@@ -591,30 +580,16 @@ export class SimView {
         }
     }
 
-    // Shareable-view-link apply-on-load (see utils/viewState.js and
-    // ui/Controls.js's "Copy view link" button that produces these hashes).
-    // Called once from initAndAnimate() right after loadData() resolves --
-    // by then the animation/scene/uiControls are all fully wired (loadData
-    // awaits through to onStoreReady/animationController.loadAnimation for
-    // every non-live wire shape), so goToTime/camera/batch focus are all
-    // safe to apply here. Live-streaming mode is the one case where
-    // loadAnimation may not have run yet (see startLiveStream) -- there's no
-    // timeline to seek yet, so this just skips silently rather than
-    // crashing; the view link's toggles/camera still get applied via the
-    // early-return guards below where possible.
-    //
-    // A malformed/missing hash (parseViewState returning null) or a bad
-    // partial state must never break page load -- every step below is
-    // independently guarded.
+    // Applies the shareable view link in location.hash (see
+    // utils/viewState.js). Runs once after loadData() and on every hashchange.
     applyViewStateFromHash() {
         const state = parseViewState(location.hash);
         if (state) this.setViewState(state);
     }
 
-    /**
-     * Applies a parsed view-state object (see utils/viewState.js): batch, pause +
-     * seek when `time` is present, camera, and UI toggles. Never touches location.hash.
-     */
+    // Applies a parsed view-state object (see utils/viewState.js): batch, pause +
+    // seek when `time` is present, camera, and UI toggles. Never touches
+    // location.hash, and a bad partial state is logged rather than thrown.
     setViewState(state) {
         if (!state) return;
 
@@ -660,7 +635,7 @@ export class SimView {
         }
     }
 
-    /** Returns the current view state: the object "Copy view link" serialises. */
+    // Returns the current view state: the object "Copy view link" serialises.
     getViewState() {
         const { camera, controls } = this.scene;
         return {
@@ -681,10 +656,8 @@ export class SimView {
         };
     }
 
-    /**
-     * Moves the camera and orbit target together so the target lands on the body's
-     * current world position. Returns false if the body/position isn't available yet.
-     */
+    // Moves the camera and orbit target together so the target lands on the body's
+    // current world position. Returns false if the body/position isn't available yet.
     focusBody(name, batchIndex = this.batchManager.currentlyActiveBatch) {
         const pos = this.bodies && this.bodies.get(name) && this.bodies.get(name).positions[batchIndex];
         if (!pos) return false;
@@ -697,7 +670,7 @@ export class SimView {
         return true;
     }
 
-    /** Stops the render loop, closes the live socket, and releases the scene, UI and renderer. */
+    // Stops the render loop, closes the live socket, and releases the scene, UI and renderer.
     destroy() {
         cancelAnimationFrame(this._rafId);
         if (this.liveSocket) this.liveSocket.close();
@@ -768,7 +741,7 @@ export class SimView {
     animate() {
         this._rafId = requestAnimationFrame(this.animate);
         const now = performance.now();
-        
+
         // 1. Update states and time
         if (this.animationController) {
             this.animationController.animate(now);
@@ -780,7 +753,7 @@ export class SimView {
                 );
             }
         }
-        
+
         // 2. Update UI components
         if (this.scalarPlotter) {
             this.scalarPlotter.animate(now);
@@ -805,7 +778,7 @@ export class SimView {
                         const pos = body.positions[activeBatch];
                         const offset = this.batchManager.getBatchOffset(activeBatch);
                         const currentBodyPos = new THREE.Vector3(pos.x + offset.x, pos.y + offset.y, pos.z + offset.z);
-                        
+
                         try {
                             if (
                                 this._lastTrackedBody !== this.uiState.trackBody ||
@@ -816,7 +789,6 @@ export class SimView {
                                 this.scene.camera.position.add(delta);
                                 this.scene.controls.target.copy(currentBodyPos);
                                 this.scene.controls.update();
-                                console.log("Started tracking", this.uiState.trackBody);
                             } else if (this._lastTrackedPosition) {
                                 // On subsequent frames, shift camera and target by the exact movement delta of the body
                                 const delta = currentBodyPos.clone().sub(this._lastTrackedPosition);
@@ -830,7 +802,7 @@ export class SimView {
                         } catch (e) {
                             console.error("Error in tracking logic:", e);
                         }
-                        
+
                         this._lastTrackedBody = this.uiState.trackBody;
                         this._lastTrackedBatch = activeBatch;
                         this._lastTrackedPosition = currentBodyPos.clone();
@@ -843,7 +815,7 @@ export class SimView {
             }
             this.scene.animate(now);
         }
-        
+
         // 4. Capture the frame if recording
         if (this.animationController && this.animationController.isRecording) {
             this.animationController.captureFrame(now);

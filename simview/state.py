@@ -11,12 +11,8 @@ from simview.model import OptionalBodyStateAttribute, _encode_blob
 # arrays are both supported so callers don't need torch just to build a scene.
 ArrayLike = torch.Tensor | np.ndarray
 
-# Accepted input types for a body's constant `local_transform`: unlike the
-# ArrayLike-typed per-frame pose/vector fields above (which call `.tolist()`
-# unconditionally and so require an actual tensor/ndarray), `local_transform`
-# is only ever normalized via `hasattr(..., "tolist")` + `list(...)` (see
-# SimViewBody.create), so a plain sequence of floats works too and callers
-# shouldn't need numpy/torch just to pass a constant 7-element offset.
+# Accepted input types for a body's constant 7-element `local_transform`;
+# unlike ArrayLike, a plain sequence of floats works too.
 LocalTransformLike = torch.Tensor | np.ndarray | Sequence[float]
 
 # Maps a BodyTrajectory field name to the wire key used in each state's body dict.
@@ -34,23 +30,23 @@ TRAJECTORY_VECTOR_FIELDS = {
 class BodyTrajectory:
     """A whole-timeline pose (and optional vectors) for one body.
 
-    Shapes are ``(T, B, k)`` — T timesteps, B batches — or ``(T, k)`` when the
-    scene has a single batch. Orientations are ``[w, x, y, z]`` (scalar-first),
+    Shapes are `(T, B, k)` — T timesteps, B batches — or `(T, k)` when the
+    scene has a single batch. Orientations are `[w, x, y, z]` (scalar-first),
     matching the rest of SimView. Pass a list of these to
-    :meth:`SimulationScene.add_trajectory` to append an entire time-series in one
-    call instead of building a ``SimViewBodyState`` per frame.
+    `SimulationScene.add_trajectory` to append an entire time-series in one
+    call instead of building a `SimViewBodyState` per frame.
 
-    ``name`` may be a list of body names instead of a single string, to cover
+    `name` may be a list of body names instead of a single string, to cover
     several bodies that move rigidly together (e.g. links welded to the same
     parent). All named bodies must already exist in the model, and the
     transform/vectors here are applied identically to each of them, avoiding
     the need to duplicate the same data per body.
 
-    If the named body has a ``parent`` set in the model (see
-    ``SimulationScene.create_body``), ``positions``/``orientations`` here are
+    If the named body has a `parent` set in the model (see
+    `SimulationScene.create_body`), `positions`/`orientations` here are
     interpreted as local to that parent's current-frame pose instead of world
-    space. A body with a constant ``local_transform`` on the model instead
-    must never appear in a ``BodyTrajectory`` at all.
+    space. A body with a constant `local_transform` on the model instead
+    must never appear in a `BodyTrajectory` at all.
     """
 
     name: str | list[str]
@@ -69,6 +65,9 @@ class BodyTrajectory:
 
 
 class SimViewBodyState:
+    """One body's pose (and optional attributes) in a single state, for
+    `SimulationScene.add_state`."""
+
     def __init__(
         self,
         body_name: str | list[str],
@@ -77,22 +76,28 @@ class SimViewBodyState:
         optional_attributes: dict | None = None,
         binary: bool = True,
     ):
-        """``body_name`` may be a list of body names sharing this exact
+        """Validate and store one body's state.
+
+        `position` is `(3,)` or `(B, 3)`, `orientation` `(4,)` or `(B, 4)`
+        (`[w, x, y, z]`). `optional_attributes` maps
+        `OptionalBodyStateAttribute` names to per-batch values.
+
+        `body_name` may be a list of body names sharing this exact
         transform (and any optional attributes), for bodies that move
-        rigidly together — see :class:`BodyTrajectory` for the same idea
+        rigidly together — see `BodyTrajectory` for the same idea
         applied to whole trajectories.
 
-        If the named body has a ``parent`` set in the model, ``position``/
-        ``orientation`` here are interpreted as local to that parent's
+        If the named body has a `parent` set in the model, `position`/
+        `orientation` here are interpreted as local to that parent's
         current-frame pose instead of world space (see
-        ``SimulationScene.create_body``).
+        `SimulationScene.create_body`).
 
-        With ``binary=True`` (the default, matching
-        ``SimulationScene.add_trajectory``), ``bodyTransform`` and any
+        With `binary=True` (the default, matching
+        `SimulationScene.add_trajectory`), `bodyTransform` and any
         provided vector attributes (velocity/angularVelocity/force/torque)
         are packed as float32 ``__b64__`` blobs, shrinking the output file;
-        the viewer and :func:`merge_simulation_files` decode these
-        transparently. Set ``binary=False`` to emit plain JSON lists."""
+        the viewer and `merge_simulation_files` decode these
+        transparently. Set `binary=False` to emit plain JSON lists."""
         self.body_name = body_name
         pos_shape, ori_shape = tuple(position.shape), tuple(orientation.shape)
         if (
@@ -171,6 +176,7 @@ class SimViewBodyState:
                 raise ValueError("Unknown contact format")
 
     def to_json(self):
+        """Return this state's wire-format body dict."""
         # Merge position and orientation into bodyTransform
         # position: [x, y, z] or [[x, y, z], ...]
         # orientation: [w, x, y, z] or [[w, x, y, z], ...]

@@ -63,7 +63,7 @@ def test_find_free_port_skips_occupied_port():
 
 
 def test_find_free_port_raises_when_no_port_available_up_to_max(monkeypatch):
-    # Bug B1: previously this looped forever once base_port exceeded 65535.
+    # Regression: this used to loop forever when base_port exceeded 65535.
     # Force every bind attempt to fail so find_free_port must exhaust the
     # range and raise instead of looping indefinitely.
     import simview.utils as utils_module

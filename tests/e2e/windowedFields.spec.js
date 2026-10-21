@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 // the same values a fully-loaded one would.
 //
 // The real threshold is 8 MB, far more data than a CI fixture should carry, so
-// these force it down to 0 before load via the documented override.
+// these force it down to 0 before load via a test-only override (see SimView.windowLargeStateFields).
 
 const EPISODIC_URL = "http://127.0.0.1:5598/";
 

@@ -151,7 +151,7 @@ def test_batch_names_endpoint_rejects_wrong_length(tmp_path):
     assert resp.status_code == 400
 
 
-# --- Gzip support (gameplan item 16) -----------------------------------------
+# --- Gzip support ------------------------------------------------------------
 
 
 def test_serves_gzipped_scene_file(tmp_path):
@@ -167,7 +167,7 @@ def test_serves_gzipped_scene_file(tmp_path):
     assert len(client.get("/states").json()["times"]) == 3
 
 
-# --- Server hardening (gameplan item 10 / bug B7) ----------------------------
+# --- Server hardening --------------------------------------------------------
 
 
 def test_batch_names_endpoint_rejects_malformed_body(tmp_path):

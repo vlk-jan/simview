@@ -40,7 +40,7 @@ def _base_scene(
     return scene
 
 
-# --- Body name validation (gameplan item 14) --------------------------------
+# --- Body name validation ----------------------------------------------------
 
 
 def test_add_state_unknown_body_raises():
@@ -72,7 +72,7 @@ def test_add_trajectory_unknown_body_raises():
         scene.add_trajectory([0.0, 0.1], [BodyTrajectory("Nope", pos, quat)])
 
 
-# --- Numpy-only authoring (gameplan item 15) --------------------------------
+# --- Numpy-only authoring ----------------------------------------------------
 
 
 def test_add_trajectory_numpy_matches_torch():
@@ -156,7 +156,7 @@ def test_add_state_numpy_position_orientation_and_velocity():
     )
 
 
-# --- _clear_internal_data leak (bug B3) -------------------------------------
+# --- _clear_internal_data leak -----------------------------------------------
 
 
 def test_clear_internal_data_clears_terrain_properties():
@@ -174,7 +174,7 @@ def test_clear_internal_data_clears_terrain_properties():
     assert terrain.properties == {}
 
 
-# --- Contacts in add_trajectory (bug B4) ------------------------------------
+# --- Contacts in add_trajectory ----------------------------------------------
 
 
 def test_add_trajectory_contacts_matches_add_state():

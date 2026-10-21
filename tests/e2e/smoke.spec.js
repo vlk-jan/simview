@@ -19,12 +19,8 @@ test("loads example_sim.json with no console/page errors and responds to a timel
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
 
-    // The playback progress bar is an unstyled-class div centered at the
-    // bottom of the viewport (see PlaybackControls.js) -- click its
-    // approximate screen position rather than relying on a CSS selector
-    // that doesn't exist in the markup.
-    const viewport = page.viewportSize();
-    await page.mouse.click(viewport.width / 2, viewport.height - 30);
+    // Seek by clicking the playback progress bar.
+    await page.click(".sv-progress");
 });
 
 // Recording tripwire: exercises the native MediaRecorder-based WEBM path

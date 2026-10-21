@@ -1,8 +1,8 @@
 // Abstraction over the two wire shapes `/states` can come back as (see
-// server.py::_columnarize_states and README.md "Binary state fields"):
+// columnar.py::columnarize_states and docs/dev/json-format.md):
 //
-//  - legacy: a plain JSON array of per-frame state objects, exactly as
-//    before -- kept working for scenes the server can't safely columnarize.
+//  - legacy: a plain JSON array of per-frame state objects, used for scenes
+//    the server can't safely columnarize.
 //  - columnar (wire format v4): `{times, bodies, scalars}` where each body's
 //    numeric fields and each scalar are a single whole-trajectory Float32Array
 //    (shape (T, B, k) / (T, B), row-major) fetched from a `/blob/...` URL.
@@ -13,8 +13,7 @@
 
 // Per-body numeric fields packed as whole-trajectory (T, B, k) blobs, with
 // their trailing per-batch-row width. Matches STATE_FIELD_WIDTHS in
-// blobCodec.js (the per-frame equivalent) and _STATE_FIELD_WIDTHS in
-// server.py.
+// blobCodec.js (the per-frame equivalent) and in columnar.py.
 const COLUMNAR_FIELD_WIDTHS = {
     bodyTransform: 7,
     velocity: 3,
@@ -195,12 +194,6 @@ export class LegacyStateStore {
         warnIfNonMonotonic(this, 1);
     }
 
-    // simBatches isn't known to the store itself in the legacy shape (each
-    // state object carries its own per-batch arrays without a fixed count
-    // recorded anywhere) -- callers pass it explicitly to getScalarSeries,
-    // matching how ScalarPlotter/ErrorMetrics already get it from
-    // app.batchManager.simBatches.
-
     get length() {
         return this._states.length;
     }
@@ -224,6 +217,8 @@ export class LegacyStateStore {
         return this._states[i];
     }
 
+    // `simBatches` is passed explicitly: the legacy shape records no batch
+    // count of its own (callers use app.batchManager.simBatches).
     getScalarSeries(name, simBatches) {
         const series = new Array(simBatches).fill().map(() => []);
         for (const state of this._states) {

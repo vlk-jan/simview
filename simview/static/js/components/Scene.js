@@ -138,13 +138,16 @@ export class Scene {
         this.scene.remove(object);
     }
 
+    // Throttled to FREQ_CONFIG.scene. In split-screen mode, renders batches A
+    // and B side by side, shifting the camera by each batch's offset from the
+    // active one for its half of the viewport.
     animate(now) {
         if (now - this.lastRenderTime < this.minRenderDelay) return;
-        
+
         if (this.app.uiState && this.app.uiState.splitScreen && this.app.batchManager && this.app.batchManager.simBatches >= 2) {
             const batchA = this.app.uiState.splitBatchA !== undefined ? this.app.uiState.splitBatchA : 0;
             const batchB = this.app.uiState.splitBatchB !== undefined ? this.app.uiState.splitBatchB : 1;
-            
+
             const activeBatch = this.app.batchManager.currentlyActiveBatch;
             const activeOffset = this.app.batchManager.getBatchOffset(activeBatch);
             const offsetA = this.app.batchManager.getBatchOffset(batchA);
@@ -189,7 +192,7 @@ export class Scene {
             this.renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
             this.renderer.render(this.scene, this.camera);
         }
-        
+
         this.lastRenderTime = now;
     }
 }

@@ -35,7 +35,7 @@ export class Body {
                 const t = transforms[i];
                 if (t.length >= 7) {
                     this.positions[i].set(t[0], t[1], t[2]);
-                    // JSON quaternion order in bodyTransform is [w, x, y, z] based on observation
+                    // bodyTransform is [x, y, z, w, qx, qy, qz] (docs/dev/json-format.md);
                     // Three.js set() takes (x, y, z, w)
                     this.quaternions[i].set(t[4], t[5], t[6], t[3]);
                     this.rotations[i].setFromQuaternion(this.quaternions[i]);
@@ -390,9 +390,7 @@ export class Body {
             // (this.trails isn't set yet on the construction-time call.)
             if (this.trails?.[i]) this.trails[i].visible = this.#trailVisible(i);
         }
-        // Instanced representations are a single draw call covering every
-        // batch, so hidden batches are collapsed to a zero-scale matrix rather
-        // than removed (see updateInstanceMatrix).
+        // Hidden batches' instances collapse to zero scale (see updateInstanceMatrix).
         this.updateAllInstances();
     }
 
@@ -431,12 +429,12 @@ export class Body {
         this.group.add(batchGroup);
         this.batchGroups[batchIndex] = batchGroup;
 
-        // Axes helper is not instanced for now as it's for debugging
+        // Debug axes helper, one per batch (not instanced).
         const axes = new THREE.AxesHelper(1);
         axes.visible = this.app.uiState.axesVisible;
         batchGroup.add(axes);
 
-        // Body vectors (arrows) are also not instanced yet
+        // Body vectors (arrows), one set per batch (not instanced).
         this.initializeBodyVectors(batchGroup, BODY_VECTOR_CONFIG, batchIndex);
 
         this.#ensurePointsForBatch(batchIndex);
@@ -487,6 +485,9 @@ export class Body {
         this.contactPoints[batchIndex] = contactPoints;
     }
 
+    // Returns [] for "points" (the per-batch Points objects are built lazily
+    // by #ensurePointsForBatch) and one InstancedMesh covering every batch
+    // for "mesh"/"wireframe".
     createInstancedRepresentation(type, source, config, bodyData) {
         if (type === "points") {
             // The per-batch Points objects themselves are built on demand by
@@ -624,6 +625,8 @@ export class Body {
         if (updater) updater(storage[batchIndex], batchIndex);
     }
 
+    // Applies one resolved frame. Each field is either per-batch rows
+    // ([[...], ...]) or a single row applied to batch 0.
     updateState(bodyState) {
         // Update from bodyTransform (combined position + orientation [w,x,y,z])
         if (bodyState.bodyTransform) {
@@ -800,12 +803,9 @@ export class Body {
         this.setPointColors(colors);
         this.selectedPointIndex = queryIndex;
 
-        // Route through the lil-gui "pointColorMode" controller when one
-        // exists, so the dropdown reflects that this body is now showing
-        // similarity colors (mirrors Terrain.setFeatureQueryAt's identical
-        // pattern) -- otherwise a click silently recolors the body with no
-        // visible indication of what mode it's now in. Guarded so repeated
-        // clicks (already in "similarity") don't keep re-triggering onChange.
+        // Sync the lil-gui "pointColorMode" dropdown so the mode is visible
+        // (as Terrain.setFeatureQueryAt does); guarded so repeated clicks
+        // don't re-trigger onChange.
         const controller = this.app.uiControls?.findController?.("pointColorMode");
         if (controller && controller.getValue() !== "similarity") {
             controller.setValue("similarity");

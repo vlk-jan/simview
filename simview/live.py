@@ -1,3 +1,5 @@
+"""Stream a running simulation to the browser viewer over WebSocket."""
+
 import asyncio
 import logging
 import queue
@@ -89,6 +91,7 @@ class LiveViewer:
 
     @property
     def url(self) -> str:
+        """Base URL of the live viewer."""
         return self._threaded.url
 
     def push_state(self, time, body_states, scalar_values=None) -> None:

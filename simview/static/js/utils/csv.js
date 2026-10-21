@@ -1,5 +1,6 @@
-// Pure CSV assembly (rows -> escaped CSV string) shared by ScalarPlotter and
-// ErrorMetrics CSV export buttons, plus small browser-only download helpers.
+// Pure CSV assembly (rows -> escaped CSV string) shared by the Analysis
+// panels' CSV export buttons, plus small browser-only download helpers (also
+// used by AnimationController for recordings and screenshots).
 
 // Escapes a single CSV field per RFC 4180: wraps in double quotes if it
 // contains a comma, double quote, or newline, doubling any embedded quotes.

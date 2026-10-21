@@ -3,11 +3,10 @@ agents inspecting simview-generated data files.
 
 Deliberately dependency-free (stdlib only: json, gzip via
 `simview.utils.read_maybe_gzipped_bytes`, base64) so it works on a base
-install without the `authoring` extra (torch/numpy) -- see
-CLAUDE.md. Does not import `simview.model`/`simview.server`: the former
-pulls in torch at module scope, the latter fastapi/uvicorn just to
-reach a numpy-gated helper -- both wrong layering for a lightweight
-inspection tool. Shares its blob-decoding/body-label helpers with
+install without the `authoring` extra (torch/numpy) -- see "Lazy imports" in
+docs/dev/architecture.md. Does not import `simview.model`/`simview.server`:
+the former pulls in torch at module scope, the latter fastapi/uvicorn --
+both wrong layering for a lightweight inspection tool. Shares its blob-decoding/body-label helpers with
 `simview/terrain.py`/`simview/diff.py` via `simview.columnar`/`simview.utils`,
 which are stdlib-only on this read path.
 """
@@ -241,8 +240,8 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
 
     # Per-body walk, mirroring columnar.py's columnarize_states structural
     # checks (field-set consistency, first-appearance-at-frame-0, no
-    # dropping out) but never decoding/shaping blob values -- see module
-    # docstring.
+    # dropping out) without numpy: blobs are decoded only to count their
+    # floats, never shaped into arrays.
     body_order: list = []
     body_first_frame: dict = {}
     body_name_value: dict = {}

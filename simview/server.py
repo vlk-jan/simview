@@ -1,3 +1,5 @@
+"""FastAPI server that serves a scene to the browser viewer, plus its background-thread handle."""
+
 import asyncio
 import copy
 import gzip
@@ -132,6 +134,14 @@ class CacheControlStaticFiles(StaticFiles):
 
 
 class SimViewServer:
+    """Serve one scene's `model`/`states` (and their binary blobs) to the viewer.
+
+    Built from a scene file (`sim_path`), an already-loaded `data` dict, or
+    both (merged inputs keep their paths for the batch-names sidecar). With
+    `live=True`, frames are pushed over `/ws/states` instead of served from
+    `/states` -- see `simview.live.LiveViewer`.
+    """
+
     def __init__(
         self,
         sim_path: str | Path | Sequence[str | Path] | None = None,
@@ -145,10 +155,9 @@ class SimViewServer:
         # Live streaming mode (see simview.live.LiveViewer): /states reports
         # {"live": true} instead of serving a (possibly empty) states array,
         # and a /ws/states endpoint is registered to push frames as they're
-        # produced. self.ws_clients is only ever mutated on self.loop (set by
-        # LiveViewer once the server thread's event loop is running) so
-        # push_state's broadcast, running on the caller's thread, never races
-        # a client connecting/disconnecting on the server thread.
+        # produced. self.ws_clients is only ever mutated on self.loop (captured
+        # by the lifespan hook below), the same loop broadcast_frame runs on,
+        # so a broadcast never races a client connecting/disconnecting.
         self.live = live
         self.loop: asyncio.AbstractEventLoop | None = None
         self.ws_clients: set[WebSocket] = set()
@@ -187,16 +196,12 @@ class SimViewServer:
         async def lifespan(app: FastAPI):
             # Captured here (rather than e.g. in run()) because this runs on
             # the server thread's event loop once uvicorn starts serving --
-            # LiveViewer needs this exact loop object to bridge push_state
-            # (caller's thread) into broadcast_frame via
-            # asyncio.run_coroutine_threadsafe.
+            # LiveViewer's sender thread needs this exact loop object to
+            # schedule broadcast_frame via asyncio.run_coroutine_threadsafe.
             self.loop = asyncio.get_running_loop()
             yield
 
         self.app = FastAPI(lifespan=lifespan)
-        # Instance-scoped state (self.model_data, self.model_bytes, ...) lives on this
-        # object rather than in module-level globals, so multiple SimViewServer
-        # instances (e.g. in tests) never share or clobber each other's data.
 
         # Local viewer only: restrict cross-origin requests to localhost/127.0.0.1.
         # No allow_credentials: the API doesn't use cookies or auth headers, and
@@ -213,7 +218,7 @@ class SimViewServer:
         # unchanged assets (vendored libs, textures, our own JS) are served
         # from cache; the Cache-Control subclass additionally marks vendored
         # libs as immutable and everything else short-lived (max-age=60), so
-        # index.html's hardcoded /static/... paths never need a cache-busting
+        # index.html's fixed ./static/... paths never need a cache-busting
         # query param.
         self.app.mount(
             "/static", CacheControlStaticFiles(directory=STATIC), name="static"
@@ -264,9 +269,7 @@ class SimViewServer:
         if preloaded:
             self._preloaded_data = None  # allow it to be garbage-collected
         else:
-            # __init__ requires sim_path and/or data; if we get here,
-            # _preloaded_data was None, so sim_path (hence self.sim_path) was
-            # provided and is guaranteed non-None.
+            # __init__ requires sim_path and/or data, and data is None here.
             assert self.sim_path is not None
             logger.info("Loading simulation data from %s...", self.sim_path)
             raw = read_maybe_gzipped_bytes(self.sim_path)
@@ -351,8 +354,8 @@ class SimViewServer:
             # Legacy per-frame file: repack into whole-trajectory columnar
             # blobs so the viewer parses one lightweight JSON index plus raw
             # binary instead of thousands of tiny per-frame objects/base64
-            # strings. Falls back to serving `states_data` exactly as before if
-            # it isn't strictly consistent across frames (see columnar.py).
+            # strings. Falls back to serving `states_data` unchanged if it
+            # isn't strictly consistent across frames (see columnar.py).
             columnar = columnarize_states(states_data, model_data, register_blob)
             if columnar is not None:
                 states_data = columnar
@@ -474,13 +477,15 @@ class SimViewServer:
                         "Failed to persist batch names to %s: %s", names_path, e
                     )
 
-            # persisted=False: in-memory scenes (show()/LiveViewer/render) have
-            # no file to key a sidecar on, so the rename lasts this server only.
+            # persisted=False: in-memory scenes (show()/LiveViewer/SimViewLauncher)
+            # have no file to key a sidecar on, so the rename lasts this server
+            # only.
             return {"ok": True, "persisted": persisted}
 
         if self.live:
-            # Only registered in live mode: LiveViewer.push_state broadcasts
-            # each new frame to every connected socket (see broadcast_frame).
+            # Only registered in live mode: LiveViewer's sender thread
+            # broadcasts each pushed frame to every connected socket (see
+            # broadcast_frame).
             # Frames buffered before this client connected are replayed first,
             # so a viewer opened mid-run still sees the recent timeline.
             @self.app.websocket("/ws/states")
@@ -530,8 +535,8 @@ class SimViewServer:
             replayed += len(pending)
 
     def push_frame(self, frame: dict) -> None:
-        """Record one new frame for catch-up (live mode). Returns nothing; the
-        caller broadcasts it separately via `broadcast_frame`."""
+        """Record one new frame for catch-up (live mode). The caller
+        broadcasts it separately via `broadcast_frame`."""
         self.frame_buffer.append(frame)
         self.frames_pushed += 1
 
@@ -593,6 +598,7 @@ class SimViewServer:
         port: int = 5420,
         open_browser: bool = False,
     ):
+        """Serve on `host:port`, blocking until the server stops."""
         logger.info("SimView server running on http://%s:%s", host, port)
         if open_browser:
             import webbrowser
@@ -616,6 +622,12 @@ class SimViewServer:
         open_browser: bool = False,
         batch_selections: Sequence[str | Sequence[int] | None] | None = None,
     ):
+        """Load `sim_path` (one file or several to merge) and serve it, blocking.
+
+        Several files, or any batch selection, are merged first via
+        `simview.merge.merge_simulation_files`. Serves on `preferred_port`, or
+        the next free port if that one is taken.
+        """
         paths = (
             [Path(sim_path)]
             if isinstance(sim_path, (str, Path))
@@ -721,6 +733,7 @@ class ViewerHandle:
 
     @property
     def url(self) -> str:
+        """Base URL of the running viewer."""
         return f"http://{dialable_host(self.host)}:{self.port}"
 
     def url_for(self, view: str) -> str:

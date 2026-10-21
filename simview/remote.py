@@ -121,7 +121,7 @@ def is_remote_spec(spec: str) -> bool:
 
 
 def cache_dir() -> Path:
-    """Root of simview's on-disk cache, honouring XDG_CACHE_HOME."""
+    """Root of simview's on-disk cache, honoring XDG_CACHE_HOME."""
     base = os.environ.get("XDG_CACHE_HOME")
     root = Path(base) if base else Path.home() / ".cache"
     return root / CACHE_DIR

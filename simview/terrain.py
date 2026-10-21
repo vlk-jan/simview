@@ -1,9 +1,10 @@
 """Numeric terrain queries (single point / area / along a body's
 trajectory) for `simview terrain`.
 
-Deliberately dependency-free (stdlib only: json, base64, struct, math via
-its imports) so it works on a base install without the `authoring` extra
-(torch/numpy) -- see CLAUDE.md. Shares its blob-decoding and
+Deliberately dependency-free (stdlib only, directly and via
+`simview.columnar`/`simview.utils`) so it works on a base install without the
+`authoring` extra (torch/numpy) -- see docs/dev/architecture.md, "Lazy
+imports". Shares its blob-decoding and
 body-resolution helpers with `simview/diff.py` and `simview/info.py` via
 `simview.columnar`/`simview.utils`, which are stdlib-only on this read path.
 
@@ -75,6 +76,8 @@ def _grid_info(model_data: dict) -> tuple[dict, _Grid, int]:
 
 
 def _resolve_layers(terrain: dict, layers: str | list[str]) -> list[str]:
+    """Expand `layers` (`"all"`, one name, or a list) to the layer names to
+    query, raising ValueError for a name the terrain doesn't have."""
     available = ["height", *(terrain.get("properties") or {})]
 
     if layers == "all":
@@ -95,11 +98,9 @@ def _decode_grid(
 ) -> list[list[float]]:
     """Decode one terrain field into `batch_idx`'s `(shape_y, shape_x)` grid.
 
-    Handles both wire variants: a blob (always broadcast to all
-    `batch_size` batches by `SimViewTerrain.create()`) and a plain nested
-    list (which the dataclass's type hint describes as a single 2D grid
-    shared across all batches, with no batch dimension) -- see the
-    `simview/model.py` `SimViewTerrain.create`/`create_terrain` comments.
+    The value (a ``__b64__`` blob or a plain nested list) holds either one
+    grid shared by every batch (a singleton terrain) or `batch_size` grids
+    back to back -- see `SimulationScene.create_terrain` in `simview/scene.py`.
     """
     if not (0 <= batch_idx < batch_size):
         raise ValueError(f"batch index {batch_idx} out of range [0, {batch_size - 1}]")
@@ -330,8 +331,9 @@ def query_area_diff(
 
     Returns a JSON-serializable dict: `{"batch_a", "batch_b", "is_singleton",
     "x_coords", "y_coords", "layers": {layer: {"value_a", "value_b",
-    "delta", "abs_delta"}}}` (each a nested grid, rows follow `y_coords`,
-    columns follow `x_coords`). Raises `ValueError` on the same conditions
+    "delta", "abs_delta", "stats": {"mean_abs_delta", "max_abs_delta",
+    "min_abs_delta"}}}}` (the first four are nested grids, rows follow
+    `y_coords`, columns follow `x_coords`). Raises `ValueError` on the same conditions
     as `query_area`, plus `batch_a == batch_b`.
     """
     if batch_a == batch_b:
@@ -780,9 +782,7 @@ def format_along_diff_text(result: dict) -> str:
 
 def format_along_csv(result: dict) -> str:
     """Render `query_along_body`'s output as CSV: one row per frame, full
-    series (no truncation) -- CSV output is for scripts, matching the "just
-    the numbers, in full" philosophy `--json` already uses everywhere in
-    this CLI."""
+    series (no truncation), like `--json`."""
     layers = list(result["layers"])
     columns = [result[k] for k in ("frame_indices", "times", "x", "y")]
     columns += [result["layers"][layer]["values"] for layer in layers]

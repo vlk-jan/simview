@@ -5,8 +5,7 @@ pushes ~200 states to it one at a time, paced with time.sleep(dt) to mimic a
 simulation loop producing frames in real time. Reload the page (or open a
 second tab) partway through to see the catch-up + live-follow behavior.
 
-Set SIMVIEW_EXAMPLE_HEADLESS=1 to skip opening a browser tab (used by the
-manual verification step in CI-less environments / this repo's own checks).
+Set SIMVIEW_EXAMPLE_HEADLESS=1 to skip opening a browser tab.
 """
 
 import os

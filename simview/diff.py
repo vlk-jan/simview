@@ -3,9 +3,9 @@
 ground truth vs. prediction, baseline vs. post-adaptation) actually track
 each other.
 
-Deliberately dependency-free (stdlib only: json, base64, struct, math via
-its imports) so it works on a base install without the `authoring` extra
-(torch/numpy) -- see CLAUDE.md. Shares its blob-decoding and
+Deliberately dependency-free (stdlib only) so it works on a base install
+without the `authoring` extra (torch/numpy) -- see "Lazy imports" in
+docs/dev/architecture.md. Shares its blob-decoding and
 body-resolution helpers with `simview/terrain.py`/`simview/info.py` via
 `simview.columnar`/`simview.utils`, which are stdlib-only on this read path.
 
@@ -36,8 +36,8 @@ _MAX_SERIES_ROWS = 10
 def _build_body_meta(model_data: dict, state_names: list) -> dict[str, dict]:
     """`name -> {"parent", "localTransform"}` for every body, from the model's
     `bodies` section. Bodies that appear in the states but not in the model are
-    added as parentless roots, so a hand-edited or third-party file still
-    diffs exactly as it did before parent resolution existed."""
+    added as parentless roots, so a hand-edited or third-party file whose
+    model omits them still diffs."""
     meta: dict[str, dict] = {}
     for entry in model_data.get("bodies") or []:
         name = entry.get("name")
@@ -54,8 +54,8 @@ def _build_body_meta(model_data: dict, state_names: list) -> dict[str, dict]:
 
 def _topo_sort_bodies(meta: dict[str, dict]) -> list[str]:
     """Order body names so every parent precedes its children. Independent
-    stdlib port of `static/js/utils/bodyTransforms.js`'s `topoSortBodies` (see
-    module docstring on why these aren't shared); each body has at most one
+    stdlib port of `static/js/utils/bodyTransforms.js`'s `topoSortBodies` (the
+    viewer's JS can't be shared with the CLI); each body has at most one
     parent, so a DFS post-order walk suffices."""
     order: list[str] = []
     status: dict[str, str] = {}
@@ -374,6 +374,9 @@ def compute_trajectory_diff(
 
 
 def format_diff_text(result: dict) -> str:
+    """Render `compute_trajectory_diff`'s output as a skimmable text report,
+    capping each body's per-frame table (use `--json`/`--csv` for the full
+    series)."""
     lines = [
         f"Batches {result['batch_a']} vs {result['batch_b']}  every={result['every']}"
     ]

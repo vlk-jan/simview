@@ -289,7 +289,7 @@ def test_scene_save_load_save_equivalence_with_binary_trajectory(tmp_path):
     assert body0["fields"]["bodyTransform"].startswith("__b64__")
 
 
-# --- Gzip support (gameplan item 16) ----------------------------------------
+# --- Gzip support ------------------------------------------------------------
 
 
 def test_save_compress_true_writes_gzip_and_appends_suffix(tmp_path):

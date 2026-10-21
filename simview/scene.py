@@ -18,8 +18,8 @@ from .columnar import (
     write_static_bundle,
 )
 from .model import (
-    BodyShapeType,  # If used directly by users of SimulationData for body creation
-    OptionalBodyStateAttribute,  # If used directly
+    BodyShapeType,
+    OptionalBodyStateAttribute,
     SimViewBody,
     SimViewEpisode,
     SimViewModel,
@@ -131,6 +131,9 @@ def _as_tb(value, T: int, B: int, name: str) -> np.ndarray:
 
 
 class SimulationScene:
+    """Authoring container for a scene: a `SimViewModel` plus its time-series
+    `states`, with helpers to build, save, load and show it."""
+
     def __init__(
         self,
         batch_size: int,
@@ -145,9 +148,11 @@ class SimulationScene:
         episodes: list[SimViewEpisode] | None = None,
         viewer_defaults: dict[str, Any] | None = None,
     ) -> None:
-        """
-        Initializes the simulation data container.
-        Manages the SimViewModel and the time-series states.
+        """Create an empty scene around a new `SimViewModel`.
+
+        `batch_size`, `scalar_names`, `dt` (None to let the viewer infer it),
+        `collapse`, `terrain`, `bodies`, `static_objects` and `batch_names`
+        initialize the model fields of the same name.
 
         `metadata` is free-form, JSON-serializable run provenance (e.g. engine
         name, checkpoint path, git commit, CLI args) with no meaning to the
@@ -207,15 +212,15 @@ class SimulationScene:
 
     @classmethod
     def from_dict(cls, d: dict) -> "SimulationScene":
-        """Reconstruct a SimulationScene from the dict produced by `save`/`to_json`
-        (i.e. the parsed `{"model": ..., "states": ...}` document).
+        """Reconstruct a SimulationScene from the document `save` writes
+        (the parsed `{"model": ..., "states": ...}` dict).
 
-        Binary `__b64__`-encoded fields inside `states` (e.g. from
-        ``add_trajectory(binary=True)``) are left as-is, matching the on-disk
+        Binary ``__b64__``-encoded fields inside `states` (e.g. from
+        `add_trajectory(binary=True)`) are left as-is, matching the on-disk
         wire format, so a subsequent `save()` reproduces the same bytes for
         those fields without a decode/re-encode round trip.
 
-        Accepts either `states` layout (see :mod:`simview.columnar`). A
+        Accepts either `states` layout (see `simview.columnar`). A
         columnar document is expanded back into the per-frame list `states`
         is in memory, so every authoring API keeps working unchanged; the
         expansion is exact, so re-saving columnar reproduces the same blobs.
@@ -252,7 +257,7 @@ class SimulationScene:
 
         Transparently reads gzip-compressed files (detected by magic bytes,
         regardless of extension) as well as plain JSON. Enables round-tripping
-        from Python: ``SimulationScene.load(p).save(p2)``.
+        from Python: `SimulationScene.load(p).save(p2)`.
         """
         data = json.loads(read_maybe_gzipped_bytes(path))
         return cls.from_dict(data)
@@ -263,8 +268,12 @@ class SimulationScene:
         body_states: list[SimViewBodyState],
         scalar_values: dict[str, torch.Tensor | np.ndarray | list] | None = None,
     ) -> None:
-        """
-        Adds a new state (snapshot in time) to the simulation data.
+        """Append one state (a snapshot at `time`) to the scene.
+
+        Every body in `body_states` must exist in the model, must not be
+        rigidly attached, and must carry one row per batch. When the model
+        has `scalar_names`, `scalar_values` must map exactly those names to
+        one value per batch; otherwise it is ignored with a warning.
         """
         B = self.model.batch_size
         for state in body_states:
@@ -341,23 +350,22 @@ class SimulationScene:
     ) -> None:
         """Append an entire time-series in one call.
 
-        Equivalent to looping ``add_state`` over ``T`` frames, but converts each
-        body's pose/vector tensors once (vectorised) instead of per frame, which
-        is dramatically faster for long trajectories. With ``binary=True`` the
-        numeric per-body fields (``bodyTransform`` and any provided vectors) are
-        packed as float32 ``__b64__`` blobs, shrinking the output file and the
-        parse cost; the viewer and :func:`merge_simulation_files` decode these
-        transparently. Set ``binary=False`` to emit plain JSON lists. A body's
-        ``contacts`` (if provided on its :class:`BodyTrajectory`) are ragged and
-        always emitted as plain JSON per frame, using the same encoding as
-        ``SimViewBodyState`` / ``add_state``.
+        `times` is a length-`T` sequence of snapshot times (seconds).
+        `trajectories` holds one `BodyTrajectory` per body; each body must
+        already exist in the model. For a scene with `scalar_names`,
+        `scalar_values` maps each name to a `(T, B)` (or `(T,)` when
+        `B == 1`) series.
 
-        Args:
-            times: sequence of length ``T`` of snapshot times (seconds).
-            trajectories: one :class:`BodyTrajectory` per body; each body must
-                already exist in the model.
-            scalar_values: for a scene with ``scalar_names``, maps each name to a
-                ``(T, B)`` (or ``(T,)`` when ``B == 1``) series.
+        Equivalent to looping `add_state` over `T` frames, but converts each
+        body's pose/vector tensors once (vectorized) instead of per frame, which
+        is dramatically faster for long trajectories. With `binary=True` the
+        numeric per-body fields (`bodyTransform` and any provided vectors) are
+        packed as float32 ``__b64__`` blobs, shrinking the output file and the
+        parse cost; the viewer and `merge_simulation_files` decode these
+        transparently. Set `binary=False` to emit plain JSON lists. A body's
+        `contacts` (if provided on its `BodyTrajectory`) are ragged and
+        always emitted as plain JSON per frame, using the same encoding as
+        `SimViewBodyState` / `add_state`.
         """
         times = [
             float(t)
@@ -512,24 +520,20 @@ class SimulationScene:
         compress: bool = False,
         columnar: bool | None = None,
     ) -> None:
-        """
-        Exports the complete simulation data (model and states) to a JSON file.
-        Uses a streaming approach to reduce memory spikes for large simulations.
+        """Write the scene (model and states) to a JSON file at `filepath`.
 
-        Args:
-            filepath: Destination path. If it ends in ``.gz`` the output is
-                gzip-compressed regardless of `compress`.
-            compress: If True, gzip-compress the output (useful for large
-                simulations, which can reach 100+ MB as plain JSON). If
-                `filepath` doesn't already end in ``.gz``, the suffix is
-                appended so the extension reflects the actual file contents.
-            columnar: Which `states` layout to write (see
-                :mod:`simview.columnar`). ``None`` (the default) writes the
-                columnar layout when the states allow it and silently falls
-                back to the legacy per-frame array when they don't. ``True``
-                requires it, raising ValueError rather than falling back --
-                useful in a pipeline that depends on the smaller output.
-                ``False`` always writes the legacy array.
+        A `filepath` ending in ``.gz`` is gzip-compressed regardless of
+        `compress`. `compress=True` gzip-compresses the output (useful for
+        large simulations, which can reach 100+ MB as plain JSON) and appends
+        ``.gz`` if `filepath` lacks it, so the extension reflects the
+        contents.
+
+        `columnar` picks the `states` layout (see `simview.columnar`).
+        `None` (the default) writes the columnar layout when the states allow
+        it and silently falls back to the legacy per-frame array when they
+        don't. `True` requires it, raising ValueError rather than falling
+        back -- useful in a pipeline that depends on the smaller output.
+        `False` always writes the legacy array, streamed frame by frame.
 
         The columnar layout stores one whole-trajectory binary blob per body
         per field instead of thousands of small per-frame ones, which makes
@@ -587,8 +591,8 @@ class SimulationScene:
         logger.info("Simulation data successfully saved to %s", output_path)
 
     def save_static(self, directory: str | Path) -> None:
-        """Write a static bundle (`model.json`, `states.json`, `blob/<id>`)
-        that the viewer's static mode (`#data=<base url>`, see
+        """Write a static bundle (``model.json``, ``states.json``,
+        ``blob/<id>``) that the viewer's static mode (``#data=<base url>``, see
         `simview.view_hash`) can load from any plain static file server.
 
         Uses the same columnar layout and fallback as `save`.
@@ -625,7 +629,8 @@ class SimulationScene:
 
         `view` is a view-link fragment (see `simview.view_hash`) the inline
         iframe opens with, e.g. a fixed camera or `ui=False`; `height` is the
-        iframe height in pixels.
+        iframe height in pixels. `host`/`preferred_port` pick where to bind,
+        and `open_browser=True` also opens the URL in the default browser.
         """
         if not self.model.is_complete:
             raise ValueError(
@@ -666,36 +671,35 @@ class SimulationScene:
         embedding_map: torch.Tensor | None = None,
         compute_normals: bool = True,
     ) -> None:
-        """Adds terrain to the simulation model.
+        """Add terrain to the simulation model.
 
-        Args:
-            heightmap (torch.Tensor): 2D or 3D tensor of terrain heights.
-            normals (torch.Tensor | None): 3D or 4D tensor of terrain normals. If None,
-                normals are automatically computed from the heightmap gradients.
-            compute_normals (bool): With ``normals=None``, ``False`` stores no normals
-                at all (three floats per cell less on disk and over the wire); the
-                viewer then shades the surface from normals it computes itself. The
-                "normals" arrow visualization has nothing to draw in that case.
-            x_lim (tuple[float, float] | None): (min, max) coordinates for the X axis.
-            y_lim (tuple[float, float] | None): (min, max) coordinates for the Y axis.
-            grid_res (float | None): Spacing between adjacent grid nodes. If x_lim
-                and y_lim are omitted they are inferred so the nodes sit `grid_res`
-                apart, centered at 0 (a W-wide grid spans `(W - 1) * grid_res`).
-            properties (dict[str, torch.Tensor] | None): Optional arbitrary named
-                per-cell scalar maps (2D or 3D, like `heightmap`), e.g.
-                `{"friction": friction_map, "stiffness": stiffness_map}`. Each becomes
-                selectable as a terrain color mode in the viewer automatically, with no
-                further code changes needed.
-            property_bounds (dict[str, tuple[float, float]] | None): Optional explicit
-                `(min, max)` color-scale range per property name, e.g.
-                `{"friction": (0.0, 1.0)}`. Each name must also appear in
-                `properties`; names left out keep the default, which is that map's
-                own data range. Use this to keep one scale comparable across scenes
-                -- cells outside the range saturate at the end colors rather than
-                being hidden.
-            embedding_map (torch.Tensor | None): Optional per-cell K-wide feature map
-                (3D channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
-                enabling the viewer's click-to-similarity "features" color mode.
+        `heightmap` is a 2D or 3D (batched) tensor of terrain heights.
+        `normals` is a 3D or 4D tensor of terrain normals; if None they are
+        computed from the heightmap gradients, unless `compute_normals=False`,
+        which stores no normals at all (three floats per cell less on disk and
+        over the wire). The viewer then shades the surface from normals it
+        computes itself, and the "normals" arrow visualization has nothing to
+        draw.
+
+        `x_lim`/`y_lim` are the `(min, max)` coordinates of the X/Y axes.
+        `grid_res` is the spacing between adjacent grid nodes; if `x_lim` and
+        `y_lim` are omitted they are inferred so the nodes sit `grid_res`
+        apart, centered at 0 (a W-wide grid spans `(W - 1) * grid_res`).
+
+        `properties` holds optional named per-cell scalar maps (2D or 3D, like
+        `heightmap`), e.g. `{"friction": friction_map}`; each becomes a
+        terrain color mode in the viewer. `property_bounds` optionally gives
+        an explicit `(min, max)` color-scale range per property name, e.g.
+        `{"friction": (0.0, 1.0)}`. Each name must also appear in
+        `properties`; names left out use that map's own data range. Use it to
+        keep one scale comparable across scenes -- cells outside the range
+        saturate at the end colors rather than being hidden.
+
+        `embedding_map` is an optional per-cell K-wide feature map (3D
+        channels-first `(K, Dy, Dx)` or 4D `(B, K, Dy, Dx)`, like `normals`)
+        enabling the viewer's click-to-similarity "features" color mode.
+
+        Each field's batch dim must be 1 (shared) or `batch_size`.
         """
         batch_size = self.model.batch_size
         if heightmap.ndim == 2:
@@ -735,9 +739,7 @@ class SimulationScene:
             embedding_map = embedding_map.unsqueeze(0)
 
         # Each field's batch dim must be either 1 (shared across all batches) or
-        # exactly batch_size (per-batch). Anything else is a mistake, and the old
-        # code silently mishandled the mixed case (e.g. shared height + per-batch
-        # normals), producing an inconsistent isSingleton flag.
+        # exactly batch_size (per-batch); anything else is a mistake.
         provided = {
             "heightmap": heightmap,
             "normals": normals,
@@ -794,16 +796,13 @@ class SimulationScene:
         embedding: torch.Tensor | None = None,
         **kwargs,
     ) -> None:
-        """Creates and adds a pointcloud body to the simulation model.
+        """Add a point-cloud body named `body_name` to the model.
 
-        Args:
-            body_name (str): Unique name for this body.
-            points (torch.Tensor): (N, 3) point positions.
-            color (torch.Tensor | None): Optional (N, 3) per-point RGB in [0, 1]
-                for static vertex-colored rendering.
-            embedding (torch.Tensor | None): Optional (N, K) per-point feature
-                vector (e.g. a reduced-dim PCA projection) enabling the
-                viewer's click-to-similarity color mode.
+        `points` holds the `(N, 3)` point positions. `color` is an optional
+        `(N, 3)` per-point RGB in [0, 1] for static vertex-colored rendering.
+        `embedding` is an optional `(N, K)` per-point feature vector (e.g. a
+        reduced-dim PCA projection) enabling the viewer's click-to-similarity
+        color mode. Other `**kwargs` go to `SimViewBody.create`.
         """
         self.model.add_body(
             SimViewBody.create_pointcloud(
@@ -824,26 +823,30 @@ class SimulationScene:
         visible_ranges: list | None = None,
         **kwargs,
     ) -> None:
-        """Creates and adds a dynamic body to the simulation model.
+        """Add a dynamic body named `body_name` of `shape_type` to the model.
 
-        ``color`` (RGB in [0, 1]) and ``opacity`` (in (0, 1]) style the
+        `**kwargs` are the shape parameters (see `SimViewBody.create`), and
+        `available_attributes` optionally pre-declares the optional state
+        attributes (`save`/`show` reconcile them from the states anyway).
+
+        `color` (RGB in [0, 1]) and `opacity` (in (0, 1]) style the
         mesh/primitive representation (box/sphere/cylinder/mesh); a point
-        cloud's per-point colour is its shape's own ``color``. ``visible=False``
-        hides the body initially. ``visible_ranges`` is an optional list of
-        ``[t_from, t_to]`` pairs (seconds on the states timeline); the viewer
+        cloud's per-point color is its shape's own `color`. `visible=False`
+        hides the body initially. `visible_ranges` is an optional list of
+        `[t_from, t_to]` pairs (seconds on the states timeline); the viewer
         hides the body outside them.
 
-        ``parent``/``local_transform`` attach this body to another body already
+        `parent`/`local_transform` attach this body to another body already
         in the model, instead of it moving in world space:
 
         - Rigid attachment (e.g. a wheel bolted to a chassis): pass both
-          ``parent`` and ``local_transform`` (a constant ``[x, y, z, w, qx, qy,
-          qz]`` offset). Never call ``add_state``/``add_trajectory`` for this
+          `parent` and `local_transform` (a constant `[x, y, z, w, qx, qy,
+          qz]` offset). Never call `add_state`/`add_trajectory` for this
           body afterwards -- its world pose is derived by the viewer every
           frame from the parent's current pose plus this fixed offset.
-        - Articulated attachment (e.g. an arm joint): pass only ``parent``.
-          Keep supplying this body's pose every frame via ``add_state``/
-          ``add_trajectory`` as usual -- it's just interpreted as local to the
+        - Articulated attachment (e.g. an arm joint): pass only `parent`.
+          Keep supplying this body's pose every frame via `add_state`/
+          `add_trajectory` as usual -- it's just interpreted as local to the
           parent's current-frame pose instead of world space.
         """
         self.model.add_body(
@@ -872,15 +875,16 @@ class SimulationScene:
         dashed: bool = False,
         visible_ranges: list | None = None,
     ) -> None:
-        """Adds a world-space polyline to the model.
+        """Add a world-space polyline named `name` to the model.
 
-        ``points`` ``(N, 3)`` draws a fixed line (a planned route). ``frames``
-        ``(T, B, max_vertices, 3)`` -- or ``(T, max_vertices, 3)`` when
-        ``batch_size == 1`` -- draws a different line every state (a
+        `points` `(N, 3)` draws a fixed line (a planned route). `frames`
+        `(T, B, max_vertices, 3)` -- or `(T, max_vertices, 3)` when
+        `batch_size == 1` -- draws a different line every state (a
         replanned local path); pad shorter frames with trailing NaN rows. T
         must equal the number of states by the time the scene is saved or
-        shown. ``width`` is in pixels (the viewer currently draws 1 px);
-        ``visible_ranges`` as in ``create_body``.
+        shown. `color` is RGB in [0, 1], `dashed` draws a dashed line, and
+        `width` is in pixels (the viewer currently draws 1 px);
+        `visible_ranges` as in `create_body`.
         """
         B = self.model.batch_size
         points_blob = None
@@ -918,9 +922,7 @@ class SimulationScene:
         )
 
     def _clear_internal_data(self) -> None:
-        """
-        Clears the stored simulation states and model data to free up memory.
-        """
+        """Clear the stored states and large model data to free memory."""
         self.states = []
         # Clear large terrain data if present
         if self.model and self.model.terrain:

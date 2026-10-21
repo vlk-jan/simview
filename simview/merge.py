@@ -313,11 +313,14 @@ def _validate_doc(doc: dict, label: str) -> None:
 def _expand_batched(
     values: list | str, is_singleton: bool, batch_size: int, field: str, label: str
 ) -> list | str:
-    # b64 blobs pass through untouched: _decode_per_batch resolves their row
-    # layout by length (one shared row for a deduplicated singleton terrain,
-    # or batch_size rows for per-batch / legacy broadcast-singleton data) and
-    # replicates the shared case itself. Only plain lists (where the row count
-    # is directly observable) may need broadcasting below.
+    """Broadcast a plain-list terrain field to `batch_size` rows.
+
+    ``__b64__`` blobs pass through untouched: `_decode_per_batch` resolves
+    their row layout by length (one shared row for a deduplicated singleton
+    terrain, or `batch_size` rows for per-batch / legacy broadcast-singleton
+    data) and replicates the shared case itself. Only plain lists, where the
+    row count is directly observable, may need broadcasting here.
+    """
     if is_blob(values):
         return values
 
@@ -633,8 +636,8 @@ def _merge_terrain(
             )
 
     def _bound(name: str, key: str, pick) -> float | None:
-        # A null bound means "unknown" (json-format.md), and one unknown
-        # makes the merged range unknown too.
+        # A null bound means "unknown", and one unknown makes the merged
+        # range unknown too.
         values = [t["properties"][name].get(key) for t in terrains]
         return None if any(v is None for v in values) else pick(values)
 
@@ -684,6 +687,13 @@ def _merge_states(
     labels: list[str],
     selections: list[list[int] | None],
 ) -> list[dict]:
+    """Build the merged per-frame states on the first file's timeline.
+
+    Every other file contributes its nearest-in-time frame (zero-order hold).
+    Per-body fields and scalars are concatenated in file order, keeping only
+    each file's selected batches; rigidly attached bodies are skipped, since
+    they never appear in states.
+    """
     ref_times = [s["time"] for s in states_list[0]]
     times_by_file = [[s["time"] for s in states] for states in states_list]
     total_batches = sum(_output_sizes(batch_sizes, selections))
@@ -926,7 +936,7 @@ def merge_simulation_files(
     if dropped:
         logger.warning(
             "Dropping episode boundaries from %s: they index their own "
-            "timeline, and the merged scene uses '%s'’s timeline.",
+            "timeline, and the merged scene uses '%s's timeline.",
             ", ".join(f"'{label}'" for label in dropped),
             labels[0],
         )

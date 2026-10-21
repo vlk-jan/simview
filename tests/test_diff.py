@@ -1,6 +1,6 @@
 """Tests for simview.diff -- pure stdlib, deliberately no
 pytest.importorskip("torch") since the module itself must work on a base
-install (see CLAUDE.md's "authoring" extra guard)."""
+install (see docs/dev/architecture.md, "Lazy imports")."""
 
 import base64
 import csv

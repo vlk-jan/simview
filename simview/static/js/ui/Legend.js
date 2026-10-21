@@ -1,6 +1,8 @@
 import { getCallableFromColorMapName } from "../objects/colormap.js";
 import { escapeHtml } from "../utils/html.js";
 
+// Bottom-left colormap legends: one for the terrain's current color mode,
+// one for point-cloud similarity coloring.
 export class Legend {
     constructor(app) {
         this.app = app;
@@ -31,7 +33,7 @@ export class Legend {
         }
 
         let mode = this.app.uiState.terrainColorMode || "height";
-        // Terrain.#updateSurfaceColor falls back to height colouring for a
+        // Terrain.#updateSurfaceColor falls back to height coloring for a
         // mode it doesn't know (e.g. a view link naming a property this
         // scene lacks); label the bar the same way instead of throwing.
         if (!this.app.terrain.getAvailableColorModes().includes(mode)) mode = "height";
@@ -83,8 +85,7 @@ export class Legend {
 
         // Large-magnitude properties (e.g. stiffness, typically ~1e5) read
         // better without decimals; small ones (e.g. friction, typically
-        // ~[0, 1]) need them -- this heuristic works for any named property,
-        // not just a hardcoded one.
+        // ~[0, 1]) need them.
         const decimals = Math.abs(maxVal) > 1000 ? 0 : 2;
 
         this.container.style.display = "flex";
@@ -131,7 +132,6 @@ export class Legend {
         const gradientDiv = container.querySelector(".legend-gradient");
         const callableColormap = getCallableFromColorMapName(cmapName);
 
-        // Generate CSS gradient
         const steps = 10;
         const colors = [];
         for (let i = 0; i <= steps; i++) {

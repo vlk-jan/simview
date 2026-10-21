@@ -1,3 +1,5 @@
+"""Blocking launch of the viewer for a scene object or a scene file."""
+
 import gc
 import logging
 from pathlib import Path
@@ -11,15 +13,19 @@ logger = logging.getLogger("simview.launcher")
 
 
 class SimViewLauncher:
+    """Serve a scene in the foreground until interrupted, then free it.
+
+    The blocking counterpart to `SimulationScene.show()`'s background viewer.
+    """
+
     def __init__(
         self,
         source: SimulationScene | str | Path,
     ) -> None:
-        """
-        Initializes the visualizer.
-        - If source is a SimulationScene: it is handed to the server in memory (no
-          temporary file), and its internal data is cleared after the server stops.
-        - If source is a path: it is used directly.
+        """Validate `source`, a `SimulationScene` or a path to a scene file.
+
+        A scene is handed to the server in memory (no temporary file) and its
+        internal data is cleared once the server stops; a path is served as is.
         """
         self._scene: SimulationScene | None = None
         self._sim_file_path: Path | None = None
@@ -47,9 +53,7 @@ class SimViewLauncher:
             )
 
     def launch(self, host: str = "127.0.0.1", preferred_port: int = 5420) -> None:
-        """
-        Launches the SimViewServer, then clears the in-memory scene (if any).
-        """
+        """Run the server until it stops, then clear the in-memory scene (if any)."""
         try:
             if self._scene is not None:
                 # Serialize the scene once and hand it to the server directly,
@@ -62,9 +66,7 @@ class SimViewLauncher:
                 server = SimViewServer(data=data)
                 server.run(host=host, port=find_free_port(host, preferred_port))
             else:
-                # __init__ guarantees exactly one of self._scene / self._sim_file_path
-                # is set (it raises otherwise), so if self._scene is None here,
-                # self._sim_file_path must have been set.
+                # __init__ sets exactly one of _scene / _sim_file_path.
                 assert self._sim_file_path is not None
                 SimViewServer.start(
                     sim_path=self._sim_file_path,
@@ -80,9 +82,7 @@ class SimViewLauncher:
             self.cleanup()
 
     def cleanup(self) -> None:
-        """
-        Clears the in-memory scene's data. Safe to call multiple times.
-        """
+        """Clear the in-memory scene's data. Safe to call multiple times."""
         if self._scene is not None:
             logger.info(
                 "SimViewLauncher: Clearing source SimulationScene internal data..."

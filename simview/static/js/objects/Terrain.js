@@ -308,15 +308,9 @@ export class Terrain {
         return normals[dataIndex];
     }
 
-    /**
-     *
-     * @param {array} heightData - Height data for the terrain, a flattened array
-     * @param {number} batchIndex
-     * @param {array} [normals] - This batch's per-vertex normals (flat or
-     *   nested, see #normalAt); shading falls back to computed normals when
-     *   they're absent or the wrong length.
-     * @returns
-     */
+    // Builds one batch's surface geometry from its flattened heightData.
+    // `normals` (this batch's, flat or nested, see #normalAt) are used when
+    // present and the right length; otherwise normals are computed.
     #createSurfaceGeometryFromHeightData(heightData, batchIndex, normals) {
         const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY, maxX, maxY } = this.bounds;
@@ -444,12 +438,8 @@ export class Terrain {
         return geometry;
     }
 
-    /**
-     *
-     * @param {array} heightData - Height data for the terrain, a flattened array
-     * @param {array} normals - Normal data for the terrain, an array of 3D vectors
-     * @returns {THREE.Group} - Group containing normal vectors
-     */
+    // Returns a THREE.Group of ArrowHelpers sampling `normals` (flat or
+    // nested, see #normalAt) across the grid; empty when none were shipped.
     #createNormalVectors(heightData, normals) {
         const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY } = this.bounds;
@@ -497,9 +487,8 @@ export class Terrain {
         return normalVectors;
     }
 
-    // Toggle methods for visualizations - now updated to support batched terrains
+    // Shows/hides a named sub-object (surface/wireframe/normals) in every batch group.
     toggleVisualization(type, visible) {
-        // Toggle in the original terrain
         for (const batchGroup of this.group.children) {
             const object = batchGroup.getObjectByName(type);
             if (object) {
@@ -533,6 +522,10 @@ export class Terrain {
         return max;
     }
 
+    // Recolors one batch's surface by uiState.terrainColorMode: "height", a
+    // named property (normalized to its shipped range), "diff" (signed
+    // batchB - batchA delta) or "features" (cosine similarity to the clicked
+    // cell). Data rows run opposite to vertex rows, hence the row inversion.
     #updateSurfaceColor(batchIndex, geometry, callableColormap) {
         if (!geometry) return;
         const position = geometry.attributes.position;
@@ -850,9 +843,7 @@ export class Terrain {
                 }
             });
         }
-        // The batch groups are children of this.group, which is what SimView
-        // actually added to the scene -- removing them individually from the
-        // scene was a no-op and left disposed geometry still rendering.
+        // this.group is what SimView added to the scene.
         this.group.parent?.remove(this.group);
 
         geometries.forEach((g) => g.dispose());

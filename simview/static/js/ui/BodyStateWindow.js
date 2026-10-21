@@ -1,26 +1,27 @@
 import { FREQ_CONFIG } from "../config.js";
 import { isEditableTarget } from "../utils/keyboard.js";
 
+// Top-left collapsible panel listing posed bodies; selecting one shows its
+// position/rotation for the active batch, refreshed at FREQ_CONFIG rate.
 export class BodyStateWindow {
     constructor(app) {
         this.app = app;
         this.selectedBodies = new Set();
         this.window = null;
         this.batchSelector = null;
-        this.header = null; // Keep track of header element
+        this.header = null;
         this.content = null;
         this.bodyListContainer = null;
         this.detailsContainer = null;
-        this.bodyListItems = new Map(); // Map body name -> list item element
-        this.detailContainers = new Map(); // Map body name -> detail container element
-        this.minRenderDelay = 1000 / FREQ_CONFIG.bodyStateWindow; // 60 FPS
+        this.bodyListItems = new Map(); // body name -> list item
+        this.detailContainers = new Map(); // body name -> detail container
+        this.minRenderDelay = 1000 / FREQ_CONFIG.bodyStateWindow;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
 
         this.initWindow();
     }
 
     initWindow() {
-        // --- Window setup ---
         this.window = document.createElement("details");
         this.window.className = "body-state-window sv-collapsible";
         // model.collapse is the authoring-time hint to start collapsed;
@@ -28,7 +29,6 @@ export class BodyStateWindow {
         // utils/viewerDefaults.js) wins when present.
         this.window.open = this.app.model?.collapse !== true;
 
-        // --- Header setup ---
         this.header = document.createElement("summary");
         this.header.classList.add("body-state-window-header");
         this.window.appendChild(this.header);
@@ -37,7 +37,6 @@ export class BodyStateWindow {
         title.textContent = "Body states";
         this.header.appendChild(title);
 
-        // --- Batch Selector (if needed) ---
         const batchSize = this.app.batchManager.simBatches;
         if (batchSize > 1) {
             const selectorContainer = document.createElement("div");
@@ -61,22 +60,20 @@ export class BodyStateWindow {
             batchSelector.addEventListener("change", (e) => {
                 const batchIndex = parseInt(e.target.value);
                 this.app.batchManager.setActiveBatch(batchIndex);
-                e.target.blur(); // Remove focus from the selector
+                e.target.blur();
             });
 
             // A click on the selector would otherwise toggle the panel.
             selectorContainer.addEventListener("click", (e) => e.preventDefault());
             selectorContainer.appendChild(batchSelector);
-            this.header.appendChild(selectorContainer); // Append to header
+            this.header.appendChild(selectorContainer);
             this.batchSelector = batchSelector;
         }
 
-        // --- Content Area (for scrolling) ---
         this.content = document.createElement("div");
         this.content.classList.add("body-state-window-content");
         this.window.appendChild(this.content);
 
-        // --- Body List and Details Containers (inside the content area) ---
         this.bodyListContainer = document.createElement("div");
         this.bodyListContainer.classList.add("body-list-container");
         this.content.appendChild(this.bodyListContainer);
@@ -87,18 +84,19 @@ export class BodyStateWindow {
 
         document.body.appendChild(this.window);
 
+        // Space is PlaybackControls' play/pause key; stop the browser from also
+        // scrolling or toggling a focused <details> summary.
         this.keydownListener = (event) => {
             if (isEditableTarget(event)) return; // also covers the batch selector
             if (event.code === "Space") event.preventDefault();
         };
         window.addEventListener("keydown", this.keydownListener);
 
-        // Initialize body list once
         this.updateBodyList();
     }
 
     updateBodyList() {
-        this.bodyListContainer.innerHTML = ""; // Clear previous content
+        this.bodyListContainer.innerHTML = "";
         this.bodyListItems.clear();
 
         const title = document.createElement("div");
@@ -116,11 +114,9 @@ export class BodyStateWindow {
             const item = document.createElement("li");
             item.classList.add("body-list-item");
             item.textContent = name;
-            item.dataset.bodyName = name; // Store name for easier access if needed
+            item.dataset.bodyName = name;
 
-            // Add click handler for selection toggle
             item.addEventListener("click", () => {
-                // Use arrow function for concise 'this'
                 if (this.selectedBodies.has(name)) {
                     this.deselectBody(name);
                 } else {
@@ -131,7 +127,6 @@ export class BodyStateWindow {
             list.appendChild(item);
             this.bodyListItems.set(name, item);
 
-            // Initial style update (if it might be pre-selected somehow)
             this.updateBodyListItemStyle(name);
         }
 
@@ -172,24 +167,21 @@ export class BodyStateWindow {
         const container = document.createElement("div");
         container.classList.add("body-detail-container");
 
-        // Close button
         const closeButton = document.createElement("div");
         closeButton.innerHTML = "✕";
         closeButton.classList.add("body-detail-close-button");
 
         closeButton.addEventListener("click", (e) => {
-            e.stopPropagation(); // Prevent triggering other clicks
+            e.stopPropagation();
             this.deselectBody(body.name);
         });
         container.appendChild(closeButton);
 
-        // Details header
         const detailsHeader = document.createElement("div");
         detailsHeader.classList.add("body-detail-header");
         container.appendChild(detailsHeader);
-        container.header = detailsHeader; // Keep reference for updates
+        container.header = detailsHeader;
 
-        // Details table
         const table = document.createElement("table");
         table.classList.add("body-detail-table");
 
@@ -198,27 +190,25 @@ export class BodyStateWindow {
             { key: "rotations", label: "Rotation" },
         ];
 
-        const valueCells = {}; // Keep reference for updates
+        const valueCells = {};
         for (const prop of properties) {
             if (body.availableAttributes.has(prop.key) || body[prop.key]) {
                 const row = table.insertRow();
                 const labelCell = row.insertCell(0);
                 labelCell.textContent = prop.label;
                 const valueCell = row.insertCell(1);
-                valueCells[prop.key] = valueCell; // Store reference to the cell
+                valueCells[prop.key] = valueCell;
             }
         }
 
         container.appendChild(table);
-        container.valueCells = valueCells; // Attach value cell references to the container
+        container.valueCells = valueCells;
 
-        // Initial update of content
         this.updateBodyDetailContainer(container, body);
         return container;
     }
 
     update() {
-        // Only update existing detail containers
         for (const [name, container] of this.detailContainers) {
             const body = this.app.bodies.get(name);
             if (body) {
@@ -227,8 +217,9 @@ export class BodyStateWindow {
         }
     }
 
+    // Rewrites one detail block's header and Position/Rotation cells for the
+    // active batch, touching the DOM only when the text actually changed.
     updateBodyDetailContainer(container, body) {
-        // Check if batchManager exists and has the required properties/methods
         const batchManager = this.app.batchManager;
         let batchText = "";
         const batchIndex = batchManager.currentlyActiveBatch;
@@ -240,14 +231,12 @@ export class BodyStateWindow {
         container.header.textContent = `${body.name}${batchText}`;
 
         for (const [key, cell] of Object.entries(container.valueCells)) {
-            // Ensure the property and the specific batch index exist before accessing
             var vector = null;
             if (body[key] && body[key][batchIndex]) {
                 vector = body[key][batchIndex];
             } else if (body.availableAttributes.has(key)) {
                 vector = body.attributeStorage.get(key)[batchIndex];
             }
-            // Check if vector has x, y, z properties before calling toFixed
             if (
                 vector &&
                 typeof vector.x === "number" &&
@@ -266,7 +255,7 @@ export class BodyStateWindow {
         if (this.batchSelector) {
             this.batchSelector.value = batchIndex;
         }
-        this.update(); // Update displayed details for the new batch
+        this.update();
     }
 
     dispose() {

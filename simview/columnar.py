@@ -2,7 +2,7 @@
 covering a whole trajectory, instead of thousands of small per-frame objects.
 
 This is both a **wire** format (served by `simview/server.py`, consumed by
-`static/js/components/StateStore.js`) and, since it became first-class, an
+`static/js/components/StateStore.js`) and an
 **on-disk** format (`SimulationScene.save(columnar=True)`). The two are the
 same document; only how a blob is referenced differs:
 
@@ -15,7 +15,7 @@ That symmetry is the whole point: a columnar file needs no repacking at all
 to be served, and `columnar.rewrite_blobs` (shared by `server.py`) does the
 rewriting for free.
 
-Shape (see README.md "JSON Format Specification" for the authoritative spec)::
+Shape (see docs/dev/json-format.md for the authoritative spec)::
 
     {"version": 4,
      "times": [t0, t1, ...],                              # length T
@@ -171,7 +171,8 @@ def _decode_state_field_rows(value, width: int, batch_size: int):
     Mirrors the shapes SimViewBodyState.to_json()/add_trajectory produce: a
     ``__b64__`` blob is always batch_size rows of `width` floats; a plain list
     is either already nested (one row per batch) or, for a single-batch scene,
-    a flat list of `width` floats (see README "Authoring whole trajectories").
+    a flat list of `width` floats (see docs/dev/json-format.md "Authoring whole
+    trajectories").
     """
     assert np is not None
     if isinstance(value, str):
@@ -221,7 +222,7 @@ def columnarize_states(states_data: list, model_data: dict | None, register_blob
     Strict by design: this trades a bit of coverage (an inconsistent scene just
     doesn't get the win) for never risking a subtly wrong repack. The one
     deliberate exception is `contacts`, which may legitimately come and go per
-    frame (see README) without disqualifying the rest of the scene.
+    frame (see docs/dev/json-format.md) without disqualifying the rest of the scene.
     """
     if np is None or not states_data:
         return None

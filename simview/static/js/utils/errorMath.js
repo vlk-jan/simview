@@ -19,11 +19,8 @@ export function positionError(posA, posB, frameIndex) {
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-// Geodesic angle (radians) between two quaternions, given flat [w,x,y,z]
-// arrays (4 floats per frame) and a frame index. Uses |dot| to collapse the
-// q/-q double cover (both represent the same rotation), so the result is
-// always in [0, pi/2] measured this way -- doubled by callers that want the
-// full [0, pi] rotation-angle convention (see below).
+// Dot product of two quaternions at one frame, given flat arrays of 4 floats
+// per frame (component order doesn't matter as long as both match).
 function quatDot(quatA, quatB, frameIndex) {
     const base = frameIndex * 4;
     return (

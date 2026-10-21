@@ -13,7 +13,7 @@ logger = logging.getLogger("simview.model")
 
 
 def _encode_blob(array) -> str:
-    """Encode a numpy array as an inline little-endian float32 `__b64__` blob."""
+    """Encode a numpy array as an inline little-endian float32 ``__b64__`` blob."""
     return inline_blob(array.astype("<f4").tobytes())
 
 
@@ -72,6 +72,8 @@ def _validated_visible_ranges(owner: str, ranges: Any) -> list[list[float]] | No
 
 
 class BodyShapeType(StrEnum):
+    """Shape kind of a body or static object (the wire `shape.type`)."""
+
     POINTCLOUD = "pointcloud"
     MESH = "mesh"
     BOX = "box"
@@ -80,6 +82,8 @@ class BodyShapeType(StrEnum):
 
 
 class OptionalBodyStateAttribute(StrEnum):
+    """Optional per-body state fields beyond `bodyTransform` (wire keys)."""
+
     CONTACTS = "contacts"
     VELOCITY = "velocity"
     ANGULAR_VELOCITY = "angularVelocity"
@@ -100,7 +104,7 @@ class TerrainProperty:
     """One arbitrary named per-cell scalar field over the terrain grid (e.g.
     friction, stiffness, or any other user-defined property), stored the same
     way as `SimViewTerrain.height_data` -- a plain nested list, or an opaque
-    `__b64__`-prefixed blob string for compactness."""
+    ``__b64__``-prefixed blob string for compactness."""
 
     data: list[list[float]] | str
     # Value range used by the viewer to normalize the color map (analogous to
@@ -118,6 +122,9 @@ class TerrainProperty:
 
 @dataclass
 class SimViewTerrain:
+    """Terrain heightmap (plus optional normals, named properties and
+    embeddings) over a regular x/y grid, shared or per batch."""
+
     extent_x: float
     extent_y: float
     shape_x: int
@@ -128,10 +135,9 @@ class SimViewTerrain:
     max_y: float
     min_z: float
     max_z: float
-    # These are plain nested lists when constructed directly, but `create()` (and
-    # deserialization from JSON) may instead store an opaque `__b64__`-prefixed
-    # base64 blob string for compactness; `to_json`/`from_dict` pass them through
-    # as-is either way.
+    # `create()` always stores an opaque ``__b64__``-prefixed base64 blob
+    # string; hand-built instances may use plain nested lists. `to_json`/
+    # `from_dict` pass either through as-is.
     height_data: list[list[float]] | str
     # None when the terrain was authored with `compute_normals=False`: the
     # viewer then shades from normals it computes itself, and the file is
@@ -140,9 +146,7 @@ class SimViewTerrain:
     is_singleton: bool
     # Arbitrary named per-cell scalar fields (e.g. "friction", "stiffness", or
     # any other user-defined property), keyed by name -- see `TerrainProperty`.
-    # Adding a new property never requires touching this class or the viewer:
-    # supply it by name in `create()`'s `properties` dict and it becomes
-    # selectable as a terrain color mode automatically.
+    # Any name passed in `create()`'s `properties` becomes a viewer color mode.
     properties: dict[str, TerrainProperty] = field(default_factory=dict)
     # Per-cell K-wide feature vector (e.g. a reduced-dim PCA projection of a
     # learned backbone's features), stored the same way as `normals` (width
@@ -185,7 +189,7 @@ class SimViewTerrain:
         """Reconstruct a SimViewTerrain from the dict produced by `to_json`.
 
         `heightData`/`normals`/each property's `data` are kept in whatever
-        form they were serialized in (plain nested lists or a `__b64__` blob
+        form they were serialized in (plain nested lists or a ``__b64__`` blob
         string) -- decode with `simview.columnar.blob_floats` if you need the
         flat float values back out.
         """
@@ -222,7 +226,7 @@ class SimViewTerrain:
 
     @staticmethod
     def create(
-        heightmap: torch.Tensor,  # ! remember the x,y indexing is assumed to follow torch's "xy" convention, so increasing column index is increasing x coordinate
+        heightmap: torch.Tensor,
         normals: torch.Tensor | None,
         x_lim: tuple[float, float],
         y_lim: tuple[float, float],
@@ -231,6 +235,17 @@ class SimViewTerrain:
         property_bounds: dict[str, tuple[float, float]] | None = None,
         embedding_map: torch.Tensor | None = None,
     ) -> "SimViewTerrain":
+        """Build a terrain from batched tensors, encoding each field as a blob.
+
+        `heightmap` is `(B, Dy, Dx)` with torch's "xy" indexing: the column
+        index increases with x. `normals` is `(B, 3, Dy, Dx)` or None,
+        `properties` maps names to `(B, Dy, Dx)` maps, and `embedding_map` is
+        `(B, K, Dy, Dx)`. `x_lim`/`y_lim` are the `(min, max)` world extents.
+        `property_bounds` optionally pins a property's color-scale range;
+        otherwise the map's own data range is used. Every grid must match
+        the heightmap's. Batch broadcasting is the caller's job (see
+        `SimulationScene.create_terrain`).
+        """
         if heightmap.ndim != 3:
             raise ValueError(
                 f"Heightmap must include a batch dimension (ndim=3); got ndim={heightmap.ndim}."
@@ -333,6 +348,9 @@ class SimViewTerrain:
 
 @dataclass
 class SimViewBody:
+    """A dynamic body: its shape, look, optional parent attachment and the
+    optional state attributes its states carry."""
+
     name: str
     shape: dict
     available_attributes: list[OptionalBodyStateAttribute] | None = None
@@ -382,6 +400,7 @@ class SimViewBody:
     def set_available_attributes(
         self, available_attributes: list[str | OptionalBodyStateAttribute]
     ) -> None:
+        """Set the optional attributes this body's states carry (once only)."""
         if self.available_attributes is not None:
             raise ValueError("Available attributes already set")
         self.available_attributes = [
@@ -393,7 +412,8 @@ class SimViewBody:
 
     @staticmethod
     def _create_shape_dict(body_type: BodyShapeType, **kwargs) -> dict:
-        """Helper to create the shape dictionary, converting tensors."""
+        """Build a shape dict, encoding multi-element tensors as blobs and
+        validating required primitive dimensions."""
         shape_dict: dict[str, Any] = {"type": body_type.value}
         for key, value in kwargs.items():
             if isinstance(value, torch.Tensor):
@@ -430,6 +450,10 @@ class SimViewBody:
         visible_ranges: list | None = None,
         **kwargs,
     ) -> "SimViewBody":
+        """Build a body of `body_type`; `**kwargs` are its shape parameters
+        (e.g. `hx`/`hy`/`hz` for a box, `radius` for a sphere, `radius`/
+        `height` for a cylinder, `vertices`/`faces` for a mesh). The other
+        parameters are as on `SimulationScene.create_body`."""
         shape_dict = SimViewBody._create_shape_dict(body_type, **kwargs)
         if local_transform is not None and hasattr(local_transform, "tolist"):
             local_transform = local_transform.tolist()
@@ -453,6 +477,7 @@ class SimViewBody:
     def create_box(
         name: str, hx: float, hy: float, hz: float, **kwargs
     ) -> "SimViewBody":
+        """Build a box body with half-extents `hx`/`hy`/`hz`."""
         return SimViewBody.create(
             name, BodyShapeType.BOX, hx=hx, hy=hy, hz=hz, **kwargs
         )
@@ -465,13 +490,15 @@ class SimViewBody:
         embedding: torch.Tensor | None = None,
         **kwargs,
     ) -> "SimViewBody":
-        """`color` (N, 3) in [0, 1] is an optional static per-point RGB color,
+        """Build a point-cloud body from `(N, 3)` `points`.
+
+        `color` (N, 3) in [0, 1] is an optional static per-point RGB color,
         used by the viewer for vertex-colored rendering. `embedding` (N, K) is
         an optional per-point K-wide feature vector (e.g. a reduced-dim PCA
         projection of a learned backbone's features) enabling the viewer's
         click-to-similarity color mode: cosine similarity to a clicked point,
-        computed entirely in-browser from this data. Both round-trip through
-        the existing generic `__b64__` blob mechanism -- no new wire format."""
+        computed entirely in-browser from this data. Both are stored as
+        ``__b64__`` blobs."""
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError(
                 f"points must have shape (N, 3); got {tuple(points.shape)}."
@@ -504,6 +531,7 @@ class SimViewBody:
     def create_mesh(
         name: str, vertices: torch.Tensor, faces: torch.Tensor, **kwargs
     ) -> "SimViewBody":
+        """Build a mesh body from `vertices` `(V, 3)` and `faces` `(F, 3)`."""
         return SimViewBody.create(
             name, BodyShapeType.MESH, vertices=vertices, faces=faces, **kwargs
         )
@@ -554,6 +582,9 @@ class SimViewBody:
 
 @dataclass
 class SimViewStaticObject:
+    """A static (never-moving) object: one shape shared by every batch
+    (singleton) or one shape per batch."""
+
     name: str
     is_singleton: bool
     shape: dict | None = None  # Used if is_singleton is True
@@ -578,9 +609,9 @@ class SimViewStaticObject:
         visible_ranges: list | None = None,
         **kwargs,
     ) -> "SimViewStaticObject":
-        shape_dict = SimViewBody._create_shape_dict(
-            shape_type, **kwargs
-        )  # Reuse helper
+        """Build a static object shared by every batch; `**kwargs` are the
+        shape parameters, as on `SimViewBody.create`."""
+        shape_dict = SimViewBody._create_shape_dict(shape_type, **kwargs)
         return SimViewStaticObject(
             name=name,
             is_singleton=True,
@@ -595,16 +626,12 @@ class SimViewStaticObject:
         shapes_kwargs: list[dict[str, Any]],
         visible_ranges: list | None = None,
     ) -> "SimViewStaticObject":
-        """
-        Creates a batched static object where all instances share the same shape type.
+        """Build a static object with one shape per batch, all of `shape_type`.
 
-        Args:
-            name: The name of the static object group.
-            shape_type: The BodyShapeType common to all instances in the batch.
-            shapes_kwargs: A list of dictionaries, where each dictionary contains the
-                           keyword arguments for creating the shape of one instance
-                           in the batch (e.g., [{'hx': 0.1, 'hy': 0.1, 'hz': 0.1}, {'hx': 0.2, ...}]).
-                           The length of this list must match the batch size.
+        `name` names the group. `shapes_kwargs` holds one dict of shape
+        keyword arguments per batch instance (e.g. `[{"hx": 0.1, "hy": 0.1,
+        "hz": 0.1}, {"hx": 0.2, ...}]`); its length must match the model's
+        batch size.
         """
         shapes_list = []
         if not shapes_kwargs:
@@ -616,9 +643,7 @@ class SimViewStaticObject:
                 raise ValueError(
                     "Do not include 'type' in shapes_kwargs; use the shape_type argument."
                 )
-            shapes_list.append(
-                SimViewBody._create_shape_dict(shape_type, **kwargs)
-            )  # Reuse helper
+            shapes_list.append(SimViewBody._create_shape_dict(shape_type, **kwargs))
         return SimViewStaticObject(
             name=name,
             is_singleton=False,
@@ -658,7 +683,7 @@ class SimViewPolyline:
     """A world-space polyline: a fixed `points` list (a route), and/or a
     per-frame `frames` blob (a replanned local path) of shape
     `(T, B, max_vertices, 3)` float32, trailing NaN rows padding each frame
-    up to `max_vertices`. Model-level by design (no new states field), so it
+    up to `max_vertices`. Model-level by design (not a states field), so it
     rides the generic blob machinery; not supported in live mode."""
 
     name: str
@@ -723,6 +748,7 @@ class SimViewPolyline:
 
     @classmethod
     def from_dict(cls, d: dict) -> "SimViewPolyline":
+        """Reconstruct a SimViewPolyline from the dict produced by `to_json`."""
         try:
             name = d["name"]
         except KeyError as e:
@@ -774,6 +800,7 @@ class SimViewEpisode:
 
     @classmethod
     def from_dict(cls, d: dict) -> "SimViewEpisode":
+        """Reconstruct a SimViewEpisode from the dict produced by `to_json`."""
         try:
             start_index = d["startIndex"]
         except (KeyError, TypeError) as e:
@@ -815,6 +842,9 @@ def _validate_parent_ref(name: str, parent: str | None, known_bodies: dict) -> N
 
 @dataclass
 class SimViewModel:
+    """The static part of a scene: batch layout, terrain, bodies, static
+    objects, polylines and metadata (the wire `model` section)."""
+
     batch_size: int
     scalar_names: list[str]
     # None means "not known"; the viewer then infers it from consecutive
@@ -859,12 +889,15 @@ class SimViewModel:
         _validate_episodes(self.episodes)
 
     def add_body(self, body: SimViewBody) -> None:
+        """Add `body`; its name must be new and its parent already added."""
         if body.name in self.bodies:
             raise ValueError(f"Dynamic body {body.name} already exists")
         _validate_parent_ref(body.name, body.parent, self.bodies)
         self.bodies[body.name] = body
 
     def add_static_object(self, static_object: SimViewStaticObject) -> None:
+        """Add `static_object`; its name must be new and a batched one needs
+        one shape per batch."""
         if static_object.name in self.static_objects:
             raise ValueError(f"Static object {static_object.name} already exists")
         if not static_object.is_singleton:
@@ -880,6 +913,7 @@ class SimViewModel:
         self.static_objects[static_object.name] = static_object
 
     def add_polyline(self, polyline: SimViewPolyline) -> None:
+        """Add `polyline`; its name must be new."""
         if polyline.name in self.polylines:
             raise ValueError(f"Polyline {polyline.name} already exists")
         self.polylines[polyline.name] = polyline
@@ -914,9 +948,11 @@ class SimViewModel:
     def from_dict(cls, d: dict) -> "SimViewModel":
         """Reconstruct a SimViewModel from the dict produced by `to_json`.
 
-        Centralizes parsing of the wire format: terrain, bodies and static
-        objects are all rebuilt via their own `from_dict`, keyed by name so
-        `add_body`/`add_static_object`'s uniqueness checks stay meaningful.
+        Centralizes parsing of the wire format: each part is rebuilt via its
+        own `from_dict`. Bodies are checked for duplicate names and parent
+        references inline; static objects and polylines go through
+        `add_static_object`/`add_polyline`, so they're validated exactly as
+        when authoring.
         """
         try:
             batch_size = d["simBatches"]
@@ -962,4 +998,5 @@ class SimViewModel:
 
     @property
     def is_complete(self) -> bool:
+        """True once a terrain is set (required to save or show)."""
         return self.terrain is not None

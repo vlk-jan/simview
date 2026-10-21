@@ -15,8 +15,7 @@ const LAYER_LABELS = { height: "Height" };
 
 // Terrain analysis tab: samples a terrain layer (height, or any named
 // property, e.g. friction/stiffness) under a body's path over time, one
-// uPlot series per batch, so a
-// divergence onset (e.g. in Error Metrics) can be correlated with a
+// uPlot series per batch, so a divergence onset (e.g. in Error Metrics) can be correlated with a
 // terrain-property difference under the body at that time -- the DRIFT
 // use case is plotting each batch's terrain under GT's own path. The whole
 // trajectory is plotted immediately (not revealed progressively as playback
