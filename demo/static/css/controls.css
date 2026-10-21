@@ -446,72 +446,61 @@ body {
     background-color: var(--ctp-peach);
 }
 
-/* Metadata (Scene Info) value cells.
-   We replace lil-gui's <input> with a <div> so the full value can be shown
-   directly instead of requiring a click/scroll to read past a single-line
-   truncation. lil-gui's box look (background/height/padding) comes from an
-   `input` tag selector, which no longer matches a <div>, so it has to be
-   reconstructed here explicitly rather than assumed to carry over. The
-   `.lil-gui .controller` prefix also raises specificity above the
-   `.lil-gui, .lil-gui *` reset that lil-gui injects at runtime (a plain
-   `.simview-meta-input` rule ties with it on specificity and loses on
-   source order, since lil-gui's <style> is inserted after this stylesheet). */
+/* ==========================================================================
+   Controls panel: Scene Info (simview/static/js/ui/Controls.js)
+   ========================================================================== */
+
+/* Value cells: the <div> that replaces lil-gui's <input> (see Controls.js),
+   so the input's box look is rebuilt here. The `.lil-gui .controller` prefix
+   outranks lil-gui's runtime `.lil-gui *` reset, which loads after this sheet. */
 .lil-gui .controller .simview-meta-input {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: var(--widget-height);
-  background: var(--widget-color);
-  color: var(--text-color);
-  font-family: inherit;
-  font-size: inherit;
-  border-radius: var(--widget-border-radius);
-  padding: 3px 5px;
-  line-height: 1.4;
-  /* Wrap and grow instead of truncating to one line: the whole value is
-     always visible in the field itself, no click or scroll needed to read
-     it. overflow-wrap handles long unbroken tokens (paths, ids) that a
-     plain wrap wouldn't break on. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  /* make text selectable */
-  user-select: text;
-  -webkit-user-select: text;
-  /* pointer signals click-to-copy */
-  cursor: pointer;
-  /* muted look (similar to disabled opacity) */
-  opacity: 0.75;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--widget-height);
+    background: var(--widget-color);
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: inherit;
+    border-radius: var(--widget-border-radius);
+    padding: 3px 5px;
+    line-height: 1.4;
+    /* Wrap and grow; overflow-wrap also breaks long paths and ids. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+    -webkit-user-select: text;
+    /* click-to-copy */
+    cursor: pointer;
+    /* muted, like a disabled control */
+    opacity: 0.75;
 }
 
 .lil-gui .controller .simview-meta-input:hover {
-  opacity: 1;
-  background: var(--hover-color);
+    opacity: 1;
+    background: var(--hover-color);
 }
 
-/* Metadata key labels. lil-gui's own `.name` rule is `white-space:pre` with
-   no wrap/scroll/ellipsis, so a long key just overflows the panel with no
-   way to read the rest of it -- let it wrap like the value cell above. */
+/* Key labels wrap too (see Controls.js). */
 .lil-gui .controller .simview-meta-name {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  line-height: 1.4;
-  /* lil-gui sets flex-shrink:0 and a min-width on .name, so as a flex item
-     it refuses to shrink below its content's single-line width regardless
-     of white-space -- pin it to a definite, shrinkable width so wrapping
-     actually has something to wrap within. */
-  flex-shrink: 1;
-  min-width: 0;
-  width: var(--name-width);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+    /* lil-gui's .name won't shrink as a flex item; give it a definite,
+       shrinkable width so it has something to wrap within. */
+    flex-shrink: 1;
+    min-width: 0;
+    width: var(--name-width);
 }
 
-/* Brief green flash on successful copy */
+/* Brief green flash on successful copy. */
 @keyframes simview-copy-flash {
-  0%   { background: var(--sv-success); color: var(--sv-on-accent); }
-  100% { background: var(--widget-color); color: var(--text-color); }
+    0%   { background: var(--sv-success); color: var(--sv-on-accent); }
+    100% { background: var(--widget-color); color: var(--text-color); }
 }
 
 .lil-gui .controller .simview-meta-copied {
-  animation: simview-copy-flash 700ms ease-out forwards;
+    animation: simview-copy-flash 700ms ease-out forwards;
 }
 
 /* ==========================================================================
@@ -619,9 +608,7 @@ body {
     border-bottom-color: var(--sv-accent);
 }
 
-/* Plot area */
-/* Flex column so the plot takes what the export bar leaves, instead of a
-   fixed 99% that overflowed the panel by the bar's height. */
+/* Plot area: a flex column, so the plot takes what the export bar leaves. */
 .scalar-plot-area {
     width: 100%;
     height: 15vh;
@@ -639,7 +626,7 @@ body {
 }
 
 /* ==========================================================================
-   Shared by the Analysis panels' charts (utils/uplot.js)
+   Shared by the Analysis panels' charts (utils/uplot.js, ui/chartControls.js)
    ========================================================================== */
 
 .sv-chart {
@@ -740,18 +727,17 @@ body {
    BodyStateWindow (simview/static/js/ui/BodyStateWindow.js)
    ========================================================================== */
 
-/* Base styles for the body state window */
 .body-state-window {
     position: fixed;
     top: 10px;
     left: 1rem;
     border-radius: var(--sv-radius-lg);
     z-index: var(--sv-z-panel);
-    display: flex; /* Use flexbox for layout */
-    flex-direction: column; /* Stack header and content vertically */
+    display: flex;
+    flex-direction: column;
     width: 320px;
     max-height: clamp(300px, 85vh, 90vh);
-    font-size: clamp(0.8rem, 0.9vw + 0.5rem, 1rem); /* Responsive base font */
+    font-size: clamp(0.8rem, 0.9vw + 0.5rem, 1rem);
 }
 
 /* <details> wraps the content in ::details-content; dissolve that box so
@@ -760,23 +746,21 @@ body {
     display: contents;
 }
 
-/* Allow content area to scroll */
 .body-state-window-content {
-    overflow-y: auto; /* Enable vertical scrolling ONLY for content */
-    overflow-x: hidden; /* Prevent horizontal scroll */
-    flex-grow: 1; /* Allow content to fill available space */
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-grow: 1;
     padding: 0.5rem 1rem 1rem;
-    border-top: 1px solid var(--sv-border); /* Separator line */
+    border-top: 1px solid var(--sv-border);
 }
 
-/* Header styles */
 .body-state-window-header {
     font-weight: 600;
     font-size: var(--sv-title-size);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-shrink: 0; /* Prevent header from shrinking */
+    flex-shrink: 0;
     /* Same box as .analysis-header so the collapsed panels match. */
     padding: 7px 10px;
     border-radius: var(--sv-radius-lg) var(--sv-radius-lg) 0 0;
@@ -786,78 +770,74 @@ body {
     background-color: var(--sv-hover);
 }
 
-/* Batch selector container */
 .batch-selector-container {
     display: flex;
     align-items: center;
-    font-size: 0.8em; /* Smaller font size relative to header */
-    font-weight: normal; /* Normal weight for selector part */    height: 0; /* select overflows centered, so the header keeps the title's height */
+    font-size: 0.8em;
+    font-weight: normal;
+    height: 0; /* select overflows centered, so the header keeps the title's height */
 }
 
 .batch-selector-label {
-    margin-right: 0.5em; /* Relative spacing */
+    margin-right: 0.5em;
 }
 
 .batch-selector {
-    padding: 0.25em 0.5em; /* Relative padding */
+    padding: 0.25em 0.5em;
     border-radius: 3px;
-    font-size: 1em; /* Inherit from container */
+    font-size: 1em;
 }
 
 .body-list-title {
     font-weight: 600;
-    margin-bottom: 0.5rem; /* Use rem */
-    font-size: 1.0em; /* Slightly larger */
+    margin-bottom: 0.5rem;
+    font-size: 1.0em;
 }
 
 .body-list {
-    margin: 0 0 1rem 0; /* Bottom margin */
-    padding: 0 0 0 1.25rem; /* ~20px indent */
-    list-style-type: "→ "; /* Remove default bullets */
+    margin: 0 0 1rem 0;
+    padding: 0 0 0 1.25rem;
+    list-style-type: "→ ";
     font-weight: 600;
 }
 
 .body-list-item {
-    margin-bottom: 0.3rem; /* Use rem */
+    margin-bottom: 0.3rem;
     cursor: pointer;
-    padding: 0.25rem 0.5rem; /* Use rem */
+    padding: 0.25rem 0.5rem;
     border-radius: 3px;
     transition: background-color 0.2s;
 }
 
-/* Hover effect for non-selected items */
 .body-list-item:not(.selected):hover {
     background-color: var(--sv-hover);
 }
 
-/* Style for selected items */
 .body-list-item.selected {
     background-color: var(--sv-accent-soft);
 }
 
-/* Individual body detail block */
 .body-detail-container {
-    margin-top: 0.75rem; /* Use rem */
-    padding: 0.75rem; /* Use rem */
-    padding-top: 1.5rem; /* Extra top padding for close button */
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    padding-top: 1.5rem; /* room for the close button */
     background-color: var(--sv-raised);
     border-radius: 5px;
     position: relative;
-    border: 1px solid var(--sv-hover); /* Subtle border */
+    border: 1px solid var(--sv-hover);
 }
 
-/* Close button */
 .body-detail-close-button {
     position: absolute;
-    top: 0.3rem;   /* Use rem */
-    right: 0.5rem; /* Use rem */
+    top: 0.3rem;
+    right: 0.5rem;
     cursor: pointer;
-    font-size: 1.1em; /* Relative size */
+    font-size: 1.1em;
     color: var(--sv-muted);
-    width: 1.5em;   /* Relative size */
-    height: 1.5em;  /* Relative size */
+    width: 1.5em;
+    height: 1.5em;
     text-align: center;
-    line-height: 1.5em; /* Center vertically */
+    line-height: 1.5em;
     border-radius: 50%;
     transition: background-color 0.2s, color 0.2s;
 }
@@ -867,37 +847,34 @@ body {
     color: var(--sv-text);
 }
 
-/* Header within the detail block */
 .body-detail-header {
     font-weight: 600;
-    margin-bottom: 0.75rem; /* Use rem */
-    font-size: 1.1em; /* Slightly larger */
+    margin-bottom: 0.75rem;
+    font-size: 1.1em;
     color: var(--sv-text);
 }
 
-/* Table within the detail block */
 .body-detail-table {
     width: 100%;
-    font-size: 0.9em; /* Slightly smaller relative font */
+    font-size: 0.9em;
     border-collapse: collapse;
 }
 
 .body-detail-table td {
-    padding: 0.25rem 0; /* Use rem for padding */
+    padding: 0.25rem 0;
 }
 
-.body-detail-table td:first-child { /* Label cell */
+.body-detail-table td:first-child { /* label */
     font-weight: 600;
     color: var(--sv-muted);
-    white-space: nowrap; /* Prevent labels wrapping */
+    white-space: nowrap;
 }
 
-.body-detail-table td:last-child { /* Value cell */
+.body-detail-table td:last-child { /* value */
     font-family: var(--sv-font-mono);
     font-variant-numeric: tabular-nums;
     color: var(--sv-text);
 }
-
 
 /* ==========================================================================
    BatchLegend (simview/static/js/ui/BatchLegend.js)

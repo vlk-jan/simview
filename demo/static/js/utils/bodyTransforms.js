@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
-// Resolves parent-relative body transforms (see README.md "Model (Static
-// Data)" / "States (Dynamic Data)") into ordinary absolute-world transforms,
+// Resolves parent-relative body transforms (see docs/dev/json-format.md
+// "Parent-relative bodies") into ordinary absolute-world transforms,
 // so the rest of the viewer (Body.js, InteractionController.js, trails, ...)
 // never has to know a body was parented -- it only ever sees the same
 // `bodyTransform` shape it always has.
@@ -94,8 +94,7 @@ function expandRawBodies(rawBodies) {
 // Map where every body's `bodyTransform` is absolute-world, ready to feed
 // straight into Body.updateState / appendHistoryPointAt / setHistoryPointAt
 // unchanged. A body absent from the result simply keeps whatever pose it
-// already had (identical to today's behavior when a body is omitted from a
-// state). `bodyMeta`/`topoOrder` come from `buildBodyMeta`/`topoSortBodies`,
+// already had, the same as a body omitted from a state. `bodyMeta`/`topoOrder` come from `buildBodyMeta`/`topoSortBodies`,
 // computed once at model load.
 export function resolveStateBodies(bodyMeta, topoOrder, simBatches, rawBodies) {
     const rawByName = expandRawBodies(rawBodies);

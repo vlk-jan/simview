@@ -141,6 +141,8 @@ export class WindowedField {
         return promise;
     }
 
+    // Drops least-recently-used windows beyond MAX_RESIDENT_WINDOWS, never
+    // the most recently accessed window or the one prefetched after it.
     _evict() {
         const keep = windowsToPrefetch(
             (this._accessOrder[this._accessOrder.length - 1] ?? 0) *

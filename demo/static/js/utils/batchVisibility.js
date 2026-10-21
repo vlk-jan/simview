@@ -19,6 +19,7 @@ export const RENDER_FOCUSED = "focused";
 // is the more useful default and costs little.
 export const AUTO_FOCUS_THRESHOLD = 32;
 
+// The render mode a scene with `simBatches` batches starts in.
 export function defaultRenderMode(simBatches) {
     return simBatches > AUTO_FOCUS_THRESHOLD ? RENDER_FOCUSED : RENDER_ALL;
 }

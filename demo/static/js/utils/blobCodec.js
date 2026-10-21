@@ -1,7 +1,7 @@
-// Decodes the binary state/model encodings the server uses to avoid shipping
-// huge floating-point arrays as JSON text (see server.py / state.py):
-// standalone `/blob/...` float32 buffers, and inline `__b64__`-prefixed
-// base64 float32 strings embedded in per-body state fields.
+// Decodes the inline `__b64__`-prefixed base64 float32 strings that
+// add_trajectory(binary=True) embeds in per-body state fields, so huge
+// float arrays don't travel as JSON text (see simview/columnar.py).
+// Standalone `/blob/...` buffers are fetched by SimView.fetchBlobs instead.
 
 // Per-body state fields that add_trajectory(binary=True) packs as float32
 // `__b64__` blobs, with the trailing width used to reshape into per-batch rows.
@@ -32,7 +32,7 @@ export function decodeStateField(str, width) {
 }
 
 // Expand any binary-encoded per-body fields in a states chunk in place, so all
-// downstream consumers see the same nested-array shape as legacy JSON states.
+// downstream consumers see the same nested-array shape as plain JSON states.
 export function decodeStatesChunk(chunk) {
     const widths = STATE_FIELD_WIDTHS;
     for (const state of chunk) {

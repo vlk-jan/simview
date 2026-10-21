@@ -27,6 +27,8 @@ export class BatchManager {
         this._initialize(modelData);
     }
 
+    // Reads the batch count and names from the model and lays batches out on
+    // a square grid, one terrain-sized cell (plus `spacing`) per batch.
     _initialize(modelData) {
         if (!modelData) return;
 
@@ -40,7 +42,7 @@ export class BatchManager {
 
         this.sideLength = Math.ceil(Math.sqrt(this.simBatches));
         const sideLength = this.sideLength;
-        // Use README-defined terrain dimension names: sizeX, sizeY
+        // Terrain dimension names per docs/dev/json-format.md: sizeX, sizeY
         const { sizeX, sizeY } = modelData.terrain.dimensions;
 
         // Initialize batch offsets
@@ -54,7 +56,6 @@ export class BatchManager {
                 z: 0,
             });
         }
-        console.debug("Batch offsets initialized:", this.batchOffsets);
 
         this.renderMode = defaultRenderMode(this.simBatches);
         if (this.renderMode === RENDER_FOCUSED) {
@@ -66,7 +67,6 @@ export class BatchManager {
         this.recomputeVisibleBatches();
 
         this.batchPalette = categoricalPalette(BATCH_PALETTE, this.simBatches);
-        console.debug("Batch palette initialized:", this.batchPalette);
 
         const providedNames = Array.isArray(modelData.batchNames)
             ? modelData.batchNames
@@ -164,9 +164,8 @@ export class BatchManager {
     }
 
     // Moves camera and target by the offset between the two batches' grid
-    // cells, so the view keeps its place relative to the scene. Snapping the
-    // target to the cell origin instead lost the view on every chart click
-    // (which re-selects the closest batch) and broke body tracking.
+    // cells, so the view keeps its place relative to the scene (chart clicks
+    // re-select batches, and body tracking relies on this).
     changeFocusOnBatchByIndex(batchIndex, fromBatchIndex) {
         const { camera, controls } = this.app.scene;
         const to = this.getBatchOffset(batchIndex);
@@ -180,8 +179,7 @@ export class BatchManager {
 
     setActiveBatch(batchIndex) {
         if (batchIndex < 0 || batchIndex >= this.simBatches) {
-            // Bail out entirely: forwarding an index we just rejected left the
-            // state window and plots focused on a batch that doesn't exist.
+            // Bail out entirely so no panel focuses a nonexistent batch.
             console.warn("Invalid batch index:", batchIndex);
             return;
         }

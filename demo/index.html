@@ -15,7 +15,7 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23181825'/%3E%3Cg stroke='%23181825' stroke-linejoin='round'%3E%3Cpath d='M16 3.5 27.5 10 16 16.5 4.5 10Z' fill='%23b4befe'/%3E%3Cpath d='M4.5 10 16 16.5V29L4.5 22.5Z' fill='%2389b4fa'/%3E%3Cpath d='M16 16.5 27.5 10V22.5L16 29Z' fill='%235e7fc0'/%3E%3C/g%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="./static/css/controls.css" />
-    <link rel="stylesheet" href="./static/lib/uPlot.min.css" />
+    <link rel="stylesheet" href="./static/lib/uPlot-1.6.32/uPlot.min.css" />
   <script>window.__simviewStaticBase = ".";</script>
 </head>
   <body>
@@ -25,16 +25,14 @@
       <h1>Loading…</h1>
     </div>
 
-    <!-- three.js and its addons (OrbitControls, lil-gui) are
-         vendored locally (same-origin) instead of loaded from a CDN, so the
-         viewer keeps working with no internet access. Each library lives in
-         a version-stamped directory (e.g. lib/three-0.174.0/) because
-         simview/static/lib/ is served with a long-lived, immutable
+    <!-- Third-party libraries are vendored under simview/static/lib/
+         (same-origin, so no SRI is needed) and the viewer works with no
+         internet access. lib/ is served with a long-lived, immutable
          Cache-Control header (see _IMMUTABLE_STATIC_DIRS in
-         simview/server.py) -- bumping a pinned version must change the URL,
-         which a version-stamped directory name gives us for free. Since
-         these are now same-origin static files (not a third-party CDN
-         response), there is no SRI/integrity concern to guard against. -->
+         simview/server.py), so each library lives in a version-stamped
+         directory (lib/three-0.174.0/, lib/uPlot-1.6.32/) and a version bump
+         changes the URL. js-colormaps.js is trimmed locally, so it lives
+         under js/vendor/ with the normal short cache instead. -->
     <script type="importmap">
       {
         "imports": {
@@ -46,12 +44,18 @@
 
     <script type="module" src="./static/js/main.js"></script>
     <script>
-      console.log("SimView index.html loaded");
       window.onerror = function(msg, url, line, col, error) {
         console.error("Global Error:", msg, "at", url, ":", line);
         const splash = document.getElementById("loading-splash");
         if (splash) {
-          splash.innerHTML = `<h1 class="sv-splash-error">JavaScript error</h1><p>${msg}</p><p>${url}:${line}</p>`;
+          const title = document.createElement("h1");
+          title.className = "sv-splash-error";
+          title.textContent = "JavaScript error";
+          const message = document.createElement("p");
+          message.textContent = String(msg);
+          const where = document.createElement("p");
+          where.textContent = `${url}:${line}`;
+          splash.replaceChildren(title, message, where);
         }
       };
     </script>

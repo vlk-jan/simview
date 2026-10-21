@@ -22,8 +22,8 @@ const SERIES_COLORS = {
     rot: THEME.peach,
 };
 
-// [label, color, key] for the live readout rows (the color doubles as the
-// legend swatch for that curve) and the summary-stats rows (no curve).
+// [label, color, key] for the live readout rows; the color doubles as the
+// legend swatch for that curve.
 const READOUT_ROWS = [
     ["Position error:", SERIES_COLORS.pos, "pos"],
     ["X error:", SERIES_COLORS.x, "x"],
@@ -36,6 +36,7 @@ const fmt = (v, digits, unit) => (Number.isFinite(v) ? `${v.toFixed(digits)}${un
 // uPlot draws null as a gap; NaN would break the path.
 const gapOrValue = (v) => (Number.isFinite(v) ? v : null);
 
+// Same shape, for the summary-stats rows (no curve, so no color).
 const STATS_ROWS = [
     ["Position RMSE:", null, "posRmse"],
     ["Max position error (t):", null, "posMax"],
@@ -361,7 +362,7 @@ export class ErrorMetrics {
             this.plotDiv,
             {
                 // Extra right padding: uPlot sizes the right axis for its
-                // tick values, and the rotated "Orientation" label overhangs it.
+                // tick values, and the rotated right-axis label overhangs it.
                 padding: [8, 16, 0, 0],
                 series: seriesConfigs,
                 scales: {

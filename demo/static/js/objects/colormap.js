@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { colorMapOptions, evaluate_cmap } from "../../lib/js-colormaps.js";
+import { colorMapOptions, evaluate_cmap } from "../vendor/js-colormaps.js";
 
 // Aliases for old hand-rolled fallback names, now served by js-colormaps.js.
 // "Greys" runs white(0)->black(1); the old hand-rolled grayscale ran
@@ -12,12 +12,9 @@ const LEGACY_ALIASES = {
 
 export const NO_DATA_COLOR = new THREE.Color(0.5, 0.5, 0.5);
 
-/**
- * Resolves a colormap name (matplotlib-style, from js-colormaps.js, or one of
- * a few hand-rolled fallbacks) to a callable `(value in [0,1]) => THREE.Color`.
- * @param {string} cmapName
- * @returns {(value: number) => THREE.Color}
- */
+// Resolves a colormap name (matplotlib-style, from js-colormaps.js, or a
+// legacy alias) to a callable `(value in [0,1]) => THREE.Color`. Unknown
+// names fall back to a blue-to-red ramp.
 export function getCallableFromColorMapName(cmapName) {
     cmapName = LEGACY_ALIASES[cmapName] || cmapName;
     let reversed = false;
@@ -40,20 +37,16 @@ export function getCallableFromColorMapName(cmapName) {
             );
             return new THREE.Color(r / 255, g / 255, b / 255);
         };
-    console.log(
+    console.warn(
         `Colormap ${cmapName} not found in colorMapOptions. Using default colormap instead.`
     );
     return (value) => new THREE.Color(value, 0.2, 1 - value);
 }
 
-/**
- * Samples a colormap callable at `size` evenly spaced values over [0, 1] into
- * a flat RGB table, so colouring a million-vertex terrain is an array lookup
- * per vertex instead of a colormap evaluation plus a THREE.Color allocation.
- * @param {(value: number) => THREE.Color} callable
- * @param {number} [size]
- * @returns {Float32Array} size * 3 floats, r/g/b of sample k at k * 3
- */
+// Samples a colormap callable at `size` evenly spaced values over [0, 1] into
+// a flat RGB Float32Array (size * 3 floats, sample k at k * 3), so colouring
+// a million-vertex terrain is an array lookup per vertex instead of a
+// colormap evaluation plus a THREE.Color allocation.
 export function colormapLUT(callable, size = 1024) {
     const lut = new Float32Array(size * 3);
     for (let k = 0; k < size; k++) {
