@@ -101,11 +101,13 @@ export class Legend {
         const anySimilarity =
             this.app.bodies &&
             [...this.app.bodies.values()].some((body) => body.selectedPointIndex != null);
-        if (!anySimilarity || !this.app.terrain) {
+        if (!anySimilarity) {
             this.pointContainer.style.display = "none";
             return;
         }
         this.pointContainer.style.display = "flex";
+        // Stack above the terrain legend, or take its slot when there's none.
+        this.pointContainer.style.bottom = this.app.terrain ? "90px" : "20px";
         // Fixed coolwarm/[-1,1], matching Body.recolorBySimilarity's own
         // hardcoded colormap and cosine-similarity range.
         this.#renderGradient(
