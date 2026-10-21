@@ -32,9 +32,6 @@ export class Scene {
             document.body.style.cursor = "auto";
         });
         this.setupLighting(this.scene);
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 10, 10);
-        this.scene.add(light);
         this.renderer = renderer;
         this.camera = camera;
         this.controls = controls;

@@ -91,7 +91,7 @@ export const LIGHTING_CONFIG = {
     },
     directional: {
         color: 0xffffff,
-        intensity: 0.8,
+        intensity: 1.8,
         position: [10, 10, 10],
     },
 };
