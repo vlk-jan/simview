@@ -232,7 +232,7 @@ export class UIControls {
             );
             if (bodiesWithEmbedding.length > 0) {
                 const pointColorControls = {
-                    pointColorMode: this.app.uiState.pointColorMode || "pca",
+                    pointColorMode: this.app.uiState.pointColorMode,
                 };
                 this.bodyFolder
                     .add(pointColorControls, "pointColorMode", ["pca", "similarity"])

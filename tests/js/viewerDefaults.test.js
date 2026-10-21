@@ -27,6 +27,17 @@ describe("mergeUiDefaults", () => {
         warn.mockRestore();
     });
 
+    it("accepts pointColorMode against the real viewer defaults", async () => {
+        // config.js reads window.devicePixelRatio at module load time.
+        globalThis.window ??= { devicePixelRatio: 1 };
+        const { UI_DEFAULT_CONFIG } = await import("../../simview/static/js/config.js");
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const out = mergeUiDefaults(UI_DEFAULT_CONFIG, { pointColorMode: "similarity" });
+        expect(out.pointColorMode).toBe("similarity");
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
     it("returns an unchanged copy for a missing/invalid ui block", () => {
         expect(mergeUiDefaults(base(), undefined)).toEqual(base());
         expect(mergeUiDefaults(base(), [1])).toEqual(base());

@@ -55,7 +55,7 @@ produces.
     - **`ui`** *(object)* — values for the viewer's UI state, deep-merged over its
         defaults before the controls are built: `pointCloudsVisible`, `axesVisible`,
         `trailsVisible`, `smoothInterpolation`, `terrainColorMode`, `terrainColorMap`,
-        `bodyVisualizationMode`, `polylinesVisible`, `terrainProbe`, `attributeVisible.*` (`contacts`,
+        `bodyVisualizationMode`, `polylinesVisible`, `terrainProbe`, `pointColorMode`, `attributeVisible.*` (`contacts`,
         `velocity`, `angularVelocity`, `force`, `torque`) and `terrainVisualizationModes.*`
         (`surface`, `wireframe`, `normals`). Wins over the viewer's automatic
         `bodyVisualizationMode` choice.
