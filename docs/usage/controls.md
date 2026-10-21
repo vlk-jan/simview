@@ -63,6 +63,8 @@ routes and per-frame local paths. Bodies, static objects and polylines with `vis
 hide themselves while the playhead is outside their time ranges.
 
 You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.
+With 2 or more batches, the "diff" Color Mode colors the terrain by the difference
+between two batches' terrains for one layer ("Diff Layer", "Diff Batch A"/"Diff Batch B").
 
 ## Point Cloud and Terrain Similarity Coloring
 
@@ -70,11 +72,11 @@ Point-cloud bodies and terrain cells can each carry an optional per-point/per-ce
 feature embedding (see `create_pointcloud(embedding=)` / `create_terrain(embedding_map=)`
 in the [JSON format](../dev/json-format.md)). When present, clicking a point (with
 "Point Color Mode" already set to "similarity" in the Body Options panel) or a terrain
-cell (with "Data Probe" off and terrain "features" color mode already selected)
+cell (with "Data Probe" on and terrain "features" color mode already selected)
 recolors the whole cloud/grid by cosine similarity to the clicked location — computed
 entirely client-side, no backend round-trip. A colormap legend (coolwarm, [-1, 1])
 appears alongside the existing terrain legend to read values off the result. Clicking
-without the matching mode active is an ordinary object selection and has no other effect.
+without the matching mode active does nothing.
 
 ## Trajectory Trails
 
@@ -88,14 +90,16 @@ trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by
 Scalars, Error Metrics and Terrain share one collapsible panel at the top-center of
 the screen. When more than one is available, a mode switcher lets you flip between
 them; if only one is available (e.g. a single-batch scene has no Error Metrics), that
-one is shown directly without the switcher.
+one is shown directly without the switcher. Clicking any of its charts seeks playback
+to that time.
 
 - **Scalars**: one tab per scalar defined in the model, each plotting its value over
   time for every batch (colored per batch, click a line to focus that batch). An
   "Export CSV" button on the active tab downloads its full series as `time` plus one
   column per batch, named after each batch's current display name.
 - **Error Metrics**: shown once a scene has 2 or more batches. Pick a body and two
-  batches ("Batch A" / "Batch B") to compare — e.g. the real and simulated batches
+  batches ("Batch A" / "Batch B", defaulting to a `gt`/`ground truth`-named batch vs. a
+  `post`/`adapt`-named one when the batch names have them) to compare — e.g. the real and simulated batches
   produced by [merging multiple files](cli.md#comparing-multiple-runs-eg-real-world-vs-simulated)
   — and it computes, over the full timeline, the Euclidean position error and the
   quaternion angle (orientation) error between the two batches for that body. A live
@@ -103,7 +107,7 @@ one is shown directly without the switcher.
   time with a marker at the current playback position. The "Per-axis" toggle swaps the
   combined position error curve for the signed X/Y/Z error components (Batch A minus
   Batch B), useful for spotting a directional bias instead of just overall magnitude.
-  Below the readout, a compact stats block summarizes the full timeline: position
+  The "Details" toggle adds a compact stats block summarizing the full timeline: position
   RMSE, the max position error (and when it occurs), the final-frame drift, and the
   orientation RMSE and max angle error. An "Export CSV" button downloads the current
   selection's per-frame series (`time`, `pos_error`, `err_x`, `err_y`, `err_z`,
@@ -116,6 +120,13 @@ one is shown directly without the switcher.
   Pick the layer, the body, and whether each batch is sampled along its **own** path or
   all batches along one chosen batch's path (the usual ground-truth-path comparison).
   An "Export CSV" button downloads the sampled series.
+
+## Body States
+
+The collapsible "Body states" panel in the top-left lists the scene's bodies; select
+one to see its live position and rotation for the batch picked in the panel's own
+"Batch" selector. It starts collapsed when the model sets `collapse`;
+`viewerDefaults.bodyStatesOpen` overrides that.
 
 ## Batch Legend
 

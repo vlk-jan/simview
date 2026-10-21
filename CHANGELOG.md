@@ -206,7 +206,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **The viewer can be embedded in other applications** -- see the new
-  [Embedding](docs/usage/embedding.md) guide. The URL hash is now live: changing it
+  [Embedding](https://vlk-jan.github.io/simview/usage/embedding/) guide. The URL hash is now live: changing it
   after load (`#v=1&t=2&cam=...`) re-applies the view, so a host page can drive time,
   camera, batch and colour modes from outside. Two startup keys join it: `#ui=0`
   hides every floating panel, and `#data=<base url>` loads a static bundle instead

@@ -12,13 +12,15 @@ uv run pytest tests/test_scene.py::test_name -q     # one test
 uv run pytest --cov=simview --cov-report=term-missing --cov-fail-under=83 -q
 ```
 
-Tests requiring `torch` use `pytest.importorskip("torch")` before torch-dependent
-imports (see `tests/conftest.py`'s `HAS_TORCH` flag), which pushes those imports below
-a statement — hence the `tests/*.py` ruff `E402` ignore in `pyproject.toml`. Follow the
+Tests requiring `torch` call `pytest.importorskip("torch")` at module level before
+their torch-dependent imports (`tests/conftest.py` itself guards its torch imports with
+a `try`/`except` that sets `HAS_TORCH`, so it still loads on a base install), which
+pushes those imports below a statement — hence the `tests/*.py` ruff `E402` ignore in `pyproject.toml`. Follow the
 same pattern for new torch-dependent test modules so they skip cleanly on a base
 install (no `authoring` extra).
 
-`tests/conftest.py`'s `build_scene()` is the shared fixture builder for a small
+`tests/conftest.py`'s `build_scene()` (a plain helper, imported with
+`from conftest import build_scene`) is the shared builder for a small
 representative scene (shared terrain + one box, a few states with an `"energy"`
 scalar) — prefer it over hand-rolling scenes in new tests.
 
@@ -26,13 +28,15 @@ Test files are grouped roughly by area:
 
 - **Core authoring**: `test_scene.py`, `test_trajectory.py`, `test_roundtrip.py`,
   `test_contacts.py`, `test_episodes.py`, `test_pointcloud_features.py`,
-  `test_columnar_states.py`, `test_columnar_ondisk.py`
+  `test_columnar_states.py`, `test_columnar_ondisk.py`, `test_embed_defaults.py`
+  (per-body visuals, `viewerDefaults`)
 - **CLI-backed queries**: `test_terrain.py`, `test_terrain_query.py`, `test_diff.py`,
   `test_info.py`, `test_cli.py`
 - **Server/viewer lifecycle**: `test_server.py`, `test_live.py`, `test_launcher.py`,
   `test_show.py`
 - **Multi-file workflows**: `test_merge.py`, `test_batch_selection.py`
-- **Shared helpers**: `test_utils.py`, `test_remote.py`
+- **Shared helpers**: `test_utils.py`, `test_remote.py`, `test_view.py` (`view_hash`,
+  kept in sync with `viewState.js`)
 
 ## JS unit tests (`tests/js/`)
 
@@ -45,24 +49,27 @@ Target pure logic in `utils/` and a few `components/`/`objects/`/`ui/` classes �
 DOM/browser needed, run under Node. One `*.test.js` per module covered: `blobCodec`,
 `blobWindow`, `bodyTransforms`, `interpolate`, `errorMath`, `csv`, `viewState`,
 `liveFollow`, `episodes`, `terrainSample`, `batchPresets`, `batchVisibility`,
-`cameraRange`, `chartControls`, `similarity`, `objectsUtils`, `AnimationController`, `StateStore`,
-`BatchManager`, `WindowedField`, `InteractionController`, `Body`, `Terrain`,
-`TerrainFeatures`.
+`cameraRange`, `chartControls`, `colormap`, `similarity`, `objectsUtils`, `html`,
+`keyboard`, `scalarSeries`, `viewerDefaults`, `visibleRanges`, `AnimationController`,
+`StateStore`, `BatchManager`, `WindowedField`, `InteractionController`, `Body`,
+`Polyline`, `Terrain`, `TerrainFeatures`.
 
 ## End-to-end tests (`tests/e2e/`)
 
 ```bash
+npx playwright install chromium        # once, fetches the browser
 uv run python example.py --no-launch   # writes example_sim.json first
-npx playwright test                     # auto-starts the server
+npx playwright test                     # auto-starts the servers
 npx playwright test tests/e2e/smoke.spec.js   # one spec
 ```
 
 `tests/e2e/smoke.spec.js` is a tripwire for wiring-level regressions (bad imports,
 server 500s), not a substitute for unit coverage — see the comment in
-`playwright.config.js`. Alongside it, `batchVisibility`, `episodes`, `scalarChart`
-and `windowedFields` cover behavior that only shows up in a real browser (per-batch
-objects built lazily, episode navigation, a chart actually painting its data, range
-requests for a long trajectory's fields). `playwright.config.js` starts two servers
+`playwright.config.js`. Alongside it, `batchVisibility`, `episodes`, `scalarChart`,
+`windowedFields` and `embed` cover behavior that only shows up in a real browser
+(per-batch objects built lazily, episode navigation, a chart actually painting its
+data, range requests for a long trajectory's fields, and the embedding contract: a
+static bundle under `#data=`, `#ui=0`, `simview:ready`/`simview:frame` events). `playwright.config.js` starts two servers
 for these: one on `example_sim.json`, one on the episodic scene
 `make_episodic_scene.py` generates.
 

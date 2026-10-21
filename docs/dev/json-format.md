@@ -163,6 +163,18 @@ produces.
         `color`/`embedding` on point-cloud bodies above. Not a named property (no min/max,
         similarity-colored), so it stays a separate top-level field.
 
+!!! note "Binary model fields"
+    Any numeric array in the model — a shape's `points`/`color`/`embedding`/
+    `vertices`/`faces`, terrain `heightData`/`normals`/each property's `data`/
+    `embeddingData`, and polyline `points`/`frames` — may be an inline
+    `"__b64__<base64>"` string instead of nested lists: the flat little-endian float32
+    bytes of the array in row-major order (mesh `faces` too, so vertex indices are
+    exact up to 2^24). `SimulationScene` writes terrain grids, polylines and every
+    multi-element tensor shape parameter as blobs (a one-element tensor becomes a plain
+    number, a plain list is kept as-is); hand-written files may use plain lists. The server rewrites every model blob into a `/blob/...` URL just like the
+    columnar state blobs below, so the viewer receives them as `Float32Array`s.
+    `metadata` and `batchNames` are never treated as blobs.
+
 ## States (Dynamic Data)
 
 `states` is an array; each element is one snapshot:

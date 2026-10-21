@@ -496,7 +496,7 @@ export class SimView {
                 });
             }
             // Parent-relative transforms (rigid/articulated attachments, see
-            // README.md): resolved once here so per-frame/per-state consumers
+            // docs/dev/json-format.md): resolved once here so per-frame/per-state consumers
             // below only ever deal with ordinary absolute-world transforms.
             this.bodyMeta = buildBodyMeta(model.bodies);
             this.bodyTopoOrder = topoSortBodies(this.bodyMeta);

@@ -15,8 +15,8 @@
 - [ ] `uv run ruff check .` and `uv run ruff format --check .` pass
 - [ ] `uv run pyright` passes
 - [ ] `npm test` passes (if frontend changed)
-- [ ] If this changes serialization on either side, `README.md`'s "JSON Format
-      Specification" is updated and both Python and JS sides stay in sync
+- [ ] If this changes serialization on either side, `docs/dev/json-format.md` is
+      updated and both Python and JS sides stay in sync
 - [ ] If this only works with `torch` installed, it still passes on a base
       install (no `authoring` extra) — see `test-base-install` in CI
 

@@ -4,7 +4,7 @@
 
 - Python 3.12+
 - [`uv`](https://docs.astral.sh/uv/) (this repo's package manager)
-- Node 22+ (only needed for the JS unit tests and Playwright e2e test)
+- Node 22+ (only needed for the JS unit tests and Playwright e2e tests)
 
 ## Getting the code
 
@@ -30,7 +30,7 @@ suite (some tests are authoring-only and skip cleanly without it, see
 uv run pytest -q                                    # Python
 uv run pytest --cov=simview --cov-report=term-missing --cov-fail-under=83 -q
 npm test                                             # JS unit tests
-uv run python example.py --no-launch && npx playwright test  # e2e smoke test
+uv run python example.py --no-launch && npx playwright test  # e2e (after a one-time `npx playwright install chromium`)
 ```
 
 See [Testing](testing.md) for more detail on what each suite covers.

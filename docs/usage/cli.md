@@ -136,7 +136,8 @@ To visualize a simulation defined in a JSON file, run the following command, rep
 simview [path_to_json_file]
 ```
 
-Gzip-compressed files (e.g. `scene.json.gz`) are detected automatically and decompressed
+This is the `simview view` subcommand, which is the default when the first argument
+isn't another subcommand. Gzip-compressed files (e.g. `scene.json.gz`) are detected automatically and decompressed
 transparently — no separate flag needed.
 
 Useful flags:

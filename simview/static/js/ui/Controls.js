@@ -224,10 +224,9 @@ export class UIControls {
 
             // Only shown when at least one body ships a per-point similarity
             // embedding (see Body.js's pointEmbedding / recolorBySimilarity).
-            // Clicking a point already switches into "similarity" coloring
-            // implicitly (InteractionController's #handlePointClick); this
-            // dropdown's main job is letting you switch back to the static
-            // PCA-RGB view without another click.
+            // Point clicks only recolor by similarity once this is set to
+            // "similarity" (InteractionController's #handlePointClick);
+            // switching back restores the static PCA-RGB view.
             const bodiesWithEmbedding = [...this.app.bodies.values()].filter(
                 (body) => body.pointEmbedding
             );

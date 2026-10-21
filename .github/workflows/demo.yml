@@ -128,8 +128,8 @@ jobs:
 
       - name: Copy static assets (JS, CSS, lib, textures)
         run: |
-          # The server renders asset URLs as /static/..., so we copy into
-          # _demo_out/static/ to preserve those root-relative paths.
+          # The page's asset URLs are page-relative (./static/...), so the
+          # assets go into _demo_out/static/.
           mkdir -p _demo_out/static
           cp -r simview/static/* _demo_out/static/
 

@@ -23,16 +23,18 @@ Python (authoring or file-on-disk)           Browser
 
 - **`model.py`** — static scene definition: `SimViewModel`, `SimViewBody` (shape +
   optional `parent`/`localTransform` for rigid attachment), `SimViewStaticObject`,
-  `SimViewTerrain`. Pure data/validation, no torch dependency at this layer beyond
-  what's passed in.
+  `SimViewTerrain`, `SimViewPolyline`, `SimViewEpisode`. Data/validation plus the
+  tensor-to-blob encoding of geometry and terrain grids, so it imports torch
+  (authoring-only, hence lazily imported — see below).
 - **`state.py`** — per-frame dynamic data: `SimViewBodyState` (one frame) and
   `BodyTrajectory` (a whole `(T, B, ...)` trajectory in one call, authoring-only,
   needs torch/numpy). Both can binary-encode numeric fields (`__b64__` + little-endian
   float32) instead of plain JSON lists — see [JSON Format Specification](json-format.md).
 - **`scene.py`** — `SimulationScene`, the main authoring API: builds a model
-  incrementally (`create_terrain`, `create_body`, ...), accumulates `states` via
-  `add_state`/`add_trajectory`, and can `save()`/`load()` JSON (optionally gzipped)
-  or `show()` a non-blocking viewer (returns a `ViewerHandle`, usable in Jupyter via
+  incrementally (`create_terrain`, `create_body`, `create_polyline`, ...), accumulates
+  `states` via `add_state`/`add_trajectory` (plus `mark_episode`), and can
+  `save()`/`load()` JSON (optionally gzipped), `save_static()` a static bundle for
+  plain file hosting, or `show()` a non-blocking viewer (returns a `ViewerHandle`, usable in Jupyter via
   `_repr_html_`).
 - **`columnar.py`** — the columnar ("v4") states layout: one binary blob per body per
   field covering the whole trajectory, instead of thousands of small per-frame values.
@@ -40,9 +42,11 @@ Python (authoring or file-on-disk)           Browser
   either way, with inline `__b64__` blobs on disk and `/blob/` URLs over HTTP.
   `columnarize_states` (the writer/repacker) needs numpy; `expand_columnar_states` (the
   inverse) is stdlib-only so every reader, including the base install and the
-  stdlib-only CLI tools, can consume a columnar file.
+  stdlib-only CLI tools, can consume a columnar file. `write_static_bundle` (behind
+  `save_static`) writes the same document as `model.json`/`states.json` plus raw
+  `blob/<id>` files, for the viewer's static (`#data=`) mode.
 - **`server.py`** — `SimViewServer`: FastAPI app serving `templates/index.html` and
-  `static/`, plus `/model` and `/states` (or per-blob endpoints). A columnar file is
+  `static/`, plus `/model`, `/states` and `/blob/{token}/{id}` (range-request capable). A columnar file is
   served as-is (only its inline blobs are rewritten into URLs); a legacy per-frame file
   is repacked into the columnar payload at load time for much cheaper playback of long
   recordings, falling back to serving the per-frame array if the frames aren't uniform
@@ -76,15 +80,19 @@ Python (authoring or file-on-disk)           Browser
 - **`utils.py`** — small shared helpers (e.g. free-port lookup, gzip-transparent file
   reads).
 - **`__main__.py`** — CLI entry point (`simview` script): view file(s), `simview
-  info`/`terrain`/`diff`/`render`, `simview clear` cache cleanup, `--save-merged`.
+  info`/`terrain`/`diff`/`render`, `simview clear` cache cleanup, `simview
+  static-viewer` (copy the viewer page for static hosting), `--save-merged`.
 
 ### Lazy imports
 
 `simview/__init__.py` only imports authoring symbols (`SimulationScene`,
 `SimViewBody`, etc.) on first attribute access, via a module-level `__getattr__`
-that looks each name up in a `_LAZY_EXPORTS` table. This keeps `import simview`
+that looks each name up in a `_LAZY_EXPORTS` table (`SimulationScene`,
+`ViewerHandle`, `LiveViewer`, the `model.py` classes and enums, `SimViewBodyState`,
+`BodyTrajectory`). Only `__version__`, `CACHE_DIR` and the stdlib-only `view_hash`
+are imported eagerly. This keeps `import simview`
 torch-free for viewing-only installs — a viewing-only install can `import simview`
-and use `SimViewServer`/CLI features without ever needing `torch`/`numpy`
+and use `simview.server.SimViewServer`/CLI features without ever needing `torch`/`numpy`
 installed, and only pays that import cost (and dependency requirement) the moment
 an authoring symbol like `SimulationScene` is actually touched.
 
@@ -92,7 +100,9 @@ an authoring symbol like `SimulationScene` is actually touched.
 
 Vanilla JS ES modules (no bundler/framework), loaded via `templates/index.html`'s
 importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns startup
-(`loadData`/`fetchBlobs`/`initFromModel`) and wires everything else together:
+(`loadData`/`fetchBlobs`/`initFromModel`) and wires everything else together.
+`config.js` holds the shared constants (theme colors, `UI_DEFAULT_CONFIG`, update
+rates, camera/renderer settings).
 
 - **`components/`** — `Scene` (THREE.js scene/camera/renderer + OrbitControls),
   `StateStore` (decoded trajectory data + playback lookups: `ColumnarStateStore` for a
@@ -100,8 +110,9 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   (playback loop, speed, interpolation), `BatchManager` (per-batch color/focus/visibility),
   `InteractionController` (mouse picking, terrain probe, click-to-similarity),
   `WindowedField` (range-fetched per-body vector fields).
-- **`objects/`** — THREE.js object wrappers: `Body`, `StaticObject`, `Terrain` (heightfield
-  mesh + friction/stiffness/click-to-similarity "features" color modes), plus shared
+- **`objects/`** — THREE.js object wrappers: `Body`, `StaticObject`, `Polyline`
+  (`model.polylines`), `Terrain` (heightfield
+  mesh + per-property/click-to-similarity "features" color modes), plus shared
   helpers in `utils.js`. `colormap.js`/`similarity.js` factor the colormap resolver and
   cosine-similarity math out of `utils.js` into small, dependency-light modules used by both `Body`'s
   click-to-similarity point coloring and `Terrain`'s "features" mode.
@@ -122,16 +133,19 @@ importmap. Entry point `main.js` → `SimView.js` (`SimView` class), which owns 
   shows up for a given body), `episodes.js` (episode segments, navigation and
   per-episode aggregates), `batchVisibility.js` (which batches get built and drawn),
   `blobWindow.js` (window arithmetic for range-fetching a long trajectory's field blobs,
-  used by `components/WindowedField.js`), `batchPresets.js`, `cameraRange.js`. The one
+  used by `components/WindowedField.js`), `scalarSeries.js` (growing the scalar
+  plots' series as frames arrive), `visibleRanges.js` (`visibleRanges` time-window
+  checks), `html.js` (`escapeHtml` for untrusted scene text), `batchPresets.js`,
+  `cameraRange.js`. The one
   exception to "pure logic" is `uplot.js`, which owns the uPlot chart skeleton the three
   Analysis-panel plots share.
 
 ### Vendored third-party libraries
 
 [**uPlot**](https://github.com/leeoniya/uPlot) (MIT), [**three.js**](https://github.com/mrdoob/three.js)
-(MIT) and `js-colormaps.js` (the matplotlib color-map tables, trimmed to the ones the
-viewer offers) are vendored locally rather
-than loaded from a CDN, so the viewer works fully offline. All third-party libraries
+(MIT, plus the `OrbitControls` and `lil-gui` addons it ships) and `js-colormaps.js` (the
+matplotlib color-map tables, trimmed to the ones the viewer offers) are vendored locally
+rather than loaded from a CDN, so the viewer works fully offline. All third-party libraries
 used by SimView are permissively licensed (MIT/BSD), so there are no licensing
 restrictions on commercial use. Don't add new CDN-loaded dependencies without a reason
 to break that pattern.
@@ -148,14 +162,16 @@ Python and JavaScript agree on the `model`/`states` JSON shape, binary field enc
 parent-relative bodies, and the columnar layout independently — there is no shared
 schema file. See [JSON Format Specification](json-format.md) for the full contract;
 read it before changing anything that touches serialization on either side
-(`model.py`/`state.py`/`server.py` in Python, `blobCodec.js`/`bodyTransforms.js` in JS).
+(`model.py`/`state.py`/`columnar.py`/`server.py` in Python, `blobCodec.js`/
+`bodyTransforms.js`/`components/StateStore.js` in JS).
 
 ## Project structure
 
 ```
 simview/
 ├── simview/                # Python package
-│   ├── model.py             # SimViewModel, SimViewBody, SimViewStaticObject, SimViewTerrain
+│   ├── __init__.py          # public API, lazy authoring imports
+│   ├── model.py             # SimViewModel, SimViewBody, SimViewStaticObject, SimViewTerrain, ...
 │   ├── state.py             # SimViewBodyState, BodyTrajectory
 │   ├── scene.py             # SimulationScene
 │   ├── columnar.py          # columnar ("v4") states layout (wire + on disk)
@@ -177,6 +193,7 @@ simview/
 │       ├── js/
 │       │   ├── main.js               # entry point
 │       │   ├── SimView.js             # top-level SimView class
+│       │   ├── config.js              # shared constants, UI defaults
 │       │   ├── components/
 │       │   ├── objects/
 │       │   ├── ui/
@@ -185,9 +202,11 @@ simview/
 │       ├── lib/                       # vendored three.js, uPlot (version-stamped)
 │       └── textures/
 ├── tests/                    # pytest suite (+ tests/js/ vitest, tests/e2e/ Playwright)
+├── demo/                      # demo scene (deployed by .github/workflows/demo.yml)
 ├── example.py                 # authoring example (see Quick Start)
 ├── example_live.py             # LiveViewer example
 ├── mkdocs.yml                    # this documentation site
 ├── docs/                          # documentation source
+├── package.json                    # JS test deps (vitest, Playwright); see vitest/playwright configs
 └── pyproject.toml                  # package metadata, ruff/pyright config, uv dependency-groups
 ```

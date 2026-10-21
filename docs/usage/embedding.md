@@ -51,7 +51,7 @@ Every key is optional and an absent key leaves the viewer's current setting alon
 fragment can carry a whole setup between page loads (`getViewState()` → `serializeViewState`
 on one page, the hash on the next) or change one thing.
 
-Two **startup** keys are read once, at load, and don't need `v=1`:
+Four **startup** keys are read once, at load, and don't need `v=1`:
 
 | Key | Meaning |
 | --- | --- |
@@ -78,7 +78,8 @@ simview static-viewer public/simview   # index.html + static/
 ```
 
 It loads all of its assets relative to the page, so it can be served from any path of
-your origin. The GitHub Pages demo is built this way (`.github/workflows/demo.yml`);
+your origin. The GitHub Pages demo serves the same static layout
+(`.github/workflows/demo.yml` dumps it from a running server);
 `simview.columnar.write_static_bundle` is the stdlib-only writer behind `save_static`.
 
 Declare how the viewer should *start* at authoring time instead of patching it after
