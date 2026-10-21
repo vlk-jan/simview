@@ -1386,7 +1386,7 @@
 <ul>
 <li>Python 3.12+</li>
 <li><a href="https://docs.astral.sh/uv/"><code>uv</code></a> (this repo's package manager)</li>
-<li>Node 22+ (only needed for the JS unit tests and Playwright e2e test)</li>
+<li>Node 22+ (only needed for the JS unit tests and Playwright e2e tests)</li>
 </ul>
 <h2 id="getting-the-code">Getting the code</h2>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>git@github.com:vlk-jan/simview.git
@@ -1403,7 +1403,7 @@ suite (some tests are authoring-only and skip cleanly without it, see
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w">                                    </span><span class="c1"># Python</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>--cov<span class="o">=</span>simview<span class="w"> </span>--cov-report<span class="o">=</span>term-missing<span class="w"> </span>--cov-fail-under<span class="o">=</span><span class="m">83</span><span class="w"> </span>-q
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>npm<span class="w"> </span><span class="nb">test</span><span class="w">                                             </span><span class="c1"># JS unit tests</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>example.py<span class="w"> </span>--no-launch<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npx<span class="w"> </span>playwright<span class="w"> </span><span class="nb">test</span><span class="w">  </span><span class="c1"># e2e smoke test</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>example.py<span class="w"> </span>--no-launch<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npx<span class="w"> </span>playwright<span class="w"> </span><span class="nb">test</span><span class="w">  </span><span class="c1"># e2e (after a one-time `npx playwright install chromium`)</span>
 </span></code></pre></div>
 <p>See <a href="../testing/">Testing</a> for more detail on what each suite covers.</p>
 <h2 id="running-the-docs-locally">Running the docs locally</h2>

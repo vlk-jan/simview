@@ -1324,25 +1324,29 @@ and Playwright end-to-end tests.</p>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/test_scene.py::test_name<span class="w"> </span>-q<span class="w">     </span><span class="c1"># one test</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>--cov<span class="o">=</span>simview<span class="w"> </span>--cov-report<span class="o">=</span>term-missing<span class="w"> </span>--cov-fail-under<span class="o">=</span><span class="m">83</span><span class="w"> </span>-q
 </span></code></pre></div>
-<p>Tests requiring <code>torch</code> use <code>pytest.importorskip("torch")</code> before torch-dependent
-imports (see <code>tests/conftest.py</code>'s <code>HAS_TORCH</code> flag), which pushes those imports below
-a statement — hence the <code>tests/*.py</code> ruff <code>E402</code> ignore in <code>pyproject.toml</code>. Follow the
+<p>Tests requiring <code>torch</code> call <code>pytest.importorskip("torch")</code> at module level before
+their torch-dependent imports (<code>tests/conftest.py</code> itself guards its torch imports with
+a <code>try</code>/<code>except</code> that sets <code>HAS_TORCH</code>, so it still loads on a base install), which
+pushes those imports below a statement — hence the <code>tests/*.py</code> ruff <code>E402</code> ignore in <code>pyproject.toml</code>. Follow the
 same pattern for new torch-dependent test modules so they skip cleanly on a base
 install (no <code>authoring</code> extra).</p>
-<p><code>tests/conftest.py</code>'s <code>build_scene()</code> is the shared fixture builder for a small
+<p><code>tests/conftest.py</code>'s <code>build_scene()</code> (a plain helper, imported with
+<code>from conftest import build_scene</code>) is the shared builder for a small
 representative scene (shared terrain + one box, a few states with an <code>"energy"</code>
 scalar) — prefer it over hand-rolling scenes in new tests.</p>
 <p>Test files are grouped roughly by area:</p>
 <ul>
 <li><strong>Core authoring</strong>: <code>test_scene.py</code>, <code>test_trajectory.py</code>, <code>test_roundtrip.py</code>,
   <code>test_contacts.py</code>, <code>test_episodes.py</code>, <code>test_pointcloud_features.py</code>,
-  <code>test_columnar_states.py</code>, <code>test_columnar_ondisk.py</code></li>
+  <code>test_columnar_states.py</code>, <code>test_columnar_ondisk.py</code>, <code>test_embed_defaults.py</code>
+  (per-body visuals, <code>viewerDefaults</code>)</li>
 <li><strong>CLI-backed queries</strong>: <code>test_terrain.py</code>, <code>test_terrain_query.py</code>, <code>test_diff.py</code>,
   <code>test_info.py</code>, <code>test_cli.py</code></li>
 <li><strong>Server/viewer lifecycle</strong>: <code>test_server.py</code>, <code>test_live.py</code>, <code>test_launcher.py</code>,
   <code>test_show.py</code></li>
 <li><strong>Multi-file workflows</strong>: <code>test_merge.py</code>, <code>test_batch_selection.py</code></li>
-<li><strong>Shared helpers</strong>: <code>test_utils.py</code>, <code>test_remote.py</code></li>
+<li><strong>Shared helpers</strong>: <code>test_utils.py</code>, <code>test_remote.py</code>, <code>test_view.py</code> (<code>view_hash</code>,
+  kept in sync with <code>viewState.js</code>)</li>
 </ul>
 <h2 id="js-unit-tests-testsjs">JS unit tests (<code>tests/js/</code>)</h2>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>npm<span class="w"> </span><span class="nb">test</span><span class="w">                                             </span><span class="c1"># vitest run</span>
@@ -1352,20 +1356,23 @@ scalar) — prefer it over hand-rolling scenes in new tests.</p>
 DOM/browser needed, run under Node. One <code>*.test.js</code> per module covered: <code>blobCodec</code>,
 <code>blobWindow</code>, <code>bodyTransforms</code>, <code>interpolate</code>, <code>errorMath</code>, <code>csv</code>, <code>viewState</code>,
 <code>liveFollow</code>, <code>episodes</code>, <code>terrainSample</code>, <code>batchPresets</code>, <code>batchVisibility</code>,
-<code>cameraRange</code>, <code>chartControls</code>, <code>similarity</code>, <code>objectsUtils</code>, <code>AnimationController</code>, <code>StateStore</code>,
-<code>BatchManager</code>, <code>WindowedField</code>, <code>InteractionController</code>, <code>Body</code>, <code>Terrain</code>,
-<code>TerrainFeatures</code>.</p>
+<code>cameraRange</code>, <code>chartControls</code>, <code>colormap</code>, <code>similarity</code>, <code>objectsUtils</code>, <code>html</code>,
+<code>keyboard</code>, <code>scalarSeries</code>, <code>viewerDefaults</code>, <code>visibleRanges</code>, <code>AnimationController</code>,
+<code>StateStore</code>, <code>BatchManager</code>, <code>WindowedField</code>, <code>InteractionController</code>, <code>Body</code>,
+<code>Polyline</code>, <code>Terrain</code>, <code>TerrainFeatures</code>.</p>
 <h2 id="end-to-end-tests-testse2e">End-to-end tests (<code>tests/e2e/</code>)</h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>example.py<span class="w"> </span>--no-launch<span class="w">   </span><span class="c1"># writes example_sim.json first</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>npx<span class="w"> </span>playwright<span class="w"> </span><span class="nb">test</span><span class="w">                     </span><span class="c1"># auto-starts the server</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>npx<span class="w"> </span>playwright<span class="w"> </span><span class="nb">test</span><span class="w"> </span>tests/e2e/smoke.spec.js<span class="w">   </span><span class="c1"># one spec</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>npx<span class="w"> </span>playwright<span class="w"> </span>install<span class="w"> </span>chromium<span class="w">        </span><span class="c1"># once, fetches the browser</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>example.py<span class="w"> </span>--no-launch<span class="w">   </span><span class="c1"># writes example_sim.json first</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>npx<span class="w"> </span>playwright<span class="w"> </span><span class="nb">test</span><span class="w">                     </span><span class="c1"># auto-starts the servers</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>npx<span class="w"> </span>playwright<span class="w"> </span><span class="nb">test</span><span class="w"> </span>tests/e2e/smoke.spec.js<span class="w">   </span><span class="c1"># one spec</span>
 </span></code></pre></div>
 <p><code>tests/e2e/smoke.spec.js</code> is a tripwire for wiring-level regressions (bad imports,
 server 500s), not a substitute for unit coverage — see the comment in
-<code>playwright.config.js</code>. Alongside it, <code>batchVisibility</code>, <code>episodes</code>, <code>scalarChart</code>
-and <code>windowedFields</code> cover behavior that only shows up in a real browser (per-batch
-objects built lazily, episode navigation, a chart actually painting its data, range
-requests for a long trajectory's fields). <code>playwright.config.js</code> starts two servers
+<code>playwright.config.js</code>. Alongside it, <code>batchVisibility</code>, <code>episodes</code>, <code>scalarChart</code>,
+<code>windowedFields</code> and <code>embed</code> cover behavior that only shows up in a real browser
+(per-batch objects built lazily, episode navigation, a chart actually painting its
+data, range requests for a long trajectory's fields, and the embedding contract: a
+static bundle under <code>#data=</code>, <code>#ui=0</code>, <code>simview:ready</code>/<code>simview:frame</code> events). <code>playwright.config.js</code> starts two servers
 for these: one on <code>example_sim.json</code>, one on the episodic scene
 <code>make_episodic_scene.py</code> generates.</p>
 <h2 id="ci">CI</h2>

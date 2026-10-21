@@ -1437,7 +1437,7 @@ on (and ignores) unknown keys. Supported keys, all optional:
 - <strong><code>ui</code></strong> <em>(object)</em> — values for the viewer's UI state, deep-merged over its
     defaults before the controls are built: <code>pointCloudsVisible</code>, <code>axesVisible</code>,
     <code>trailsVisible</code>, <code>smoothInterpolation</code>, <code>terrainColorMode</code>, <code>terrainColorMap</code>,
-    <code>bodyVisualizationMode</code>, <code>polylinesVisible</code>, <code>terrainProbe</code>, <code>attributeVisible.*</code> (<code>contacts</code>,
+    <code>bodyVisualizationMode</code>, <code>polylinesVisible</code>, <code>terrainProbe</code>, <code>pointColorMode</code>, <code>attributeVisible.*</code> (<code>contacts</code>,
     <code>velocity</code>, <code>angularVelocity</code>, <code>force</code>, <code>torque</code>) and <code>terrainVisualizationModes.*</code>
     (<code>surface</code>, <code>wireframe</code>, <code>normals</code>). Wins over the viewer's automatic
     <code>bodyVisualizationMode</code> choice.
@@ -1554,6 +1554,19 @@ Polylines" (<code>polylinesVisible</code> in <code>viewerDefaults.ui</code> / th
     similarity-colored), so it stays a separate top-level field.</p>
 </li>
 </ul>
+<div class="admonition note">
+<p class="admonition-title">Binary model fields</p>
+<p>Any numeric array in the model — a shape's <code>points</code>/<code>color</code>/<code>embedding</code>/
+<code>vertices</code>/<code>faces</code>, terrain <code>heightData</code>/<code>normals</code>/each property's <code>data</code>/
+<code>embeddingData</code>, and polyline <code>points</code>/<code>frames</code> — may be an inline
+<code>"__b64__&lt;base64&gt;"</code> string instead of nested lists: the flat little-endian float32
+bytes of the array in row-major order (mesh <code>faces</code> too, so vertex indices are
+exact up to 2^24). <code>SimulationScene</code> writes terrain grids, polylines and every
+multi-element tensor shape parameter as blobs (a one-element tensor becomes a plain
+number, a plain list is kept as-is); hand-written files may use plain lists. The server rewrites every model blob into a <code>/blob/...</code> URL just like the
+columnar state blobs below, so the viewer receives them as <code>Float32Array</code>s.
+<code>metadata</code> and <code>batchNames</code> are never treated as blobs.</p>
+</div>
 <h2 id="states-dynamic-data">States (Dynamic Data)</h2>
 <p><code>states</code> is an array; each element is one snapshot:</p>
 <ul>

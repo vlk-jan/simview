@@ -1608,7 +1608,8 @@ many) and the frame counts as exceeding any threshold:</p>
 <p>To visualize a simulation defined in a JSON file, run the following command, replacing <code>[path_to_json_file]</code> with the actual path to your JSON data:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>simview<span class="w"> </span><span class="o">[</span>path_to_json_file<span class="o">]</span>
 </span></code></pre></div>
-<p>Gzip-compressed files (e.g. <code>scene.json.gz</code>) are detected automatically and decompressed
+<p>This is the <code>simview view</code> subcommand, which is the default when the first argument
+isn't another subcommand. Gzip-compressed files (e.g. <code>scene.json.gz</code>) are detected automatically and decompressed
 transparently — no separate flag needed.</p>
 <p>Useful flags:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">  </span><span class="c1"># bind to a specific host/port</span>

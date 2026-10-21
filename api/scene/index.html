@@ -961,6 +961,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#simview.server.ViewerHandle.url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        url
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.server.ViewerHandle.stop" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1613,6 +1624,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#simview.server.ViewerHandle.url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        url
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#simview.server.ViewerHandle.stop" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1726,8 +1748,13 @@ saves/loads JSON or launches a viewer. <code>SimulationScene.show()</code> retur
 
 
 
-        <p>Initializes the simulation data container.
-Manages the SimViewModel and the time-series states.</p>
+        <p>Authoring container for a scene: a <code>SimViewModel</code> plus its time-series
+<code>states</code>, with helpers to build, save, load and show it.</p>
+
+        <p>Create an empty scene around a new <code>SimViewModel</code>.</p>
+<p><code>batch_size</code>, <code>scalar_names</code>, <code>dt</code> (None to let the viewer infer it),
+<code>collapse</code>, <code>terrain</code>, <code>bodies</code>, <code>static_objects</code> and <code>batch_names</code>
+initialize the model fields of the same name.</p>
 <p><code>metadata</code> is free-form, JSON-serializable run provenance (e.g. engine
 name, checkpoint path, git commit, CLI args) with no meaning to the
 viewer -- it's carried through to <code>simview info</code> and the browser so a
@@ -1779,7 +1806,11 @@ docs/dev/json-format.md for the supported keys.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Adds a new state (snapshot in time) to the simulation data.</p>
+        <p>Append one state (a snapshot at <code>time</code>) to the scene.</p>
+<p>Every body in <code>body_states</code> must exist in the model, must not be
+rigidly attached, and must carry one row per batch. When the model
+has <code>scalar_names</code>, <code>scalar_values</code> must map exactly those names to
+one value per batch; otherwise it is ignored with a warning.</p>
 
 
     </div>
@@ -1806,86 +1837,21 @@ docs/dev/json-format.md for the supported keys.</p>
     <div class="doc doc-contents ">
 
         <p>Append an entire time-series in one call.</p>
+<p><code>times</code> is a length-<code>T</code> sequence of snapshot times (seconds).
+<code>trajectories</code> holds one <code>BodyTrajectory</code> per body; each body must
+already exist in the model. For a scene with <code>scalar_names</code>,
+<code>scalar_values</code> maps each name to a <code>(T, B)</code> (or <code>(T,)</code> when
+<code>B == 1</code>) series.</p>
 <p>Equivalent to looping <code>add_state</code> over <code>T</code> frames, but converts each
-body's pose/vector tensors once (vectorised) instead of per frame, which
+body's pose/vector tensors once (vectorized) instead of per frame, which
 is dramatically faster for long trajectories. With <code>binary=True</code> the
 numeric per-body fields (<code>bodyTransform</code> and any provided vectors) are
 packed as float32 <code>__b64__</code> blobs, shrinking the output file and the
-parse cost; the viewer and :func:<code>merge_simulation_files</code> decode these
+parse cost; the viewer and <code>merge_simulation_files</code> decode these
 transparently. Set <code>binary=False</code> to emit plain JSON lists. A body's
-<code>contacts</code> (if provided on its :class:<code>BodyTrajectory</code>) are ragged and
+<code>contacts</code> (if provided on its <code>BodyTrajectory</code>) are ragged and
 always emitted as plain JSON per frame, using the same encoding as
 <code>SimViewBodyState</code> / <code>add_state</code>.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>times</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | <span title="numpy.ndarray">ndarray</span> | <span title="collections.abc.Sequence">Sequence</span>[<span title="float">float</span>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>sequence of length <code>T</code> of snapshot times (seconds).</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>trajectories</code>
-            </td>
-            <td>
-                  <code><span title="list">list</span>[<a class="autorefs autorefs-internal" title="BodyTrajectory
-
-
-  
-      dataclass
-   (simview.state.BodyTrajectory)" href="../state/#simview.state.BodyTrajectory">BodyTrajectory</a>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>one :class:<code>BodyTrajectory</code> per body; each body must
-already exist in the model.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>scalar_values</code>
-            </td>
-            <td>
-                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="torch.Tensor">Tensor</span> | <span title="numpy.ndarray">ndarray</span> | <span title="list">list</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>for a scene with <code>scalar_names</code>, maps each name to a
-<code>(T, B)</code> (or <code>(T,)</code> when <code>B == 1</code>) series.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
 
 
     </div>
@@ -1919,10 +1885,13 @@ already exist in the model.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Creates and adds a dynamic body to the simulation model.</p>
+        <p>Add a dynamic body named <code>body_name</code> of <code>shape_type</code> to the model.</p>
+<p><code>**kwargs</code> are the shape parameters (see <code>SimViewBody.create</code>), and
+<code>available_attributes</code> optionally pre-declares the optional state
+attributes (<code>save</code>/<code>show</code> reconcile them from the states anyway).</p>
 <p><code>color</code> (RGB in [0, 1]) and <code>opacity</code> (in (0, 1]) style the
 mesh/primitive representation (box/sphere/cylinder/mesh); a point
-cloud's per-point colour is its shape's own <code>color</code>. <code>visible=False</code>
+cloud's per-point color is its shape's own <code>color</code>. <code>visible=False</code>
 hides the body initially. <code>visible_ranges</code> is an optional list of
 <code>[t_from, t_to]</code> pairs (seconds on the states timeline); the viewer
 hides the body outside them.</p>
@@ -1964,89 +1933,12 @@ in the model, instead of it moving in world space:</p>
 
     <div class="doc doc-contents ">
 
-        <p>Creates and adds a pointcloud body to the simulation model.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>body_name</code>
-            </td>
-            <td>
-                  <code><span title="str">str</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Unique name for this body.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>points</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>(N, 3) point positions.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>color</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional (N, 3) per-point RGB in [0, 1]
-for static vertex-colored rendering.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>embedding</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional (N, K) per-point feature
-vector (e.g. a reduced-dim PCA projection) enabling the
-viewer's click-to-similarity color mode.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
+        <p>Add a point-cloud body named <code>body_name</code> to the model.</p>
+<p><code>points</code> holds the <code>(N, 3)</code> point positions. <code>color</code> is an optional
+<code>(N, 3)</code> per-point RGB in [0, 1] for static vertex-colored rendering.
+<code>embedding</code> is an optional <code>(N, K)</code> per-point feature vector (e.g. a
+reduced-dim PCA projection) enabling the viewer's click-to-similarity
+color mode. Other <code>**kwargs</code> go to <code>SimViewBody.create</code>.</p>
 
 
     </div>
@@ -2075,13 +1967,14 @@ viewer's click-to-similarity color mode.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Adds a world-space polyline to the model.</p>
+        <p>Add a world-space polyline named <code>name</code> to the model.</p>
 <p><code>points</code> <code>(N, 3)</code> draws a fixed line (a planned route). <code>frames</code>
 <code>(T, B, max_vertices, 3)</code> -- or <code>(T, max_vertices, 3)</code> when
 <code>batch_size == 1</code> -- draws a different line every state (a
 replanned local path); pad shorter frames with trailing NaN rows. T
 must equal the number of states by the time the scene is saved or
-shown. <code>width</code> is in pixels (the viewer currently draws 1 px);
+shown. <code>color</code> is RGB in [0, 1], <code>dashed</code> draws a dashed line, and
+<code>width</code> is in pixels (the viewer currently draws 1 px);
 <code>visible_ranges</code> as in <code>create_body</code>.</p>
 
 
@@ -2113,184 +2006,30 @@ shown. <code>width</code> is in pixels (the viewer currently draws 1 px);
 
     <div class="doc doc-contents ">
 
-        <p>Adds terrain to the simulation model.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>heightmap</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>2D or 3D tensor of terrain heights.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>normals</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>3D or 4D tensor of terrain normals. If None,
-normals are automatically computed from the heightmap gradients.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>compute_normals</code>
-            </td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>With <code>normals=None</code>, <code>False</code> stores no normals
-at all (three floats per cell less on disk and over the wire); the
-viewer then shades the surface from normals it computes itself. The
-"normals" arrow visualization has nothing to draw in that case.</p>
-              </div>
-            </td>
-            <td>
-                  <code>True</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>x_lim</code>
-            </td>
-            <td>
-                  <code><span title="tuple">tuple</span>[<span title="float">float</span>, <span title="float">float</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>(min, max) coordinates for the X axis.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>y_lim</code>
-            </td>
-            <td>
-                  <code><span title="tuple">tuple</span>[<span title="float">float</span>, <span title="float">float</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>(min, max) coordinates for the Y axis.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>grid_res</code>
-            </td>
-            <td>
-                  <code><span title="float">float</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Spacing between adjacent grid nodes. If x_lim
-and y_lim are omitted they are inferred so the nodes sit <code>grid_res</code>
+        <p>Add terrain to the simulation model.</p>
+<p><code>heightmap</code> is a 2D or 3D (batched) tensor of terrain heights.
+<code>normals</code> is a 3D or 4D tensor of terrain normals; if None they are
+computed from the heightmap gradients, unless <code>compute_normals=False</code>,
+which stores no normals at all (three floats per cell less on disk and
+over the wire). The viewer then shades the surface from normals it
+computes itself, and the "normals" arrow visualization has nothing to
+draw.</p>
+<p><code>x_lim</code>/<code>y_lim</code> are the <code>(min, max)</code> coordinates of the X/Y axes.
+<code>grid_res</code> is the spacing between adjacent grid nodes; if <code>x_lim</code> and
+<code>y_lim</code> are omitted they are inferred so the nodes sit <code>grid_res</code>
 apart, centered at 0 (a W-wide grid spans <code>(W - 1) * grid_res</code>).</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>properties</code>
-            </td>
-            <td>
-                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="torch.Tensor">Tensor</span>] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional arbitrary named
-per-cell scalar maps (2D or 3D, like <code>heightmap</code>), e.g.
-<code>{"friction": friction_map, "stiffness": stiffness_map}</code>. Each becomes
-selectable as a terrain color mode in the viewer automatically, with no
-further code changes needed.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>property_bounds</code>
-            </td>
-            <td>
-                  <code><span title="dict">dict</span>[<span title="str">str</span>, <span title="tuple">tuple</span>[<span title="float">float</span>, <span title="float">float</span>]] | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional explicit
-<code>(min, max)</code> color-scale range per property name, e.g.
+<p><code>properties</code> holds optional named per-cell scalar maps (2D or 3D, like
+<code>heightmap</code>), e.g. <code>{"friction": friction_map}</code>; each becomes a
+terrain color mode in the viewer. <code>property_bounds</code> optionally gives
+an explicit <code>(min, max)</code> color-scale range per property name, e.g.
 <code>{"friction": (0.0, 1.0)}</code>. Each name must also appear in
-<code>properties</code>; names left out keep the default, which is that map's
-own data range. Use this to keep one scale comparable across scenes
--- cells outside the range saturate at the end colors rather than
-being hidden.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>embedding_map</code>
-            </td>
-            <td>
-                  <code><span title="torch.Tensor">Tensor</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Optional per-cell K-wide feature map
-(3D channels-first <code>(K, Dy, Dx)</code> or 4D <code>(B, K, Dy, Dx)</code>, like <code>normals</code>)
+<code>properties</code>; names left out use that map's own data range. Use it to
+keep one scale comparable across scenes -- cells outside the range
+saturate at the end colors rather than being hidden.</p>
+<p><code>embedding_map</code> is an optional per-cell K-wide feature map (3D
+channels-first <code>(K, Dy, Dx)</code> or 4D <code>(B, K, Dy, Dx)</code>, like <code>normals</code>)
 enabling the viewer's click-to-similarity "features" color mode.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
+<p>Each field's batch dim must be 1 (shared) or <code>batch_size</code>.</p>
 
 
     </div>
@@ -2314,13 +2053,13 @@ enabling the viewer's click-to-similarity "features" color mode.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Reconstruct a SimulationScene from the dict produced by <code>save</code>/<code>to_json</code>
-(i.e. the parsed <code>{"model": ..., "states": ...}</code> document).</p>
+        <p>Reconstruct a SimulationScene from the document <code>save</code> writes
+(the parsed <code>{"model": ..., "states": ...}</code> dict).</p>
 <p>Binary <code>__b64__</code>-encoded fields inside <code>states</code> (e.g. from
 <code>add_trajectory(binary=True)</code>) are left as-is, matching the on-disk
 wire format, so a subsequent <code>save()</code> reproduces the same bytes for
 those fields without a decode/re-encode round trip.</p>
-<p>Accepts either <code>states</code> layout (see :mod:<code>simview.columnar</code>). A
+<p>Accepts either <code>states</code> layout (see <code>simview.columnar</code>). A
 columnar document is expanded back into the per-frame list <code>states</code>
 is in memory, so every authoring API keeps working unchanged; the
 expansion is exact, so re-saving columnar reproduces the same blobs.</p>
@@ -2432,82 +2171,19 @@ from a hand-edited file) are ignored with a warning.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Exports the complete simulation data (model and states) to a JSON file.
-Uses a streaming approach to reduce memory spikes for large simulations.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>filepath</code>
-            </td>
-            <td>
-                  <code><span title="str">str</span> | <span title="pathlib.Path">Path</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Destination path. If it ends in <code>.gz</code> the output is
-gzip-compressed regardless of <code>compress</code>.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>compress</code>
-            </td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If True, gzip-compress the output (useful for large
-simulations, which can reach 100+ MB as plain JSON). If
-<code>filepath</code> doesn't already end in <code>.gz</code>, the suffix is
-appended so the extension reflects the actual file contents.</p>
-              </div>
-            </td>
-            <td>
-                  <code>False</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>columnar</code>
-            </td>
-            <td>
-                  <code><span title="bool">bool</span> | None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Which <code>states</code> layout to write (see
-:mod:<code>simview.columnar</code>). <code>None</code> (the default) writes the
-columnar layout when the states allow it and silently falls
-back to the legacy per-frame array when they don't. <code>True</code>
-requires it, raising ValueError rather than falling back --
-useful in a pipeline that depends on the smaller output.
-<code>False</code> always writes the legacy array.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-        <p>The columnar layout stores one whole-trajectory binary blob per body
+        <p>Write the scene (model and states) to a JSON file at <code>filepath</code>.</p>
+<p>A <code>filepath</code> ending in <code>.gz</code> is gzip-compressed regardless of
+<code>compress</code>. <code>compress=True</code> gzip-compresses the output (useful for
+large simulations, which can reach 100+ MB as plain JSON) and appends
+<code>.gz</code> if <code>filepath</code> lacks it, so the extension reflects the
+contents.</p>
+<p><code>columnar</code> picks the <code>states</code> layout (see <code>simview.columnar</code>).
+<code>None</code> (the default) writes the columnar layout when the states allow
+it and silently falls back to the legacy per-frame array when they
+don't. <code>True</code> requires it, raising ValueError rather than falling
+back -- useful in a pipeline that depends on the smaller output.
+<code>False</code> always writes the legacy array, streamed frame by frame.</p>
+<p>The columnar layout stores one whole-trajectory binary blob per body
 per field instead of thousands of small per-frame ones, which makes
 both the file and the viewer's load of it dramatically cheaper. Both
 layouts are read transparently by <code>load</code>, <code>merge_simulation_files</code>,
@@ -2531,8 +2207,8 @@ the viewer and the CLI tools.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Write a static bundle (<code>model.json</code>, <code>states.json</code>, <code>blob/&lt;id&gt;</code>)
-that the viewer's static mode (<code>#data=&lt;base url&gt;</code>, see
+        <p>Write a static bundle (<code>model.json</code>, <code>states.json</code>,
+<code>blob/&lt;id&gt;</code>) that the viewer's static mode (<code>#data=&lt;base url&gt;</code>, see
 <code>simview.view_hash</code>) can load from any plain static file server.</p>
 <p>Uses the same columnar layout and fallback as <code>save</code>.</p>
 
@@ -2574,7 +2250,8 @@ are fine -- each gets its own server thread and port (via
 <code>find_free_port</code>).</p>
 <p><code>view</code> is a view-link fragment (see <code>simview.view_hash</code>) the inline
 iframe opens with, e.g. a fixed camera or <code>ui=False</code>; <code>height</code> is the
-iframe height in pixels.</p>
+iframe height in pixels. <code>host</code>/<code>preferred_port</code> pick where to bind,
+and <code>open_browser=True</code> also opens the URL in the default browser.</p>
 
 
     </div>
@@ -2647,6 +2324,30 @@ evaluating the handle in a cell.</p>
 
 
 
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="simview.server.ViewerHandle.url" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">url</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">url</span><span class="p">:</span> <span class="nb">str</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Base URL of the running viewer.</p>
+
+    </div>
+
+</div>
 
 
 

@@ -1306,8 +1306,7 @@
 
 
 <h1 id="launcher">Launcher</h1>
-<p><code>SimViewLauncher</code> is the blocking launch used by the CLI and save-then-view
-workflows, as opposed to <code>LiveViewer</code>'s streaming launch or <code>SimulationScene.show()</code>'s
+<p><code>SimViewLauncher</code> is the blocking launch for save-then-view workflows, as opposed to <code>LiveViewer</code>'s streaming launch or <code>SimulationScene.show()</code>'s
 non-blocking one.</p>
 
 
@@ -1327,10 +1326,12 @@ non-blocking one.</p>
 
 
 
-        <p>Initializes the visualizer.
-- If source is a SimulationScene: it is handed to the server in memory (no
-  temporary file), and its internal data is cleared after the server stops.
-- If source is a path: it is used directly.</p>
+        <p>Serve a scene in the foreground until interrupted, then free it.</p>
+<p>The blocking counterpart to <code>SimulationScene.show()</code>'s background viewer.</p>
+
+        <p>Validate <code>source</code>, a <code>SimulationScene</code> or a path to a scene file.</p>
+<p>A scene is handed to the server in memory (no temporary file) and its
+internal data is cleared once the server stops; a path is served as is.</p>
 
 
 
@@ -1366,7 +1367,7 @@ non-blocking one.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Clears the in-memory scene's data. Safe to call multiple times.</p>
+        <p>Clear the in-memory scene's data. Safe to call multiple times.</p>
 
 
     </div>
@@ -1388,7 +1389,7 @@ non-blocking one.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Launches the SimViewServer, then clears the in-memory scene (if any).</p>
+        <p>Run the server until it stops, then clear the in-memory scene (if any).</p>
 
 
     </div>

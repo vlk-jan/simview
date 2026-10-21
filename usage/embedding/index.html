@@ -1418,7 +1418,7 @@ time, camera, batch and colour modes after load by assigning <code>iframe.src</c
 <p>Every key is optional and an absent key leaves the viewer's current setting alone, so a
 fragment can carry a whole setup between page loads (<code>getViewState()</code> → <code>serializeViewState</code>
 on one page, the hash on the next) or change one thing.</p>
-<p>Two <strong>startup</strong> keys are read once, at load, and don't need <code>v=1</code>:</p>
+<p>Four <strong>startup</strong> keys are read once, at load, and don't need <code>v=1</code>:</p>
 <table>
 <thead>
 <tr>
@@ -1456,7 +1456,8 @@ live anywhere on the site. The viewer page itself is vendored with</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>simview<span class="w"> </span>static-viewer<span class="w"> </span>public/simview<span class="w">   </span><span class="c1"># index.html + static/</span>
 </span></code></pre></div>
 <p>It loads all of its assets relative to the page, so it can be served from any path of
-your origin. The GitHub Pages demo is built this way (<code>.github/workflows/demo.yml</code>);
+your origin. The GitHub Pages demo serves the same static layout
+(<code>.github/workflows/demo.yml</code> dumps it from a running server);
 <code>simview.columnar.write_static_bundle</code> is the stdlib-only writer behind <code>save_static</code>.</p>
 <p>Declare how the viewer should <em>start</em> at authoring time instead of patching it after
 load — see <code>viewerDefaults</code> and the per-body <code>color</code>/<code>opacity</code>/<code>visible</code> fields in the

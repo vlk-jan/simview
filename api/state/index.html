@@ -859,6 +859,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="SimViewBodyState">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simview.state.SimViewBodyState.to_json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        to_json
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1278,6 +1295,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="SimViewBodyState">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#simview.state.SimViewBodyState.to_json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        to_json
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1375,7 +1409,7 @@
 <p>Shapes are <code>(T, B, k)</code> — T timesteps, B batches — or <code>(T, k)</code> when the
 scene has a single batch. Orientations are <code>[w, x, y, z]</code> (scalar-first),
 matching the rest of SimView. Pass a list of these to
-:meth:<code>SimulationScene.add_trajectory</code> to append an entire time-series in one
+<code>SimulationScene.add_trajectory</code> to append an entire time-series in one
 call instead of building a <code>SimViewBodyState</code> per frame.</p>
 <p><code>name</code> may be a list of body names instead of a single string, to cover
 several bodies that move rigidly together (e.g. links welded to the same
@@ -1439,9 +1473,16 @@ must never appear in a <code>BodyTrajectory</code> at all.</p>
 
 
 
-        <p><code>body_name</code> may be a list of body names sharing this exact
+        <p>One body's pose (and optional attributes) in a single state, for
+<code>SimulationScene.add_state</code>.</p>
+
+        <p>Validate and store one body's state.</p>
+<p><code>position</code> is <code>(3,)</code> or <code>(B, 3)</code>, <code>orientation</code> <code>(4,)</code> or <code>(B, 4)</code>
+(<code>[w, x, y, z]</code>). <code>optional_attributes</code> maps
+<code>OptionalBodyStateAttribute</code> names to per-batch values.</p>
+<p><code>body_name</code> may be a list of body names sharing this exact
 transform (and any optional attributes), for bodies that move
-rigidly together — see :class:<code>BodyTrajectory</code> for the same idea
+rigidly together — see <code>BodyTrajectory</code> for the same idea
 applied to whole trajectories.</p>
 <p>If the named body has a <code>parent</code> set in the model, <code>position</code>/
 <code>orientation</code> here are interpreted as local to that parent's
@@ -1451,7 +1492,7 @@ current-frame pose instead of world space (see
 <code>SimulationScene.add_trajectory</code>), <code>bodyTransform</code> and any
 provided vector attributes (velocity/angularVelocity/force/torque)
 are packed as float32 <code>__b64__</code> blobs, shrinking the output file;
-the viewer and :func:<code>merge_simulation_files</code> decode these
+the viewer and <code>merge_simulation_files</code> decode these
 transparently. Set <code>binary=False</code> to emit plain JSON lists.</p>
 
 
@@ -1474,6 +1515,26 @@ transparently. Set <code>binary=False</code> to emit plain JSON lists.</p>
 
 
 
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="simview.state.SimViewBodyState.to_json" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">to_json</span>
+
+
+</h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">to_json</span><span class="p">()</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return this state's wire-format body dict.</p>
+
+
+    </div>
+
+</div>
 
 
 
