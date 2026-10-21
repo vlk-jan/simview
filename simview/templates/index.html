@@ -24,16 +24,14 @@
       <h1>Loading…</h1>
     </div>
 
-    <!-- three.js and its addons (OrbitControls, lil-gui) are
-         vendored locally (same-origin) instead of loaded from a CDN, so the
-         viewer keeps working with no internet access. Each library lives in
-         a version-stamped directory (e.g. lib/three-0.174.0/) because
-         simview/static/lib/ is served with a long-lived, immutable
+    <!-- Third-party libraries are vendored under simview/static/lib/
+         (same-origin, so no SRI is needed) and the viewer works with no
+         internet access. lib/ is served with a long-lived, immutable
          Cache-Control header (see _IMMUTABLE_STATIC_DIRS in
-         simview/server.py) -- bumping a pinned version must change the URL,
-         which a version-stamped directory name gives us for free. Since
-         these are now same-origin static files (not a third-party CDN
-         response), there is no SRI/integrity concern to guard against. -->
+         simview/server.py), so a version bump must change the URL. Only
+         three.js (with OrbitControls and lil-gui) lives in a version-stamped
+         directory, lib/three-0.174.0/; uPlot and js-colormaps.js sit
+         unversioned directly in lib/. -->
     <script type="importmap">
       {
         "imports": {
@@ -45,12 +43,18 @@
 
     <script type="module" src="./static/js/main.js"></script>
     <script>
-      console.log("SimView index.html loaded");
       window.onerror = function(msg, url, line, col, error) {
         console.error("Global Error:", msg, "at", url, ":", line);
         const splash = document.getElementById("loading-splash");
         if (splash) {
-          splash.innerHTML = `<h1 class="sv-splash-error">JavaScript error</h1><p>${msg}</p><p>${url}:${line}</p>`;
+          const title = document.createElement("h1");
+          title.className = "sv-splash-error";
+          title.textContent = "JavaScript error";
+          const message = document.createElement("p");
+          message.textContent = String(msg);
+          const where = document.createElement("p");
+          where.textContent = `${url}:${line}`;
+          splash.replaceChildren(title, message, where);
         }
       };
     </script>
