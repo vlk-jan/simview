@@ -25,7 +25,7 @@ import { escapeHtml } from "./utils/html.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
 import { shouldFollowLive } from "./utils/liveFollow.js";
 import { shiftEpisodes } from "./utils/episodes.js";
-import { parseViewState, parseStartupOptions, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
+import { parseViewState, parseStartupOptions, safeStaticBase, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
 import { mergeUiDefaults, applyViewerDomDefaults, panelHideCss } from "./utils/viewerDefaults.js";
 
 export class SimView {
@@ -80,10 +80,13 @@ export class SimView {
             console.log(`SimView: static demo mode, base='${simView.staticBase}'`);
         }
         // Startup hash keys (see parseStartupOptions): `data` wins over the global.
-        // `hide = []`: a browser cache serving an older viewState.js alongside
-        // this file must degrade to showing the panels, not a broken viewer.
+        // The `data` value is validated against this page's origin (see
+        // safeStaticBase) -- the hash is attacker-controllable via a crafted
+        // link. `hide = []`: a browser cache serving an older viewState.js
+        // alongside this file must degrade to showing the panels, not a
+        // broken viewer.
         const { data, ui, play, hide = [] } = parseStartupOptions(location.hash);
-        if (data) simView.staticBase = data;
+        if (data) simView.staticBase = safeStaticBase(data);
         if (!ui) document.body.classList.add("sv-embed");
         simView.autoplay = play;
         // `hide=recording,legend`: same stylesheet mechanism as
@@ -306,6 +309,20 @@ export class SimView {
             console.log("Live stream closed (simulation finished serving).");
             this.liveSocket = null;
             this.hideLiveBadge();
+            // The splash is only removed once a frame arrives (above), so it
+            // still being attached means the connection died before the run
+            // started -- e.g. refused by the server's origin check (a viewer
+            // opened by hostname; see /ws/states). Show why instead of leaving
+            // "Fetching states…" up forever.
+            if (splash && splash.isConnected) {
+                splash.innerHTML =
+                    `<h1 class="sv-splash-error">Couldn't start the live stream</h1>` +
+                    `<p>${escapeHtml(
+                        "The server refused the connection. If the viewer was opened by hostname, " +
+                        "open it by its address instead (e.g. http://10.0.0.5:5420). " +
+                        "See the browser console and the server log for details.",
+                    )}</p>`;
+            }
         };
         socket.onerror = (event) => {
             console.error("Live stream error:", event);
@@ -363,6 +380,9 @@ export class SimView {
             }
             if (this.scalarPlotter) {
                 this.scalarPlotter.onStatesAppended();
+            }
+            if (this.terrainProfile) {
+                this.terrainProfile.onStatesAppended();
             }
             if (wasFollowingLive) {
                 this.animationController.goToTime(this.store.lastTime());
