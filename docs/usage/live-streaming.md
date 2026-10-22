@@ -32,6 +32,13 @@ buffered for the next one to connect. Playback in the browser follows the live f
 automatically as long as you haven't scrubbed backward or started a loop; a small "LIVE"
 badge shows while the socket is open.
 
+The live stream's WebSocket only accepts the server's own pages and `localhost`
+connections: a viewer opened from another machine must reach the server by its
+address (e.g. `http://10.0.0.5:5420`), not by its hostname -- a hostname-served
+page is indistinguishable from a page on someone else's site, so it is refused
+(the browser shows an error instead of the loading splash, and the server logs
+the rejection).
+
 ## Backpressure
 
 `push_state` never blocks your simulation loop on the network. Frames go into a bounded
