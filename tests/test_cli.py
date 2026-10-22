@@ -15,6 +15,7 @@ pytest.importorskip("torch")
 from conftest import build_scene
 
 import simview.__main__ as cli
+from simview.columnar import is_columnar
 
 
 def _fail_if_called(*args, **kwargs):
@@ -185,6 +186,9 @@ def test_save_merged_writes_json_without_starting_server(monkeypatch, tmp_path):
     assert out_path.is_file()
     merged = json.loads(out_path.read_text())
     assert merged["model"]["simBatches"] == 3
+    # Packed like SimulationScene.save, not the fat per-frame layout merge
+    # produces internally.
+    assert is_columnar(merged["states"])
 
 
 def test_save_merged_gzips_when_path_ends_in_gz(monkeypatch, tmp_path):

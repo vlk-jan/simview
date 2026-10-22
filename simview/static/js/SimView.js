@@ -381,6 +381,9 @@ export class SimView {
             if (this.scalarPlotter) {
                 this.scalarPlotter.onStatesAppended();
             }
+            if (this.terrainProfile) {
+                this.terrainProfile.onStatesAppended();
+            }
             if (wasFollowingLive) {
                 this.animationController.goToTime(this.store.lastTime());
             }

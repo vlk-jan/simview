@@ -287,10 +287,15 @@ class SimViewServer:
         # SimViewServer doesn't need a reference to it. Bounded: on a run
         # longer than the cap the oldest frames are forgotten, so a late viewer
         # replays the most recent window instead of the entire history.
-        self.frame_buffer: deque[dict] = deque(maxlen=frame_buffer_size)
+        # Each entry is (absolute frame index, frame): the index rides with
+        # the frame so a catch-up never has to reconstruct it from
+        # `frames_pushed - len(buffer)`, whose two halves are updated by
+        # different threads and could be read mid-update.
+        self.frame_buffer: deque[tuple[int, dict]] = deque(maxlen=frame_buffer_size)
         # Absolute index (in the producer's scene.states) of the next frame to
-        # enter frame_buffer, so a catch-up can tell the viewer where its
-        # window starts -- episode startIndex values are absolute too.
+        # enter frame_buffer. Maintained by push_frame on the producer's thread
+        # and read there only (live.py); catch-up reads the indices stored in
+        # the buffer instead.
         self.frames_pushed = 0
         self._batch_selections = (
             None if batch_selections is None else [str(s) for s in batch_selections]
@@ -409,9 +414,13 @@ class SimViewServer:
         # write dead "/blob/..." URLs, and a second show() would serve stale
         # blob references). Deep-copying just the model is cheap: the big
         # payloads are immutable blob strings, which deepcopy shares rather
-        # than duplicating. `states` is never mutated, so it isn't copied.
+        # than duplicating. A columnar `states` doc gets the same treatment
+        # below (rewrite_blobs rewrites its inline blobs in place too); the
+        # legacy per-frame list is only ever read.
         if preloaded and model_data is not None:
             model_data = copy.deepcopy(model_data)
+        if preloaded and is_columnar(states_data):
+            states_data = copy.deepcopy(states_data)
 
         # Taken once, at load: the sidecar must describe the batches that were
         # actually loaded, not whatever the file is by the time of a rename.
@@ -680,20 +689,22 @@ class SimViewServer:
             if not pending:
                 self.ws_clients.add(websocket)
                 return
-            # Absolute index of buffered[0]: everything pushed minus what the
-            # (bounded) buffer still holds.
-            offset = self.frames_pushed - len(buffered) + replayed
             for start in range(0, len(pending), _CATCHUP_CHUNK_SIZE):
                 chunk = pending[start : start + _CATCHUP_CHUNK_SIZE]
                 await websocket.send_text(
-                    json.dumps({"states": chunk, "frameOffset": offset + start})
+                    json.dumps(
+                        {
+                            "states": [frame for _, frame in chunk],
+                            "frameOffset": pending[start][0],
+                        }
+                    )
                 )
             replayed += len(pending)
 
     def push_frame(self, frame: dict) -> None:
         """Record one new frame for catch-up (live mode). The caller
         broadcasts it separately via `broadcast_frame`."""
-        self.frame_buffer.append(frame)
+        self.frame_buffer.append((self.frames_pushed, frame))
         self.frames_pushed += 1
 
     def set_episodes(self, episodes: list[dict]) -> None:

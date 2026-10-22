@@ -8,6 +8,7 @@ httpx), rather than FastAPI's in-process TestClient, since the whole point of
 `show` is that it doesn't block the caller.
 """
 
+import json
 import socket
 
 import httpx
@@ -17,7 +18,9 @@ pytest.importorskip("torch")
 
 from conftest import build_scene
 
+from simview.columnar import is_columnar
 from simview.scene import SimulationScene, ViewerHandle
+from simview.server import SimViewServer
 
 
 def _port_is_free(host: str, port: int) -> bool:
@@ -111,6 +114,23 @@ def test_show_does_not_mutate_the_scene_model():
         blob_resp = httpx.get(f"{handle.url}{blob_url}", timeout=5.0)
         assert blob_resp.status_code == 200
         assert len(blob_resp.content) == 5 * 3 * 4  # 5 points x 3 floats x 4 bytes
+
+
+def test_preloaded_columnar_states_doc_is_not_mutated(tmp_path):
+    """Serving a preloaded columnar `data=` dict must not rewrite its inline
+    __b64__ state blobs into /blob/ URLs in place -- the states twin of the
+    model regression above (a later save of the same dict would write dead
+    references)."""
+    scene = build_scene(batch_size=1)
+    path = tmp_path / "scene.json"
+    scene.save(path)
+    doc = json.loads(path.read_text())
+    assert is_columnar(doc["states"])
+    states_before = json.dumps(doc["states"])
+
+    SimViewServer(data=doc)
+
+    assert json.dumps(doc["states"]) == states_before
 
 
 def test_concurrent_shows_get_independent_ports():

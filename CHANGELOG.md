@@ -7,8 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The Terrain profile panel now keeps updating during live streaming: it
+  previously froze at the frame it was opened on (the panel had no hook for
+  newly appended states, unlike the scalar plot and error metrics). While
+  open it now recomputes on the same throttled tick those panels use.
+- A narrow race in live mode could shift a just-connected viewer's catch-up
+  replay (and its episode boundaries) by one frame: the frame buffer and the
+  pushed-frame counter were updated as two separate statements read by the
+  event loop, so a catch-up could observe them mid-update. Each buffered
+  frame now carries its own absolute index, so the offset is never
+  reconstructed from the two.
+- Serving a preloaded columnar `data=` dict no longer rewrites its inline
+  `__b64__` state blobs into server-local `/blob/` URLs in place -- the same
+  protection the scene model already had (a later `save()` of that dict would
+  have written dead references).
+
 ### Changed
 
+- `simview merge`'s `--save-merged` now writes the compact columnar states
+  layout (same as `SimulationScene.save`), instead of the legacy per-frame
+  JSON with decoded blobs -- merged files are many times smaller for the same
+  data. Irregular scenes that can't be packed fall back to the old layout.
+- `simview info` reads the scene file once instead of twice (the whole-file
+  gzip check and the JSON parse each read it), and summarizes scalar fields
+  in one pass over the frames instead of two -- noticeable on the
+  multi-hundred-MB files the command exists for.
 - CI/docs/publish workflow actions bumped to their newest majors:
   `actions/checkout` v5→v7, `actions/setup-node` v4→v7,
   `actions/upload-artifact` v4→v7, `actions/download-artifact` v4→v8,

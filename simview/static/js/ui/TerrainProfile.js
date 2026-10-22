@@ -129,6 +129,14 @@ export class TerrainProfile {
         }
     }
 
+    // Called by SimView when live streaming appended states -- the cached
+    // whole-run series is now stale. Mirrors ErrorMetrics.onHistoryReady:
+    // recompute is deferred to the throttled animate() tick (and skipped
+    // entirely while hidden -- setVisible recomputes on open).
+    onStatesAppended() {
+        this.dirty = true;
+    }
+
     // Called by AnalysisPanel when this panel becomes/stops being the visible section.
     setVisible(visible) {
         if (this.isExpanded === visible) return;
@@ -174,8 +182,9 @@ export class TerrainProfile {
 
     // Recomputes the full (whole-timeline) series for the current
     // layer/body/path selection. This is the expensive step (bilinear
-    // sampling every frame x every batch) -- only run on open or on a
-    // control change while open, never per animation frame.
+    // sampling every frame x every batch) -- only run on open, on a control
+    // change while open, or (live mode) on the throttled animate() tick
+    // after new states arrived, never per animation frame.
     _recompute() {
         this.dirty = false;
         const store = this.app.animationController ? this.app.animationController.store : null;
@@ -311,7 +320,8 @@ export class TerrainProfile {
         if (!this.isExpanded) return;
         if (now - this.lastRenderTime < this.minRenderDelay) return;
         this.lastRenderTime = now;
-        this._updateMarker();
+        if (this.dirty) this._recompute();
+        else this._updateMarker();
     }
 
     dispose() {

@@ -1,8 +1,7 @@
 """Structural summary of a scene JSON file, for `simview info` and for coding
 agents inspecting simview-generated data files.
 
-Deliberately dependency-free (stdlib only: json, gzip via
-`simview.utils.read_maybe_gzipped_bytes`, base64) so it works on a base
+Deliberately dependency-free (stdlib only: json, gzip, base64) so it works on a base
 install without the `authoring` extra (torch/numpy) -- see "Lazy imports" in
 docs/dev/architecture.md. Does not import `simview.model`/`simview.server`:
 the former pulls in torch at module scope, the latter fastapi/uvicorn --
@@ -11,6 +10,7 @@ both wrong layering for a lightweight inspection tool. Shares its blob-decoding/
 which are stdlib-only on this read path.
 """
 
+import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -23,7 +23,7 @@ from simview.columnar import (
     is_blob,
     is_columnar,
 )
-from simview.utils import body_label, cap, human_bytes, read_maybe_gzipped_bytes
+from simview.utils import body_label, cap, human_bytes
 
 _MAX_DETAIL_ITEMS = 20
 _LARGE_FILE_BYTES = 100_000_000
@@ -218,9 +218,12 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
 
     scalars_summary = {}
     for name in scalar_names:
-        missing = [i for i, s in enumerate(states) if name not in s]
+        # One pass per scalar: collect missing-frame indices and check
+        # lengths in the same walk.
+        missing = []
         for i, s in enumerate(states):
             if name not in s:
+                missing.append(i)
                 continue
             value = s[name]
             length = len(value) if isinstance(value, list) else 1
@@ -395,7 +398,10 @@ def summarize_scene(path: str | Path) -> dict:
     path = Path(path)
     raw = path.read_bytes()
     gzipped = raw[:2] == b"\x1f\x8b"
-    data = json.loads(read_maybe_gzipped_bytes(path))
+    # Decompress from the bytes already in hand rather than calling
+    # read_maybe_gzipped_bytes(path), which would read the whole file a
+    # second time -- scene files are often hundreds of MB.
+    data = json.loads(gzip.decompress(raw) if gzipped else raw)
     if not isinstance(data, dict):
         raise ValueError(
             "scene file must contain a JSON object with 'model'/'states' keys"

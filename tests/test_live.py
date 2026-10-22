@@ -127,7 +127,7 @@ def test_frame_buffer_is_bounded():
         server.push_frame({"time": float(i), "bodies": []})
 
     # Oldest frames are forgotten rather than growing without limit.
-    assert [frame["time"] for frame in server.frame_buffer] == [7.0, 8.0, 9.0]
+    assert [frame["time"] for _, frame in server.frame_buffer] == [7.0, 8.0, 9.0]
 
 
 def test_websocket_receives_frame_pushed_after_connect(live_client):

@@ -297,9 +297,18 @@ def save_merged(
         logger.error("Error: --save-merged requires at least 2 input files to merge.")
         sys.exit(1)
 
+    from simview.columnar import columnarize_states, inline_blob
     from simview.merge import merge_simulation_files
 
     merged = merge_simulation_files(paths, selections)
+    # Pack the merged states the same way SimulationScene.save does: merge
+    # decodes every blob to plain lists, so dumping it directly would write
+    # the fat legacy per-frame layout. Falls back silently when numpy is
+    # unavailable or the states are too irregular (columnarize_states
+    # returns None).
+    columnar_states = columnarize_states(merged["states"], merged["model"], inline_blob)
+    if columnar_states is not None:
+        merged["states"] = columnar_states
     payload = json.dumps(merged).encode("utf-8")
     if out_path.suffix == ".gz":
         payload = gzip.compress(payload, compresslevel=1)
