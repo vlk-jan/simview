@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     parseStartupOptions,
     parseViewState,
+    safeStaticBase,
     serializeViewState,
     toggleMapFromUiState,
 } from "../../simview/static/js/utils/viewState.js";
@@ -252,5 +253,45 @@ describe("named carry-over keys (pc, track, cmap, speed)", () => {
         const parsed = parseViewState("#v=1&pc=yes&speed=-2&track=&cmap=");
         expect(parsed).toEqual({});
         expect(serializeViewState({ playbackSpeed: 0, pointCloudsVisible: "no" })).toBe("#v=1");
+    });
+});
+
+describe("safeStaticBase", () => {
+    // The node test environment has no `location`; stub it per test.
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    function stubLocation(href) {
+        vi.stubGlobal("location", { href, origin: new URL(href).origin });
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+    }
+
+    it("passes relative URLs through unchanged", () => {
+        stubLocation("http://localhost:5420/index.html");
+        expect(safeStaticBase("./scene/")).toBe("./scene/");
+        expect(safeStaticBase("scene")).toBe("scene");
+        expect(safeStaticBase(".")).toBe(".");
+    });
+
+    it("passes same-origin absolute URLs through unchanged", () => {
+        stubLocation("http://localhost:5420/viewer/index.html");
+        expect(safeStaticBase("http://localhost:5420/bundles/scene")).toBe(
+            "http://localhost:5420/bundles/scene",
+        );
+    });
+
+    it("rejects cross-origin URLs", () => {
+        stubLocation("http://localhost:5420/index.html");
+        expect(safeStaticBase("https://evil.example/scene")).toBeNull();
+        // Protocol-relative URLs resolve against the page's scheme.
+        expect(safeStaticBase("//evil.example/scene")).toBeNull();
+        expect(console.warn).toHaveBeenCalled();
+    });
+
+    it("rejects unparseable values", () => {
+        stubLocation("http://localhost:5420/index.html");
+        expect(safeStaticBase("http://")).toBeNull();
     });
 });

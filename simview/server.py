@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -23,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.datastructures import Headers
 from starlette.types import Scope
 
 from simview.columnar import columnarize_states, is_columnar, rewrite_blobs
@@ -36,7 +38,31 @@ STATIC = str(files("simview").joinpath("static"))
 # Local-only viewer: CORS is restricted to localhost/127.0.0.1 on any port so a
 # browser tab open on another local dev server can't be silently allowed, while
 # still letting the bundled UI (served from the same host) talk to the API.
-_ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+# The host list is shared with the /ws/states origin check (see
+# _LOCAL_ORIGIN_RE below), so the two can't drift apart.
+_LOCAL_HOSTS = r"(localhost|127\.0\.0\.1|\[::1\])"
+_ALLOWED_ORIGIN_REGEX = rf"^https?://{_LOCAL_HOSTS}(:\d+)?$"
+
+# The same host list, compiled, for the /ws/states origin check (see
+# _ws_origin_allowed): CORS does not apply to WebSockets, so the endpoint has
+# to check the browser's Origin header itself.
+_LOCAL_ORIGIN_RE = re.compile(rf"^{_LOCAL_HOSTS}(:\d+)?$")
+# A bare address (IPv4 or IPv6 literal, optionally bracketed) -- what a Host
+# header holds when the browser dialed the server by address rather than by a
+# (rebindable) name. Also used by that check.
+_IP_LITERAL_RE = re.compile(r"^\[?[0-9A-Fa-f:.]+\]?$")
+
+# Hosts run()/ViewerHandle bind to without a warning (see _warn_public_bind).
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+# Hard cap on the declared size of any request body. /batch-names is the only
+# endpoint that accepts one, and a scene's batch names are a handful of short
+# strings, so 1 MiB is orders of magnitude above legitimate use while keeping a
+# rogue POST (or a runaway client) from ballooning memory or the on-disk
+# sidecar.
+_MAX_REQUEST_BODY_BYTES = 1 << 20
+# Per-name cap for POST /batch-names, same reasoning per string.
+_MAX_BATCH_NAME_CHARS = 256
 
 # Subdirectories of simview/static that hold vendored, version-pinned third-party
 # libraries. These never change for a given release, so they get a long-lived,
@@ -99,6 +125,99 @@ def _parse_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
 
 def _not_found(what: str) -> JSONResponse:
     return JSONResponse({"message": f"{what} data not available"}, status_code=404)
+
+
+def _warn_public_bind(host: str) -> None:
+    """Warn when the server is bound where other machines can reach it.
+
+    The server has no authentication: anyone who can connect can read the
+    scene data and persist batch names to disk next to the scene file. That is
+    fine on loopback (the default, and all a personal viewer needs) and a
+    deliberate choice on e.g. an HPC login node -- hence a warning, not an
+    error.
+    """
+    if host not in _LOOPBACK_HOSTS:
+        logger.warning(
+            "Serving on %s with NO authentication: anyone who can reach this "
+            "address can read the scene data and write batch names. Only bind "
+            "to a shared interface on networks you trust.",
+            host,
+        )
+
+
+def _host_of(authority: str) -> str:
+    """The host part of a Host-header-style `host[:port]` authority, keeping
+    IPv6 brackets intact ('[::1]:5420' -> '[::1]')."""
+    if authority.startswith("["):
+        return authority.partition("]")[0] + "]"
+    return authority.partition(":")[0]
+
+
+def _ws_origin_allowed(websocket: WebSocket) -> bool:
+    """Whether /ws/states should serve this connection.
+
+    Browsers always send an Origin header on WebSocket connections, and CORS
+    does not apply to them, so without this check any site open in the user's
+    browser could connect to a running live viewer and read every pushed
+    frame. Two origins are allowed:
+
+    * a localhost one (the viewer itself, another local dev server, the
+      Jupyter iframe), matching the CORS list above;
+    * a same-origin one -- the Origin's host:port equals the Host header, i.e.
+      a page this very server served, connecting back to the address it was
+      loaded from. The Host must additionally name an address or 'localhost':
+      a hostname that Origin and Host agree on is the DNS-rebinding signature,
+      while an address the browser actually dialed is by construction this
+      machine. (The trade-off: a live viewer reached by hostname over the LAN
+      is refused -- reach it by address, e.g. http://10.0.0.5:5420.)
+
+    A missing Origin (tests, non-browser tooling) is allowed; browsers never
+    omit it.
+    """
+    origin = websocket.headers.get("origin")
+    if origin is None:
+        return True
+    match = re.match(r"^https?://([^/?#]+)", origin)
+    if not match:
+        return False
+    if _LOCAL_ORIGIN_RE.match(match.group(1)):
+        return True
+    host_header = websocket.headers.get("host", "")
+    if match.group(1) != host_header:
+        return False
+    host = _host_of(host_header)
+    return host == "localhost" or _IP_LITERAL_RE.match(host) is not None
+
+
+class _BodySizeLimitMiddleware:
+    """Rejects requests whose declared body exceeds _MAX_REQUEST_BODY_BYTES.
+
+    Checks Content-Length and answers 413 before FastAPI/uvicorn buffers and
+    parses anything. A chunked request with no Content-Length slips past this
+    -- acceptable for a local single-user tool, where the point is bounding
+    what a casual or runaway client can push, not defeating a deliberate
+    attacker with full protocol control.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive, send):
+        if scope["type"] == "http":
+            length = Headers(scope=scope).get("content-length")
+            if length is not None and length.isdigit():
+                if int(length) > _MAX_REQUEST_BODY_BYTES:
+                    response = JSONResponse(
+                        {
+                            "message": (
+                                f"Request body exceeds {_MAX_REQUEST_BODY_BYTES} bytes"
+                            )
+                        },
+                        status_code=413,
+                    )
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
 
 
 class BatchNamesRequest(BaseModel):
@@ -213,6 +332,10 @@ class SimViewServer:
             allow_methods=["GET", "POST"],
             allow_headers=["*"],
         )
+        # Body-size cap for the one endpoint with a request body. Added after
+        # CORS above, so it wraps it and rejects oversized payloads before any
+        # middleware or handler runs.
+        self.app.add_middleware(_BodySizeLimitMiddleware)
 
         # Mount static files. StaticFiles adds ETag/Last-Modified headers so
         # unchanged assets (vendored libs, textures, our own JS) are served
@@ -323,8 +446,11 @@ class SimViewServer:
         # Random per-load token folded into every blob URL so it's safe to cache
         # them forever: a later server restart serving a different scene on the
         # same port gets a different token, so it can never collide with a
-        # stale cached response for blob id N from a previous load.
-        self._blob_token = secrets.token_hex(4)
+        # stale cached response for blob id N from a previous load. It doubles
+        # as the only thing gating /blob responses (the /model payload that
+        # lists the URLs is CORS-restricted), so it is 128-bit rather than the
+        # few bits a pure cache-buster would need.
+        self._blob_token = secrets.token_hex(16)
 
         def register_blob(raw: bytes) -> str:
             blob_id = len(self.blobs)
@@ -461,6 +587,19 @@ class SimViewServer:
                     media_type="application/json",
                     status_code=400,
                 )
+            if any(len(name) > _MAX_BATCH_NAME_CHARS for name in names):
+                return Response(
+                    content=json.dumps(
+                        {
+                            "message": (
+                                "Batch names must each be at most "
+                                f"{_MAX_BATCH_NAME_CHARS} characters"
+                            )
+                        }
+                    ),
+                    media_type="application/json",
+                    status_code=400,
+                )
 
             self.model_data["batchNames"] = names
             self._pack_model()
@@ -490,6 +629,23 @@ class SimViewServer:
             # so a viewer opened mid-run still sees the recent timeline.
             @self.app.websocket("/ws/states")
             async def ws_states(websocket: WebSocket):
+                if not _ws_origin_allowed(websocket):
+                    # CORS doesn't apply to WebSockets, so the endpoint checks
+                    # the browser's Origin itself (see _ws_origin_allowed).
+                    # Rejected during the handshake, before any frame is sent.
+                    # A warning, not info: the hostname case is a formerly
+                    # working setup now refused, and this line is the only
+                    # server-side clue.
+                    logger.warning(
+                        "Rejected /ws/states connection with Origin %r: only "
+                        "localhost and same-origin pages may connect to the "
+                        "live stream. A viewer opened by hostname must be "
+                        "opened by its address instead (e.g. "
+                        "http://10.0.0.5:5420).",
+                        websocket.headers.get("origin"),
+                    )
+                    await websocket.close(code=1008)
+                    return
                 await websocket.accept()
                 try:
                     await self._send_catchup(websocket)
@@ -599,6 +755,7 @@ class SimViewServer:
         open_browser: bool = False,
     ):
         """Serve on `host:port`, blocking until the server stops."""
+        _warn_public_bind(host)
         logger.info("SimView server running on http://%s:%s", host, port)
         if open_browser:
             import webbrowser
@@ -693,6 +850,7 @@ class ViewerHandle:
         self.port = find_free_port(host, preferred_port)
         self.view = view
         self.iframe_height = iframe_height
+        _warn_public_bind(host)
 
         # Prefer uvicorn's modern sansio websocket implementation when the
         # `websockets` package is available -- the default "auto" still selects

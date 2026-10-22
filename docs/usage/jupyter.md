@@ -25,6 +25,10 @@ scene.show(view=view_hash(t=2.0, ui=False), height=400)
 
 To embed a scene in any web page without a Python server, write a static bundle
 with `scene.save_static("out/")`, host it, and open the viewer with
-`view_hash(data="https://host/out")`.
+`view_hash(data="/out")` — the bundle must be on the same origin as the viewer
+page (`#data=` values pointing at another origin are ignored; see the note in
+[embedding](embedding.md)). To pull data from a different origin on purpose, set
+`window.__simviewStaticBase = "https://host/out"` in the page before the
+viewer's scripts load.
 
 See the [`ViewerHandle` API reference](../api/scene.md) for the full behavior.

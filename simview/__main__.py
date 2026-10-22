@@ -372,7 +372,12 @@ def _add_host_port_flags(sp: argparse.ArgumentParser) -> None:
         "--host",
         type=str,
         default="127.0.0.1",
-        help="Host/interface for the server to bind to (default: 127.0.0.1).",
+        help=(
+            "Host/interface for the server to bind to (default: 127.0.0.1). "
+            "Note: the server has no authentication, so binding to a "
+            "non-loopback address exposes the scene data to everyone who can "
+            "reach it."
+        ),
     )
     sp.add_argument(
         "--port",

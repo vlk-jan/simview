@@ -79,11 +79,13 @@ def view_hash(
     `point_clouds`, `track` (a body name, or ``"None"``), `color_map` and
     `speed` are carried as named keys; leaving one ``None`` leaves the
     viewer's current setting alone.
-    `data` (base URL of a static bundle, see `SimulationScene.save_static`),
-    `ui=False` (hide all panels), `play=True` (start playing once loaded) and
-    `hide` (panel names as in `viewerDefaults.panels`, e.g. ``["recording"]``
-    for the REC/format/screenshot controls) are startup options, not view
-    state.
+    `data` (base URL of a static bundle, see `SimulationScene.save_static`;
+    must be same-origin with the viewer page -- cross-origin values are
+    ignored by the viewer, which sets ``window.__simviewStaticBase``
+    instead), `ui=False` (hide all panels), `play=True` (start playing once
+    loaded) and `hide` (panel names as in `viewerDefaults.panels`, e.g.
+    ``["recording"]`` for the REC/format/screenshot controls) are startup
+    options, not view state.
     """
     params = []
     if t is not None:

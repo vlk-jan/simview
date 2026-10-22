@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 
@@ -10,7 +11,7 @@ from conftest import build_scene
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from simview.server import SimViewServer
+from simview.server import SimViewServer, _warn_public_bind
 
 
 @pytest.fixture
@@ -149,6 +150,47 @@ def test_batch_names_endpoint_rejects_wrong_length(tmp_path):
     client = TestClient(server.app)
     resp = client.post("/batch-names", json={"names": ["only-one"]})
     assert resp.status_code == 400
+
+
+def test_batch_names_endpoint_rejects_overlong_names(client):
+    # Batch names are persisted to a sidecar next to the scene file; the
+    # per-name cap bounds what a single request can write (see
+    # _MAX_BATCH_NAME_CHARS). The rejection must also leave the served model
+    # untouched.
+    too_long = "x" * 257
+    resp = client.post("/batch-names", json={"names": ["fine", too_long]})
+    assert resp.status_code == 400
+    assert "batchNames" not in client.get("/model").json()
+
+    # Exactly at the cap is fine.
+    resp = client.post("/batch-names", json={"names": ["fine", "x" * 256]})
+    assert resp.status_code == 200
+
+
+def test_oversized_request_body_rejected(client):
+    # Any endpoint, not just /batch-names: the middleware answers 413 off the
+    # Content-Length before anything parses the body.
+    resp = client.post("/batch-names", content=b"x" * (2 << 20))
+    assert resp.status_code == 413
+    # An in-bounds body still reaches the endpoint (here: 422, pydantic).
+    resp = client.post("/batch-names", content=b"{}")
+    assert resp.status_code == 422
+
+
+def test_public_bind_warns_only_off_loopback(caplog):
+    # The server has no authentication, so binding anywhere other machines
+    # can reach must be loud about it; loopback (the default) stays quiet.
+    with caplog.at_level(logging.WARNING, logger="simview.server"):
+        _warn_public_bind("0.0.0.0")
+        _warn_public_bind("hpc-node03")
+    assert caplog.text.count("NO authentication") == 2
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="simview.server"):
+        _warn_public_bind("127.0.0.1")
+        _warn_public_bind("localhost")
+        _warn_public_bind("::1")
+    assert "NO authentication" not in caplog.text
 
 
 # --- Gzip support ------------------------------------------------------------

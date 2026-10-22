@@ -71,7 +71,10 @@ scene.save_static("public/scenes/run42")   # model.json, states.json, blob/0, bl
 
 and loaded with `#data=/scenes/run42`. The base is an ordinary URL resolved against the
 viewer page, so a page-relative `#data=../scenes/run42` works too, and the scenes can
-live anywhere on the site. The viewer page itself is vendored with
+live anywhere on the site. (The hash is attacker-controllable via a crafted link,
+so a `data=` pointing at another origin is ignored with a console warning; a page
+that deliberately wants cross-origin data sets `window.__simviewStaticBase`
+before the viewer's scripts load.) The viewer page itself is vendored with
 
 ```bash
 simview static-viewer public/simview   # index.html + static/

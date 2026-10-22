@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The live-mode `/ws/states` WebSocket now checks the browser's `Origin`
+  header. CORS does not apply to WebSockets, so any site open in the user's
+  browser could previously connect to a running live viewer and read every
+  pushed frame. Localhost origins and the viewer's own page (same-origin,
+  with the Host header naming an address) are allowed; non-browser clients,
+  which send no `Origin`, are unaffected. A live viewer reached by *hostname*
+  is now refused -- reach it by address (e.g. `http://10.0.0.5:5420`)
+  instead, which is what the origin check can prove is this machine. A
+  refused connection replaces the loading splash with an error instead of
+  hanging on it.
+- `POST /batch-names` now rejects names longer than 256 characters, and any
+  request body over 1 MiB is answered with 413 before it is parsed -- bounding
+  what a rogue or runaway client can write to memory and to the on-disk
+  sidecar.
+- The `/blob/` URL token is now 128-bit (was 32-bit). It doubles as the only
+  gate on blob responses, so the extra margin costs nothing.
+- The `data=` startup hash key is now restricted to same-origin URLs. A
+  crafted link could previously make the viewer fetch and render scene data
+  from an arbitrary server. The `window.__simviewStaticBase` global set by
+  the hosting page is unaffected.
+- Binding the server to a non-loopback host (e.g. `--host 0.0.0.0`) now logs a
+  warning that the server has no authentication; the `--host` help text says
+  the same.
+
 ## [6.2.3] - 2026-10-21
 
 ### Security

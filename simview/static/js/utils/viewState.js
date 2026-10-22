@@ -211,3 +211,24 @@ export function parseStartupOptions(hash) {
         hide: (params.get("hide") || "").split(",").filter(Boolean),
     };
 }
+
+// The `data=` startup key, validated: relative URLs (the save_static bundle
+// layout, `#data=./my-scene/`) and absolute URLs on this page's own origin
+// pass; anything cross-origin is ignored with a warning. The hash is
+// attacker-controllable (any crafted link can set it), and without this check
+// such a link would make the viewer fetch and render scene data from an
+// arbitrary server. The `window.__simviewStaticBase` global is set by whoever
+// hosts the page itself, so it stays unrestricted.
+export function safeStaticBase(data) {
+    try {
+        const url = new URL(data, location.href);
+        if (url.origin !== location.origin) {
+            console.warn(`SimView: ignoring cross-origin data= '${data}'`);
+            return null;
+        }
+        return data;
+    } catch {
+        console.warn(`SimView: ignoring invalid data= '${data}'`);
+        return null;
+    }
+}

@@ -148,6 +148,10 @@ simview scene.json --no-browser                # don't auto-open a browser tab
 simview --version                               # print the installed version
 ```
 
+Note that the server has no authentication: binding to a non-loopback host (as
+above) exposes the scene data to everyone who can reach that address, which the
+server logs a warning about at startup. Do it only on networks you trust.
+
 ## Opening a file on a remote host
 
 Anywhere the CLI takes an input file, you can give an scp-style `host:path` spec instead

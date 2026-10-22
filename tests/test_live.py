@@ -23,6 +23,7 @@ pytest.importorskip("torch")
 
 import torch
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from simview.live import LiveViewer
 from simview.scene import BodyShapeType, SimulationScene
@@ -142,6 +143,65 @@ def test_websocket_receives_frame_pushed_after_connect(live_client):
 
         message = json.loads(ws.receive_text())
         assert message == {"states": [frame], "frameOffset": 0}
+
+
+# --- /ws/states origin check --------------------------------------------------
+#
+# CORS does not apply to WebSockets, so the endpoint checks the browser's
+# Origin header itself (see _ws_origin_allowed in server.py): a site open in
+# the user's browser must not be able to connect and read the live stream.
+# The existing tests above double as the "no Origin header" (non-browser
+# client) case, which stays allowed.
+
+
+def test_websocket_rejects_cross_origin(live_client):
+    _server, client = live_client
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/ws/states", headers={"origin": "http://evil.example"}
+        ):
+            pass
+
+
+def test_websocket_rejects_same_origin_hostname_host(live_client):
+    # The DNS-rebinding signature: Origin and Host agree, but on a hostname a
+    # browser could have re-resolved to loopback. Only an address (or
+    # 'localhost') is trusted there.
+    _server, client = live_client
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/ws/states",
+            headers={
+                "origin": "http://evil.example:5420",
+                "host": "evil.example:5420",
+            },
+        ):
+            pass
+
+
+def test_websocket_accepts_localhost_origin(live_client):
+    server, client = live_client
+    server.push_frame({"time": 0.0, "bodies": []})
+
+    with client.websocket_connect(
+        "/ws/states", headers={"origin": "http://localhost:3000"}
+    ) as ws:
+        message = json.loads(ws.receive_text())
+        assert message["states"] == [{"time": 0.0, "bodies": []}]
+
+
+def test_websocket_accepts_same_origin_address_host(live_client):
+    # A page this server served, reached by address over the LAN (Host is an
+    # IP literal matching the Origin) -- same-origin, so allowed.
+    server, client = live_client
+    server.push_frame({"time": 0.0, "bodies": []})
+
+    with client.websocket_connect(
+        "/ws/states",
+        headers={"origin": "http://10.0.0.5:5420", "host": "10.0.0.5:5420"},
+    ) as ws:
+        message = json.loads(ws.receive_text())
+        assert message["states"] == [{"time": 0.0, "bodies": []}]
 
 
 def test_broadcast_drops_dead_connection_without_raising(live_client):
