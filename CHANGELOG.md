@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI/docs/publish workflow actions bumped to their newest majors:
+  `actions/checkout` v5→v7, `actions/setup-node` v4→v7,
+  `actions/upload-artifact` v4→v7, `actions/download-artifact` v4→v8,
+  `astral-sh/setup-uv` v8.3.1→v10.3.2. `peaceiris/actions-gh-pages@v4`
+  and `pypa/gh-action-pypi-publish@release/v1` were already current.
+  None of the upstream breaking changes affect this repo's usage (the
+  workflows set `enable-cache: true` and `cache: npm` explicitly).
+
 ### Security
 
 - The live-mode `/ws/states` WebSocket now checks the browser's `Origin`
