@@ -1616,6 +1616,9 @@ transparently — no separate flag needed.</p>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--no-browser<span class="w">                </span><span class="c1"># don&#39;t auto-open a browser tab</span>
 </span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>simview<span class="w"> </span>--version<span class="w">                               </span><span class="c1"># print the installed version</span>
 </span></code></pre></div>
+<p>Note that the server has no authentication: binding to a non-loopback host (as
+above) exposes the scene data to everyone who can reach that address, which the
+server logs a warning about at startup. Do it only on networks you trust.</p>
 <h2 id="opening-a-file-on-a-remote-host">Opening a file on a remote host</h2>
 <p>Anywhere the CLI takes an input file, you can give an scp-style <code>host:path</code> spec instead
 of a local path, and SimView will fetch it over SSH for you:</p>

@@ -1452,7 +1452,10 @@ server process at all:</p>
 </span></code></pre></div>
 <p>and loaded with <code>#data=/scenes/run42</code>. The base is an ordinary URL resolved against the
 viewer page, so a page-relative <code>#data=../scenes/run42</code> works too, and the scenes can
-live anywhere on the site. The viewer page itself is vendored with</p>
+live anywhere on the site. (The hash is attacker-controllable via a crafted link,
+so a <code>data=</code> pointing at another origin is ignored with a console warning; a page
+that deliberately wants cross-origin data sets <code>window.__simviewStaticBase</code>
+before the viewer's scripts load.) The viewer page itself is vendored with</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>simview<span class="w"> </span>static-viewer<span class="w"> </span>public/simview<span class="w">   </span><span class="c1"># index.html + static/</span>
 </span></code></pre></div>
 <p>It loads all of its assets relative to the page, so it can be served from any path of

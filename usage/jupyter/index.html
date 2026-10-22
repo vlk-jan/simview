@@ -1202,7 +1202,11 @@ to control what the inline viewer opens with, e.g. a fixed time and no UI panels
 </span></code></pre></div>
 <p>To embed a scene in any web page without a Python server, write a static bundle
 with <code>scene.save_static("out/")</code>, host it, and open the viewer with
-<code>view_hash(data="https://host/out")</code>.</p>
+<code>view_hash(data="/out")</code> — the bundle must be on the same origin as the viewer
+page (<code>#data=</code> values pointing at another origin are ignored; see the note in
+<a href="../embedding/">embedding</a>). To pull data from a different origin on purpose, set
+<code>window.__simviewStaticBase = "https://host/out"</code> in the page before the
+viewer's scripts load.</p>
 <p>See the <a href="../../api/scene/"><code>ViewerHandle</code> API reference</a> for the full behavior.</p>
 
 
