@@ -167,6 +167,25 @@ export class ColumnarStateStore {
         return state;
     }
 
+    // Frame `i` carrying only each body's bodyTransform. For whole-run walks
+    // (trail/error-metric histories) that never read the windowed fields:
+    // getFrame() would start a Range fetch for every window of every one.
+    getTransformFrame(i) {
+        const bodies = [];
+        for (const body of this._bodies) {
+            const value = body.fields.bodyTransform;
+            const entry = { name: body.name };
+            if (value && typeof value.rowsAt === "function") {
+                const rows = value.rowsAt(i);
+                if (rows) entry.bodyTransform = rows;
+            } else if (value) {
+                entry.bodyTransform = this._sliceField(value, COLUMNAR_FIELD_WIDTHS.bodyTransform, i);
+            }
+            bodies.push(entry);
+        }
+        return { time: this.times[i], bodies };
+    }
+
     // Per-batch series for the scalar plotter: one per-frame value array per
     // batch, indexed like `times`.
     // `simBatches` is accepted (and ignored) for API parity with
@@ -214,6 +233,10 @@ export class LegacyStateStore {
     }
 
     getFrame(i) {
+        return this._states[i];
+    }
+
+    getTransformFrame(i) {
         return this._states[i];
     }
 

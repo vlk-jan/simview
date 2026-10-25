@@ -42,6 +42,67 @@
       }
     </script>
 
+    <!-- Start the model and states requests now rather than once the ES-module
+         graph has loaded, so they overlap it (SimView.loadData consumes
+         these). Skipped for the serverless viewer (#data=...), which has no
+         /model to ask. -->
+    <script>
+      if (/^https?:/.test(location.protocol) && !/[#&]data=/.test(location.hash) && !window.__simviewStaticBase) {
+        const quiet = (p) => (p.catch(() => {}), p);
+        window.__simviewPrefetch = { model: quiet(fetch("/model")), states: quiet(fetch("/states")) };
+      }
+    </script>
+    <link rel="modulepreload" href="./static/js/main.js" />
+    <link rel="modulepreload" href="./static/js/SimView.js" />
+    <link rel="modulepreload" href="./static/js/utils/viewerDefaults.js" />
+    <link rel="modulepreload" href="./static/js/utils/viewState.js" />
+    <link rel="modulepreload" href="./static/js/utils/episodes.js" />
+    <link rel="modulepreload" href="./static/js/utils/liveFollow.js" />
+    <link rel="modulepreload" href="./static/js/utils/blobWindow.js" />
+    <link rel="modulepreload" href="./static/js/utils/html.js" />
+    <link rel="modulepreload" href="./static/js/components/WindowedField.js" />
+    <link rel="modulepreload" href="./static/js/components/StateStore.js" />
+    <link rel="modulepreload" href="./static/js/utils/blobCodec.js" />
+    <link rel="modulepreload" href="./static/js/utils/terrainSample.js" />
+    <link rel="modulepreload" href="./static/js/utils/bodyTransforms.js" />
+    <link rel="modulepreload" href="./static/lib/three-0.174.0/three.module.js" />
+    <link rel="modulepreload" href="./static/lib/three-0.174.0/three.core.js" />
+    <link rel="modulepreload" href="./static/js/components/InteractionController.js" />
+    <link rel="modulepreload" href="./static/js/config.js" />
+    <link rel="modulepreload" href="./static/js/ui/AnalysisPanel.js" />
+    <link rel="modulepreload" href="./static/js/ui/TerrainProfile.js" />
+    <link rel="modulepreload" href="./static/js/ui/chartControls.js" />
+    <link rel="modulepreload" href="./static/js/utils/csv.js" />
+    <link rel="modulepreload" href="./static/js/utils/uplot.js" />
+    <link rel="modulepreload" href="./static/lib/uPlot-1.6.32/uPlot.esm.js" />
+    <link rel="modulepreload" href="./static/js/ui/ErrorMetrics.js" />
+    <link rel="modulepreload" href="./static/js/utils/errorMath.js" />
+    <link rel="modulepreload" href="./static/js/utils/batchPresets.js" />
+    <link rel="modulepreload" href="./static/js/ui/BatchLegend.js" />
+    <link rel="modulepreload" href="./static/js/ui/Legend.js" />
+    <link rel="modulepreload" href="./static/js/objects/colormap.js" />
+    <link rel="modulepreload" href="./static/js/vendor/js-colormaps.js" />
+    <link rel="modulepreload" href="./static/js/objects/Polyline.js" />
+    <link rel="modulepreload" href="./static/js/objects/utils.js" />
+    <link rel="modulepreload" href="./static/js/objects/StaticObject.js" />
+    <link rel="modulepreload" href="./static/js/ui/ScalarPlotter.js" />
+    <link rel="modulepreload" href="./static/js/utils/scalarSeries.js" />
+    <link rel="modulepreload" href="./static/js/components/BatchManager.js" />
+    <link rel="modulepreload" href="./static/js/utils/batchVisibility.js" />
+    <link rel="modulepreload" href="./static/js/objects/Terrain.js" />
+    <link rel="modulepreload" href="./static/js/objects/Body.js" />
+    <link rel="modulepreload" href="./static/js/objects/similarity.js" />
+    <link rel="modulepreload" href="./static/js/components/AnimationController.js" />
+    <link rel="modulepreload" href="./static/js/utils/interpolate.js" />
+    <link rel="modulepreload" href="./static/js/utils/visibleRanges.js" />
+    <link rel="modulepreload" href="./static/js/ui/PlaybackControls.js" />
+    <link rel="modulepreload" href="./static/js/utils/keyboard.js" />
+    <link rel="modulepreload" href="./static/js/ui/BodyStateWindow.js" />
+    <link rel="modulepreload" href="./static/js/ui/Controls.js" />
+    <link rel="modulepreload" href="./static/lib/three-0.174.0/addons/libs/lil-gui.module.min.js" />
+    <link rel="modulepreload" href="./static/js/components/Scene.js" />
+    <link rel="modulepreload" href="./static/js/utils/cameraRange.js" />
+    <link rel="modulepreload" href="./static/lib/three-0.174.0/addons/controls/OrbitControls.js" />
     <script type="module" src="./static/js/main.js"></script>
     <script>
       window.onerror = function(msg, url, line, col, error) {

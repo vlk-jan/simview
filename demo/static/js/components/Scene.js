@@ -16,6 +16,51 @@ export class Scene {
         this.initScene();
         this.minRenderDelay = 1000 / FREQ_CONFIG.scene;
         this.lastRenderTime = Number.NEGATIVE_INFINITY;
+        this.setupInvalidation();
+    }
+
+    // The canvas only needs redrawing when something may have changed.
+    // Mutations are scattered (GUI toggles, panels, data landing), so rather
+    // than hooking each one, any user input or camera move marks the scene
+    // dirty, playback/recording/new frames always render, and an idle
+    // heartbeat repaints anything else (e.g. a Range window landing while
+    // paused) within IDLE_RENDER_MS.
+    static IDLE_RENDER_MS = 250;
+    invalidate() {
+        this.needsRender = true;
+    }
+
+    setupInvalidation() {
+        this.needsRender = true;
+        this._lastFrameIndex = null;
+        const mark = () => this.invalidate();
+        // pointermove only while a button is held: drags orbit/pan the camera.
+        this._onInput = (e) => {
+            if (e.type !== "pointermove" || e.buttons) this.invalidate();
+        };
+        this._inputEvents = [
+            "pointerdown", "pointermove", "pointerup", "wheel",
+            "keydown", "keyup", "input", "change", "click",
+        ];
+        this._inputEvents.forEach((t) =>
+            window.addEventListener(t, this._onInput, { capture: true, passive: true })
+        );
+        this.controls.addEventListener("change", mark);
+    }
+
+    #shouldRender(now) {
+        const ac = this.app.animationController;
+        if (
+            this.needsRender ||
+            ac?.isPlaying ||
+            ac?.isRecording ||
+            ac?.currentStateIndex !== this._lastFrameIndex ||
+            now - this.lastRenderTime >= Scene.IDLE_RENDER_MS
+        ) {
+            this._lastFrameIndex = ac?.currentStateIndex;
+            return true;
+        }
+        return false;
     }
 
     initScene() {
@@ -67,12 +112,17 @@ export class Scene {
             window.removeEventListener("resize", this._onResize);
             this._onResize = null;
         }
+        this._inputEvents?.forEach((t) =>
+            window.removeEventListener(t, this._onInput, { capture: true })
+        );
+        this._inputEvents = null;
         this.controls?.dispose();
         this.renderer?.dispose();
         this.renderer?.domElement?.remove();
     }
 
     #handleWindowResize() {
+        this.invalidate(); // resizing clears the canvas
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -139,7 +189,11 @@ export class Scene {
     // and B side by side, shifting the camera by each batch's offset from the
     // active one for its half of the viewport.
     animate(now) {
-        if (now - this.lastRenderTime < this.minRenderDelay) return;
+        // The -1 absorbs rAF timestamp jitter: at 60 Hz the deltas hover
+        // around 16.67 ms and would otherwise drop every other frame.
+        if (now - this.lastRenderTime < this.minRenderDelay - 1) return;
+        if (!this.#shouldRender(now)) return;
+        this.needsRender = false;
 
         if (this.app.uiState && this.app.uiState.splitScreen && this.app.batchManager && this.app.batchManager.simBatches >= 2) {
             const batchA = this.app.uiState.splitBatchA !== undefined ? this.app.uiState.splitBatchA : 0;
