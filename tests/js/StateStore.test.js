@@ -133,6 +133,23 @@ describe("ColumnarStateStore matches LegacyStateStore for equivalent data", () =
     });
 });
 
+describe("getTransformFrame", () => {
+    it("returns the same bodyTransform rows as getFrame without touching windowed fields", () => {
+        const fixture = buildColumnarFixture();
+        const rowsAt = vi.fn(() => null);
+        fixture.bodies[0].fields.velocity = { rowsAt };
+        const store = new ColumnarStateStore(fixture, B);
+        for (let t = 0; t < T; t++) {
+            const frame = store.getTransformFrame(t);
+            expect(frame.bodies[0].bodyTransform).toEqual(
+                [transformRow(t, 0), transformRow(t, 1)]
+            );
+            expect(frame.bodies[0].velocity).toBeUndefined();
+        }
+        expect(rowsAt).not.toHaveBeenCalled();
+    });
+});
+
 describe("ColumnarStateStore getFrame memoization", () => {
     it("returns a fresh object per distinct frame index but is stable within the same index", () => {
         const store = new ColumnarStateStore(buildColumnarFixture(), B);

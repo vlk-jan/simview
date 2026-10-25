@@ -30,6 +30,8 @@ driven by a real recording that actually hurts rather than done speculatively.
 
 `BatchManager`'s focused-batch mode means a scene with hundreds of envs only
 builds and draws one batch's objects, which was the scaling problem in practice.
+(Terrain still builds a heightfield mesh per batch up front, but its normal
+arrows are now created lazily.)
 The per-batch decorations themselves are still one THREE object each when
 everything *is* drawn: `AxesHelper` and the vector arrows per batch in
 `Body.createBatchGroups`, and one `Points` per batch for point-cloud bodies.

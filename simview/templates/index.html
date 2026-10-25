@@ -41,6 +41,17 @@
       }
     </script>
 
+    <!-- Start the model and states requests now rather than once the ES-module
+         graph has loaded, so they overlap it (SimView.loadData consumes
+         these). Skipped for the serverless viewer (#data=...), which has no
+         /model to ask. -->
+    <script>
+      if (/^https?:/.test(location.protocol) && !/[#&]data=/.test(location.hash) && !window.__simviewStaticBase) {
+        const quiet = (p) => (p.catch(() => {}), p);
+        window.__simviewPrefetch = { model: quiet(fetch("/model")), states: quiet(fetch("/states")) };
+      }
+    </script>
+    <!-- @modulepreload -->
     <script type="module" src="./static/js/main.js"></script>
     <script>
       window.onerror = function(msg, url, line, col, error) {

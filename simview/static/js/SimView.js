@@ -6,7 +6,7 @@ import { AnimationController } from "./components/AnimationController.js";
 import { UI_DEFAULT_CONFIG } from "./config.js";
 import { Body } from "./objects/Body.js";
 import { Terrain } from "./objects/Terrain.js";
-import { BatchManager } from "./components/BatchManager.js";
+import { BatchManager, batchCountOf } from "./components/BatchManager.js";
 import { ScalarPlotter } from "./ui/ScalarPlotter.js";
 import { StaticObject } from "./objects/StaticObject.js";
 import { Polyline } from "./objects/Polyline.js";
@@ -109,10 +109,18 @@ export class SimView {
     async loadData() {
         const splash = document.getElementById("loading-splash");
         const base = this.staticBase;
+        // Requests the page started before the modules loaded (see
+        // templates/index.html), each usable once. /states doesn't depend on
+        // the model, so it's requested alongside it instead of after
+        // initFromModel.
+        const prefetched = base ? null : window.__simviewPrefetch;
+        window.__simviewPrefetch = null;
+        const statesFetch = prefetched?.states ?? fetch(base ? `${base}/states.json` : "/states");
+        statesFetch.catch(() => {}); // surfaced where it's awaited below
         try {
             if (splash) splash.innerHTML = "<h1>Fetching model…</h1>";
             console.time("fetch_model");
-            const modelResponse = await fetch(base ? `${base}/model.json` : "/model");
+            const modelResponse = await (prefetched?.model ?? fetch(base ? `${base}/model.json` : "/model"));
             console.timeEnd("fetch_model");
             if (!modelResponse.ok)
                 throw new Error(`Failed to fetch model: ${modelResponse.status} ${modelResponse.statusText}`);
@@ -122,6 +130,13 @@ export class SimView {
             const model = await modelResponse.json();
             console.timeEnd("parse_model");
 
+            // The states side needs only the batch count (not the built
+            // scene), so its parse + blob downloads overlap the model's blobs
+            // and initFromModel instead of queueing behind them.
+            const batchCount = batchCountOf(model);
+            const statesReady = this.fetchStatesPayload(statesFetch, batchCount);
+            statesReady.catch(() => {}); // surfaced where it's awaited below
+
             console.time("fetch_blobs");
             await this.fetchBlobs(model);
             console.timeEnd("fetch_blobs");
@@ -130,15 +145,7 @@ export class SimView {
             this.initFromModel(model);
 
             if (splash) splash.innerHTML = "<h1>Fetching states…</h1>";
-            console.time("fetch_states");
-            const statesResponse = await fetch(base ? `${base}/states.json` : "/states");
-            console.timeEnd("fetch_states");
-            if (!statesResponse.ok)
-                throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
-
-            console.time("parse_states");
-            const statesPayload = await statesResponse.json();
-            console.timeEnd("parse_states");
+            const statesPayload = await statesReady;
 
             if (Array.isArray(statesPayload)) {
                 // Legacy wire shape: a plain per-frame array, possibly with
@@ -154,15 +161,9 @@ export class SimView {
             } else if (statesPayload && statesPayload.version === 4) {
                 // Columnar wire shape (see columnar.py::columnarize_states):
                 // a lightweight index plus /blob/... URLs for the actual
-                // whole-trajectory float32 data, fetched in parallel below.
+                // whole-trajectory float32 data, already fetched by
+                // fetchStatesPayload.
                 console.debug(`Received ${statesPayload.times.length} states (columnar)`);
-                // Long trajectories: swap the biggest current-frame-only
-                // fields for windowed readers before the bulk fetch, so they
-                // are never materialized in full (see utils/blobWindow.js).
-                this.windowLargeStateFields(statesPayload);
-                console.time("fetch_state_blobs");
-                await this.fetchBlobs(statesPayload);
-                console.timeEnd("fetch_state_blobs");
                 this.store = new ColumnarStateStore(statesPayload, this.batchManager.simBatches);
                 this.onStoreReady();
             } else {
@@ -182,6 +183,30 @@ export class SimView {
         }
     }
 
+    // Fetches and parses /states and, for the columnar shape, downloads its
+    // blobs (long trajectories' biggest current-frame-only fields are swapped
+    // for windowed readers first, so they are never materialized in full --
+    // see utils/blobWindow.js). Resolves to the payload.
+    async fetchStatesPayload(statesFetch, batchCount) {
+        console.time("fetch_states");
+        const statesResponse = await statesFetch;
+        console.timeEnd("fetch_states");
+        if (!statesResponse.ok)
+            throw new Error(`Failed to fetch states: ${statesResponse.status} ${statesResponse.statusText}`);
+
+        console.time("parse_states");
+        const payload = await statesResponse.json();
+        console.timeEnd("parse_states");
+
+        if (payload && !Array.isArray(payload) && payload.version === 4) {
+            this.windowLargeStateFields(payload, batchCount);
+            console.time("fetch_state_blobs");
+            await this.fetchBlobs(payload);
+            console.timeEnd("fetch_state_blobs");
+        }
+        return payload;
+    }
+
     // Replaces the blob URL of every large, current-frame-only per-body field
     // with a WindowedField, so fetchBlobs skips it and it's read in windows
     // around the playhead instead. Static demo mode is excluded: it serves
@@ -190,10 +215,9 @@ export class SimView {
     // bodyTransform, contacts and the scalars are deliberately untouched --
     // trails, error metrics, the terrain profile and the scalar plots all walk
     // the whole trajectory, so windowing those would just move the cost.
-    windowLargeStateFields(statesPayload) {
+    windowLargeStateFields(statesPayload, batchCount) {
         if (this.staticBase) return;
         const totalFrames = statesPayload.times.length;
-        const batchCount = this.batchManager.simBatches;
         // Overridable so tests can exercise windowing without a fixture big
         // enough to cross the real threshold (same spirit as
         // window.__debugSimView); undefined in normal use.
@@ -435,12 +459,12 @@ export class SimView {
     // Resolves and records position/orientation (and contacts, vectors, ...)
     // history for every frame from `startIndex` to the end of the store, for
     // trails and the error metrics panel. Each frame is materialized
-    // transiently via store.getFrame(i) (not retained) so this works
+    // transiently via store.getTransformFrame(i) (not retained) so this works
     // identically whether the store is legacy or columnar.
     appendBodyHistories(startIndex) {
         if (!this.bodies || this.bodies.size === 0) return;
         for (let s = startIndex; s < this.store.length; s++) {
-            const bodyStates = this.store.getFrame(s).bodies;
+            const bodyStates = this.store.getTransformFrame(s).bodies;
             if (!bodyStates) continue;
             // Resolve off this historical state's own data (not any Body's
             // current/live pose, which reflects whatever frame is currently
