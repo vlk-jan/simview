@@ -87,7 +87,7 @@ def export_static_viewer(directory: Path) -> None:
     index = package / "templates" / "index.html"
     static = package / "static"
     (directory / "index.html").write_text(
-        render_index(str(index), str(static.parent)), encoding="utf-8"
+        render_index(str(index), str(package)), encoding="utf-8"
     )
     shutil.copytree(str(static), directory / "static", dirs_exist_ok=True)
     logger.info("Static viewer written to %s", directory)
