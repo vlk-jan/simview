@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Viewer load and idle cost, measured in headless Chromium (software GL) on
+  generated 64-env (5000 frames) and 512-env (500 frames) recordings:
+  - Terrain normal arrows are built the first time they're shown, and the
+    per-batch lookups index the batch group directly instead of searching the
+    scene graph by name. 512-env load 7.2 s -> 1.7 s; scene objects 190k ->
+    4.1k; per-frame `updateMatrixWorld` 40 ms -> 1.2 ms.
+  - The startup history walk reads only `bodyTransform` (`getTransformFrame`),
+    so it no longer pulls every window of every windowed field (20 -> 8 Range
+    requests on the 64-env file with windowing forced on).
+  - `/model` and `/states` are requested from the page head and in parallel,
+    overlapping the module download (64-env load at 50 ms RTT 2.43 s -> 2.04 s).
+  - The server lists the viewer's ES modules as `modulepreload` links (also in
+    `simview static-viewer` output), and the state blobs download while the
+    scene is still being built instead of after it (64-env load at 50 ms RTT
+    2.10 s -> 1.81 s; no change on localhost).
+  - `/static` is gzipped on the fly (2455 KB -> 570 KB for the initial assets).
+  - The canvas redraws only on input, camera moves, playback, a new frame, or
+    a 250 ms idle heartbeat (idle renders per 3 s: 78 -> 12), and the 60 Hz
+    frame throttle no longer drops frames to timestamp jitter.
+
 ## [6.3.0] - 2026-10-22
 
 ### Fixed

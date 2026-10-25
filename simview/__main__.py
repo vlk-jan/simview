@@ -82,8 +82,14 @@ def export_static_viewer(directory: Path) -> None:
 
     package = files("simview")
     directory.mkdir(parents=True, exist_ok=True)
-    shutil.copy(str(package / "templates" / "index.html"), directory / "index.html")
-    shutil.copytree(str(package / "static"), directory / "static", dirs_exist_ok=True)
+    from simview.preload import render_index
+
+    index = package / "templates" / "index.html"
+    static = package / "static"
+    (directory / "index.html").write_text(
+        render_index(str(index), str(static.parent)), encoding="utf-8"
+    )
+    shutil.copytree(str(static), directory / "static", dirs_exist_ok=True)
     logger.info("Static viewer written to %s", directory)
 
 

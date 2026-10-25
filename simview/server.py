@@ -21,13 +21,15 @@ import orjson
 import uvicorn
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.datastructures import Headers
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.types import Scope
 
 from simview.columnar import columnarize_states, is_columnar, rewrite_blobs
+from simview.preload import render_index
 from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.server")
@@ -348,8 +350,17 @@ class SimViewServer:
         # libs as immutable and everything else short-lived (max-age=60), so
         # index.html's fixed ./static/... paths never need a cache-busting
         # query param.
+        # Gzipped on the fly (three.js alone is ~1.1 MB raw, ~230 KB gzipped);
+        # applied to /static only -- /blob is float data that barely
+        # compresses and is served with Range support.
         self.app.mount(
-            "/static", CacheControlStaticFiles(directory=STATIC), name="static"
+            "/static",
+            GZipMiddleware(
+                CacheControlStaticFiles(directory=STATIC),
+                minimum_size=1024,
+                compresslevel=6,
+            ),
+            name="static",
         )
 
         # Pre-serialized, gzipped payloads for HTTP serving. The parsed dicts are
@@ -521,7 +532,7 @@ class SimViewServer:
     def setup_routes(self):
         @self.app.get("/")
         async def index():
-            return FileResponse(INDEX_HTML, media_type="text/html")
+            return HTMLResponse(render_index(INDEX_HTML, str(Path(STATIC).parent)))
 
         _gzip_headers = {"Content-Encoding": "gzip"}
 

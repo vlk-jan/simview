@@ -4,6 +4,12 @@ import { colormapLUT, getCallableFromColorMapName } from "./colormap.js";
 import { toFlatFloat32Array } from "./utils.js";
 
 export class Terrain {
+    // Per-batch normals field and the built-once arrow template of a
+    // singleton terrain; the arrows themselves are built lazily, see
+    // #ensureNormals.
+    #normals = null;
+    #singletonNormals = null;
+
     constructor(terrainData, app) {
         this.app = app; // Store reference to app for accessing batch manager
         this.bounds = terrainData.bounds;
@@ -18,6 +24,7 @@ export class Terrain {
         this.#initEmbeddingData(terrainData.embeddingData);
 
         const normals = this.#normalizeVectorField(terrainData.normals, 3);
+        this.#normals = normals;
 
         this.#createVisualRepresentations(this.heightData, normals);
     }
@@ -197,7 +204,6 @@ export class Terrain {
 
         let singletonSurfaceGeometry = null;
         let singletonWireframeGeometry = null;
-        let singletonNormals = null;
 
         if (this.isSingleton) {
             singletonSurfaceGeometry = this.#createSurfaceGeometryFromHeightData(
@@ -206,10 +212,6 @@ export class Terrain {
                 normals?.[0]
             );
             singletonWireframeGeometry = this.#createWireframeGeometry(singletonSurfaceGeometry);
-            singletonNormals = this.#createNormalVectors(
-                heightData[0],
-                normals?.[0]
-            );
         }
 
         // Create geometry for each batch
@@ -240,11 +242,12 @@ export class Terrain {
             wireframeMesh.raycast = () => {};
             batchGroup.add(wireframeMesh);
 
-            const surfaceNormals = this.isSingleton
-                ? singletonNormals.clone()
-                : this.#createNormalVectors(heightData[i], normals?.[i]);
-
+            // Filled on first use: 121 ArrowHelpers (3 objects each) per
+            // batch made up ~99% of a 512-env scene while hidden.
+            const surfaceNormals = new THREE.Group();
             surfaceNormals.name = "normals";
+            surfaceNormals.visible =
+                this.app.uiState.terrainVisualizationModes.normals || false;
             batchGroup.add(surfaceNormals);
 
             for (const [key, value] of Object.entries(
@@ -270,10 +273,33 @@ export class Terrain {
     refreshBatchVisibility() {
         const batchManager = this.app.batchManager;
         if (!batchManager?.isBatchVisible || !this.group) return;
+        const showNormals = this.app.uiState.terrainVisualizationModes?.normals;
         for (let i = 0; i < batchManager.simBatches; i++) {
-            const batchGroup = this.group.getObjectByName(`batch${i}`);
-            if (batchGroup) batchGroup.visible = batchManager.isBatchVisible(i);
+            // group.children[i] is batch i (built in order); getObjectByName
+            // searched every earlier batch's whole subtree, O(n^2) overall.
+            const batchGroup = this.group.children[i];
+            if (!batchGroup) continue;
+            batchGroup.visible = batchManager.isBatchVisible(i);
+            if (showNormals && batchGroup.visible) this.#ensureNormals(i);
         }
+    }
+
+    // Builds batch i's normal arrows the first time they're wanted.
+    #ensureNormals(i) {
+        const target = this.group.children[i]?.getObjectByName("normals");
+        if (!target || target.userData.built || !this.#normals) return;
+        target.userData.built = true;
+        let source;
+        if (this.isSingleton) {
+            this.#singletonNormals ??= this.#createNormalVectors(
+                this.heightData[0],
+                this.#normals[0]
+            );
+            source = this.#singletonNormals.clone();
+        } else {
+            source = this.#createNormalVectors(this.heightData[i], this.#normals[i]);
+        }
+        target.add(...source.children);
     }
 
     // Normalize a value into [0, 1] against an explicit [min, max] range.
@@ -489,12 +515,15 @@ export class Terrain {
 
     // Shows/hides a named sub-object (surface/wireframe/normals) in every batch group.
     toggleVisualization(type, visible) {
-        for (const batchGroup of this.group.children) {
+        const batchManager = this.app.batchManager;
+        this.group.children.forEach((batchGroup, i) => {
             const object = batchGroup.getObjectByName(type);
-            if (object) {
-                object.visible = visible;
+            if (!object) return;
+            object.visible = visible;
+            if (type === "normals" && visible && (batchManager?.isBatchVisible?.(i) ?? true)) {
+                this.#ensureNormals(i);
             }
-        }
+        });
     }
 
     // Returns the per-batch data array for a diff layer name ("height", or
@@ -671,7 +700,7 @@ export class Terrain {
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
 
         for (let i = 0; i < batchesToUpdate; i++) {
-            const batchGroup = this.group.getObjectByName(`batch${i}`);
+            const batchGroup = this.group.children[i];
             const surfaceMesh = batchGroup.getObjectByName("surface");
             const geometry = surfaceMesh.geometry;
             this.#updateSurfaceColor(i, geometry, callableColormap);
@@ -684,7 +713,7 @@ export class Terrain {
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
 
         for (let i = 0; i < batchesToUpdate; i++) {
-            const batchGroup = this.group.getObjectByName(`batch${i}`);
+            const batchGroup = this.group.children[i];
             const surfaceMesh = batchGroup.getObjectByName("surface");
             const geometry = surfaceMesh.geometry;
             this.#updateSurfaceColor(i, geometry, callableColormap);

@@ -8,6 +8,14 @@ import {
     visibleBatchSet,
 } from "../utils/batchVisibility.js";
 
+// The batch count a model declares (1 when absent); also what loadData needs
+// before any BatchManager exists.
+export function batchCountOf(modelData) {
+    return modelData?.simBatches !== undefined
+        ? Math.max(1, parseInt(modelData.simBatches))
+        : 1;
+}
+
 export class BatchManager {
     constructor(app, modelData) {
         this.app = app;
@@ -34,7 +42,7 @@ export class BatchManager {
 
         // Set batch count from model data
         if (modelData.simBatches !== undefined) {
-            this.simBatches = Math.max(1, parseInt(modelData.simBatches));
+            this.simBatches = batchCountOf(modelData);
             console.log(
                 `Initializing with ${this.simBatches} simulation batches`
             );
