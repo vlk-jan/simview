@@ -1185,7 +1185,30 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.3.0...HEAD">Unreleased</a></h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.3.1...HEAD">Unreleased</a></h2>
+<h2 id="631-2026-10-25"><a href="https://github.com/vlk-jan/simview/compare/v6.3.0...v6.3.1">6.3.1</a> - 2026-10-25</h2>
+<h3 id="changed">Changed</h3>
+<ul>
+<li>Viewer load and idle cost, measured in headless Chromium (software GL) on
+  generated 64-env (5000 frames) and 512-env (500 frames) recordings:</li>
+<li>Terrain normal arrows are built the first time they're shown, and the
+    per-batch lookups index the batch group directly instead of searching the
+    scene graph by name. 512-env load 7.2 s -&gt; 1.7 s; scene objects 190k -&gt;
+    4.1k; per-frame <code>updateMatrixWorld</code> 40 ms -&gt; 1.2 ms.</li>
+<li>The startup history walk reads only <code>bodyTransform</code> (<code>getTransformFrame</code>),
+    so it no longer pulls every window of every windowed field (20 -&gt; 8 Range
+    requests on the 64-env file with windowing forced on).</li>
+<li><code>/model</code> and <code>/states</code> are requested from the page head and in parallel,
+    overlapping the module download (64-env load at 50 ms RTT 2.43 s -&gt; 2.04 s).</li>
+<li>The server lists the viewer's ES modules as <code>modulepreload</code> links (also in
+    <code>simview static-viewer</code> output), and the state blobs download while the
+    scene is still being built instead of after it (64-env load at 50 ms RTT
+    2.10 s -&gt; 1.81 s; no change on localhost).</li>
+<li><code>/static</code> is gzipped on the fly (2455 KB -&gt; 570 KB for the initial assets).</li>
+<li>The canvas redraws only on input, camera moves, playback, a new frame, or
+    a 250 ms idle heartbeat (idle renders per 3 s: 78 -&gt; 12), and the 60 Hz
+    frame throttle no longer drops frames to timestamp jitter.</li>
+</ul>
 <h2 id="630-2026-10-22"><a href="https://github.com/vlk-jan/simview/compare/v6.2.3...v6.3.0">6.3.0</a> - 2026-10-22</h2>
 <h3 id="fixed">Fixed</h3>
 <ul>
@@ -1204,7 +1227,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   protection the scene model already had (a later <code>save()</code> of that dict would
   have written dead references).</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed_1">Changed</h3>
 <ul>
 <li><code>simview merge</code>'s <code>--save-merged</code> now writes the compact columnar states
   layout (same as <code>SimulationScene.save</code>), instead of the legacy per-frame
@@ -1288,7 +1311,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   anyio 4.13.0 → 4.14.2, idna 3.11 → 3.20.</li>
 </ul>
 <h2 id="621-2026-10-19"><a href="https://github.com/vlk-jan/simview/compare/v6.2.0...v6.2.1">6.2.1</a> - 2026-10-19</h2>
-<h3 id="changed_1">Changed</h3>
+<h3 id="changed_2">Changed</h3>
 <ul>
 <li>Terrain geometry is built directly into typed arrays instead of through
   <code>THREE.PlaneGeometry</code>, and surface colours come from a sampled colormap
@@ -1342,7 +1365,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>simview static-viewer DIR</code> copies the viewer page (<code>index.html</code> + <code>static/</code>) to
   <code>DIR</code>, so a site can host it as plain files next to <code>save_static()</code> bundles.</li>
 </ul>
-<h3 id="changed_2">Changed</h3>
+<h3 id="changed_3">Changed</h3>
 <ul>
 <li><code>SimViewModel.from_dict</code> no longer requires <code>dt</code>, <code>collapse</code> or <code>staticObjects</code>
   (matching the viewer and the format doc); a wrong-length <code>batchNames</code> is warned
@@ -1438,7 +1461,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   OrbitControls; terrain and static-object disposal release their GPU resources.</li>
 </ul>
 <h2 id="612-2026-10-08"><a href="https://github.com/vlk-jan/simview/compare/v6.1.1...v6.1.2">6.1.2</a> - 2026-10-08</h2>
-<h3 id="changed_3">Changed</h3>
+<h3 id="changed_4">Changed</h3>
 <ul>
 <li>The scalar plotter draws each series over the whole timeline, with a vertical line
   at the current playback time, instead of only the part played so far.</li>
@@ -1552,7 +1575,7 @@ redundant Python authoring entry points were removed, listed below.</p>
 <li><strong>The 71 matplotlib colormaps the viewer never offered</strong> from <code>js-colormaps.js</code>.
   Every map in the colormap dropdown is unchanged.</li>
 </ul>
-<h3 id="changed_4">Changed</h3>
+<h3 id="changed_5">Changed</h3>
 <ul>
 <li><strong><code>ViewerHandle</code> is now the background server itself</strong> (<code>simview.server.ViewerHandle</code>).
   <code>scene.show()</code>, <code>LiveViewer</code> and <code>simview render</code> share it instead of three
@@ -1601,7 +1624,7 @@ redundant Python authoring entry points were removed, listed below.</p>
   contacts (contacts keep the key when present); the label reads "Show Point
   Clouds (C)" when the key applies.</li>
 </ul>
-<h3 id="changed_5">Changed</h3>
+<h3 id="changed_6">Changed</h3>
 <ul>
 <li><strong>Viewer UI restyled in Catppuccin Mocha.</strong> Every panel (Analysis, Body states,
   Batches, legends, playback bar, and now the lil-gui Controls panel, which floats
@@ -1658,7 +1681,7 @@ versa, and authoring code needs no edits.</p>
   in plain <code>torch</code>, which <code>model.py</code> already requires. If your own code imports
   <code>einops</code> while relying on <code>simview[authoring]</code> to install it, declare it yourself.</li>
 </ul>
-<h3 id="changed_6">Changed</h3>
+<h3 id="changed_7">Changed</h3>
 <ul>
 <li><strong>The CLI now uses real argparse subcommands.</strong> Every documented invocation is
   unchanged — <code>simview info &lt;file&gt;</code>, <code>simview diff &lt;file&gt; --batches 0 1</code>,
@@ -1787,7 +1810,7 @@ versa, and authoring code needs no edits.</p>
   resident, since trails, error metrics, the terrain profile and the scalar plots all
   walk the entire trajectory.</li>
 </ul>
-<h3 id="changed_7">Changed</h3>
+<h3 id="changed_8">Changed</h3>
 <ul>
 <li><code>SimulationScene.save()</code> writes columnar <code>states</code> by default. Files stay readable
   by <code>load</code>, <code>merge_simulation_files</code>, <code>simview info</code>/<code>diff</code>/<code>terrain</code> and the viewer
@@ -1951,7 +1974,7 @@ versa, and authoring code needs no edits.</p>
   developer guide, published to GitHub Pages. <code>README.md</code> is trimmed to a
   landing page that links to it.</li>
 </ul>
-<h3 id="changed_8">Changed</h3>
+<h3 id="changed_9">Changed</h3>
 <ul>
 <li>The Error Metrics panel auto-selects a sensible Batch A/B default from
   batch names (e.g. ground-truth vs. post-adaptation) instead of always
@@ -1973,7 +1996,7 @@ versa, and authoring code needs no edits.</p>
 <li><code>--csv</code> output for <code>simview diff</code> and <code>simview terrain</code>, alongside the
   existing <code>--json</code>.</li>
 </ul>
-<h3 id="changed_9">Changed</h3>
+<h3 id="changed_10">Changed</h3>
 <ul>
 <li>Only emit uvicorn's access log when running in debug mode.</li>
 </ul>
@@ -1984,7 +2007,7 @@ versa, and authoring code needs no edits.</p>
 <li>Test against Python 3.14 in CI and advertise it in the package classifiers.</li>
 <li>Dependabot configuration for GitHub Actions, npm, and Python dependencies.</li>
 </ul>
-<h3 id="changed_10">Changed</h3>
+<h3 id="changed_11">Changed</h3>
 <ul>
 <li>Bump the PyPI development-status classifier to <code>5 - Production/Stable</code>.</li>
 <li>Use uvicorn's modern sansio websocket implementation for the live server when
@@ -2002,7 +2025,7 @@ versa, and authoring code needs no edits.</p>
   hash so a view can be restored or handed off.</li>
 <li>Single-frame PNG screenshot export.</li>
 </ul>
-<h3 id="changed_11">Changed</h3>
+<h3 id="changed_12">Changed</h3>
 <ul>
 <li>Prepare packaging for PyPI publishing (metadata, build, publish workflow).</li>
 <li>Replace CCapture with the browser-native <code>MediaRecorder</code> for video recording,
@@ -2023,7 +2046,7 @@ versa, and authoring code needs no edits.</p>
 <li>Smooth interpolated playback (position lerp + quaternion slerp) with a toggle.</li>
 <li>Error-metric summary stats and CSV export in the analysis panel.</li>
 </ul>
-<h3 id="changed_12">Changed</h3>
+<h3 id="changed_13">Changed</h3>
 <ul>
 <li>Vendor three.js and chroma-js locally so the viewer works fully offline.</li>
 <li>Serve states as per-body whole-trajectory binary columns ("v4" columnar
