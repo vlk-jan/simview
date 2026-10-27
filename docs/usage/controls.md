@@ -63,6 +63,9 @@ routes and per-frame local paths. Bodies, static objects and polylines with `vis
 hide themselves while the playhead is outside their time ranges.
 
 You can also customize terrain colors, colormaps, and toggle surface/wireframe/normals from the "Terrain Options" menu.
+The terrain's colormap legend (bottom-left) follows "Show Surface": hiding the surface hides it too.
+
+Hover any control in the panel for a short description of what it does.
 With 2 or more batches, the "diff" Color Mode colors the terrain by the difference
 between two batches' terrains for one layer ("Diff Layer", "Diff Batch A"/"Diff Batch B").
 
@@ -97,14 +100,16 @@ trajectories (e.g. real vs. simulated) at a glance instead of scrubbing frame by
 Scalars, Error Metrics and Terrain share one collapsible panel at the top-center of
 the screen. When more than one is available, a mode switcher lets you flip between
 them; if only one is available (e.g. a single-batch scene has no Error Metrics), that
-one is shown directly without the switcher. Clicking any of its charts seeks playback
+one is shown directly without the switcher. A scene with nothing to analyse over time
+(e.g. only static point clouds) has no Analysis panel at all. Clicking any of its charts seeks playback
 to that time.
 
 - **Scalars**: one tab per scalar defined in the model, each plotting its value over
   time for every batch (colored per batch, click a line to focus that batch). An
   "Export CSV" button on the active tab downloads its full series as `time` plus one
   column per batch, named after each batch's current display name.
-- **Error Metrics**: shown once a scene has 2 or more batches. Pick a body and two
+- **Error Metrics**: shown once a scene has 2 or more batches and a body with a
+  trajectory. Pick a body and two
   batches ("Batch A" / "Batch B", defaulting to a `gt`/`ground truth`-named batch vs. a
   `post`/`adapt`-named one when the batch names have them) to compare — e.g. the real and simulated batches
   produced by [merging multiple files](cli.md#comparing-multiple-runs-eg-real-world-vs-simulated)
@@ -132,7 +137,8 @@ to that time.
 
 The collapsible "Body states" panel in the top-left lists the scene's bodies; select
 one to see its live position and rotation for the batch picked in the panel's own
-"Batch" selector. It starts collapsed when the model sets `collapse`;
+"Batch" selector. It is hidden when no body has a pose (e.g. a scene of only static
+point clouds). It starts collapsed when the model sets `collapse`;
 `viewerDefaults.bodyStatesOpen` overrides that.
 
 ## Batch Legend

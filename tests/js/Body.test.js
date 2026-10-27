@@ -15,6 +15,7 @@ globalThis.document ??= {
     }),
 };
 const { Body } = await import("../../simview/static/js/objects/Body.js");
+const { getCallableFromColorMapName } = await import("../../simview/static/js/objects/colormap.js");
 
 function fakeApp(simBatches = 1) {
     return {
@@ -143,6 +144,13 @@ describe("Body pointcloud color/embedding", () => {
             expect(attr.array[9]).toBeCloseTo(0, 5);
             expect(attr.array[10]).toBeCloseTo(0, 5);
             expect(attr.array[11]).toBeCloseTo(0, 5);
+        });
+
+        it("maps an orthogonal point (cosine = 0) to the middle of the colormap", () => {
+            body.recolorBySimilarity(0, "grayscale");
+            const attr = body.representations.points[0].geometry.getAttribute("color");
+            // Sampled from a lookup table, so within a step of the exact colormap.
+            expect(attr.array[6]).toBeCloseTo(getCallableFromColorMapName("grayscale")(0.5).r, 2);
         });
 
         it("sets selectedPointIndex to the queried point", () => {

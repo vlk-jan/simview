@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Point clouds accept named color layers (`create_pointcloud(color_layers=)`),
+  selectable under "Point Color Mode", and a "Link Similarity" toggle that makes a
+  similarity click recolor every point cloud with the same point count.
+- Hovering a control in the Controls panel shows a short description of it.
+
+### Changed
+
+- Recoloring a point cloud by similarity samples a colormap lookup table instead of
+  calling the colormap per point: about 2x faster (200k points: 19 -> 9 ms).
+
+### Fixed
+
+- The terrain legend is hidden together with the terrain surface.
+- A static scene (no body trajectories) no longer gets an empty Analysis panel or
+  Body states window; Error Metrics and Terrain now appear only once a body has a
+  trajectory.
+- In split screen, clicking a point or terrain cell picks from the batch shown in
+  that half.
+
 ## [6.3.1] - 2026-10-25
 
 ### Changed
