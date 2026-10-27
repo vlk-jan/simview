@@ -141,8 +141,12 @@ def test_create_pointcloud_color_layers_roundtrip_and_validation():
     points = torch.zeros(4, 3)
     cls = torch.rand(4, 3)
     body = SimViewBody.create_pointcloud("pts", points, color_layers={"class": cls})
-    assert _flat(body.shape["colorLayers"]["class"]) == pytest.approx(cls.flatten().tolist())
+    assert _flat(body.shape["colorLayers"]["class"]) == pytest.approx(
+        cls.flatten().tolist()
+    )
     with pytest.raises(ValueError, match="must have shape"):
-        SimViewBody.create_pointcloud("pts", points, color_layers={"class": torch.zeros(3, 3)})
+        SimViewBody.create_pointcloud(
+            "pts", points, color_layers={"class": torch.zeros(3, 3)}
+        )
     with pytest.raises(ValueError, match="reserved"):
         SimViewBody.create_pointcloud("pts", points, color_layers={"similarity": cls})

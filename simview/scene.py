@@ -809,8 +809,12 @@ class SimulationScene:
         """
         self.model.add_body(
             SimViewBody.create_pointcloud(
-                body_name, points, color=color, embedding=embedding,
-                color_layers=color_layers, **kwargs,
+                body_name,
+                points,
+                color=color,
+                embedding=embedding,
+                color_layers=color_layers,
+                **kwargs,
             )
         )
 
