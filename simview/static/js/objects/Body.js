@@ -311,6 +311,7 @@ export class Body {
         this.pointColors = null;
         this.pointEmbedding = null;
         this.embeddingDim = 0;
+        this.pointColorLayers = new Map(); // name -> flat RGB, see showColorLayer
         this.selectedPointIndex = null;
 
         // Initialize instanced representations
@@ -318,6 +319,9 @@ export class Body {
             this.pointCount = toFlatFloat32Array(shape.points).length / 3;
             if (shape.color) {
                 this.pointColors = toFlatFloat32Array(shape.color);
+            }
+            for (const [layer, rgb] of Object.entries(shape.colorLayers || {})) {
+                this.pointColorLayers.set(layer, toFlatFloat32Array(rgb));
             }
             if (shape.embedding) {
                 this.pointEmbedding = toFlatFloat32Array(shape.embedding);
@@ -456,7 +460,8 @@ export class Body {
             source.geometry,
             source.config,
             true,
-            this.pointColors
+            // A batch built after a recolor (layer, similarity) matches the others.
+            this.shownPointColors ?? this.pointColors
         );
         if (!points) return;
         points.visible = this.#pointsVisible();
@@ -760,6 +765,7 @@ export class Body {
     // first use -- mirrors Terrain.js's per-vertex color update pattern,
     // just targeting THREE.Points/PointsMaterial instead of Mesh/MeshPhongMaterial.
     setPointColors(colorsFlat) {
+        this.shownPointColors = colorsFlat;
         for (const points of this.representations.points ?? []) {
             if (!points) continue;
             let attr = points.geometry.getAttribute("color");
@@ -810,6 +816,16 @@ export class Body {
         if (controller && controller.getValue() !== "similarity") {
             controller.setValue("similarity");
         }
+        if (this.app.legend) this.app.legend.update();
+    }
+
+    // Shows the named per-point color layer (shape.colorLayers), or the
+    // static coloring if this body ships no layer of that name.
+    showColorLayer(name) {
+        const rgb = this.pointColorLayers.get(name);
+        if (!rgb) return this.resetPointColors();
+        this.setPointColors(rgb);
+        this.selectedPointIndex = null;
         if (this.app.legend) this.app.legend.update();
     }
 

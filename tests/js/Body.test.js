@@ -171,6 +171,32 @@ describe("Body pointcloud color/embedding", () => {
         });
     });
 
+    describe("showColorLayer", () => {
+        const LAYER = new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0]);
+        let body;
+        beforeEach(() => {
+            body = new Body(
+                makePointcloudBodyData({ color: COLORS, colorLayers: { class: LAYER } }),
+                fakeApp(2)
+            );
+        });
+
+        it("shows the named layer on every batch", () => {
+            body.showColorLayer("class");
+            for (let i = 0; i < 2; i++) {
+                const attr = body.representations.points[i].geometry.getAttribute("color");
+                expect(Array.from(attr.array)).toEqual(Array.from(LAYER));
+            }
+        });
+
+        it("falls back to the static color for a layer this body lacks", () => {
+            body.showColorLayer("class");
+            body.showColorLayer("session");
+            const attr = body.representations.points[0].geometry.getAttribute("color");
+            expect(Array.from(attr.array)).toEqual(Array.from(COLORS));
+        });
+    });
+
     describe("recolorBySimilarity / resetPointColors sync the GUI dropdown and legend", () => {
         // Fake lil-gui controller: just enough surface (getValue/setValue) for
         // Body.js to drive it the same way Terrain.setFeatureQueryAt does.

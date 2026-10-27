@@ -223,26 +223,53 @@ export class UIControls {
             }
 
             // Only shown when at least one body ships a per-point similarity
-            // embedding (see Body.js's pointEmbedding / recolorBySimilarity).
-            // Point clicks only recolor by similarity once this is set to
-            // "similarity" (InteractionController's #handlePointClick);
-            // switching back restores the static PCA-RGB view.
-            const bodiesWithEmbedding = [...this.app.bodies.values()].filter(
-                (body) => body.pointEmbedding
+            // embedding (see Body.js's pointEmbedding / recolorBySimilarity)
+            // or named color layers (Body.js's pointColorLayers). Point clicks
+            // only recolor by similarity once this is set to "similarity"
+            // (InteractionController's #handlePointClick); "pca" restores the
+            // static coloring, a layer name shows that layer on every body
+            // that has it.
+            const pointBodies = [...this.app.bodies.values()].filter(
+                (body) => body.pointEmbedding || body.pointColorLayers?.size
             );
-            if (bodiesWithEmbedding.length > 0) {
+            if (pointBodies.length > 0) {
+                const layerNames = [
+                    ...new Set(pointBodies.flatMap((body) => [...body.pointColorLayers.keys()])),
+                ];
+                const hasEmbedding = pointBodies.some((body) => body.pointEmbedding);
+                const modes = ["pca", ...layerNames, ...(hasEmbedding ? ["similarity"] : [])];
+                if (!modes.includes(this.app.uiState.pointColorMode)) {
+                    this.app.uiState.pointColorMode = "pca";
+                }
+                const applyMode = (value) => {
+                    if (value === "similarity") return; // waits for a click
+                    pointBodies.forEach((body) =>
+                        value === "pca" ? body.resetPointColors() : body.showColorLayer(value)
+                    );
+                };
                 const pointColorControls = {
                     pointColorMode: this.app.uiState.pointColorMode,
+                    linkPointSimilarity: this.app.uiState.linkPointSimilarity,
                 };
                 this.bodyFolder
-                    .add(pointColorControls, "pointColorMode", ["pca", "similarity"])
+                    .add(pointColorControls, "pointColorMode", modes)
                     .name("Point Color Mode")
                     .onChange((value) => {
                         this.app.uiState.pointColorMode = value;
-                        if (value === "pca") {
-                            bodiesWithEmbedding.forEach((body) => body.resetPointColors());
-                        }
+                        applyMode(value);
                     });
+                applyMode(this.app.uiState.pointColorMode);
+                if (hasEmbedding) {
+                    // A click recolors every body with the same point count by
+                    // the clicked index -- meaningful when bodies share point
+                    // order (e.g. one cloud's features from several models).
+                    this.bodyFolder
+                        .add(pointColorControls, "linkPointSimilarity")
+                        .name("Link Similarity")
+                        .onChange((value) => {
+                            this.app.uiState.linkPointSimilarity = value;
+                        });
+                }
             }
 
             // Only create toggles for attributes actually present in the loaded data.

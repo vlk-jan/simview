@@ -55,7 +55,7 @@ produces.
     - **`ui`** *(object)* — values for the viewer's UI state, deep-merged over its
         defaults before the controls are built: `pointCloudsVisible`, `axesVisible`,
         `trailsVisible`, `smoothInterpolation`, `terrainColorMode`, `terrainColorMap`,
-        `bodyVisualizationMode`, `polylinesVisible`, `terrainProbe`, `pointColorMode`, `attributeVisible.*` (`contacts`,
+        `bodyVisualizationMode`, `polylinesVisible`, `terrainProbe`, `pointColorMode`, `linkPointSimilarity`, `attributeVisible.*` (`contacts`,
         `velocity`, `angularVelocity`, `force`, `torque`) and `terrainVisualizationModes.*`
         (`surface`, `wireframe`, `normals`). Wins over the viewer's automatic
         `bodyVisualizationMode` choice.
@@ -81,6 +81,9 @@ produces.
             backbone's features); enables the viewer's click-to-similarity "similarity" Point
             Color Mode, computed client-side as cosine similarity to a clicked point (see
             [Controls](../usage/controls.md#point-cloud-and-terrain-similarity-coloring)).
+            Optional `colorLayers` *(object: name → array[array[3]])* — extra named per-point
+            RGB colorings (e.g. a class or session label); each name becomes a Point Color
+            Mode choice, shown by every body that ships it. `pca` and `similarity` are reserved.
         - `"mesh"` — requires `vertices` *(array[array[3]])* and `faces` *(array[array[3]])*.
     - **`availableAttributes`** *(array[string], optional)* — which optional per-state
         fields this body provides. Any of `"contacts"`, `"velocity"`, `"angularVelocity"`,

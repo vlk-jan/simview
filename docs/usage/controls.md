@@ -78,6 +78,13 @@ entirely client-side, no backend round-trip. A colormap legend (coolwarm, [-1, 1
 appears alongside the existing terrain legend to read values off the result. Clicking
 without the matching mode active does nothing.
 
+With "Link Similarity" on, a point click also recolors every other point cloud with the
+same number of points by its similarity to the point at the same index — useful when the
+clouds are one set of points with features from different models, shown side by side
+(e.g. one per batch in split screen). Point clouds may also ship named color layers
+(`create_pointcloud(color_layers={"class": rgb, ...})`); each name is an extra
+"Point Color Mode" choice.
+
 ## Trajectory Trails
 
 Toggling trails (`G`, or "Show Trails" in the Body Options panel) draws each body's
