@@ -727,10 +727,6 @@ body {
    BodyStateWindow (simview/static/js/ui/BodyStateWindow.js)
    ========================================================================== */
 
-.body-state-window[hidden] {
-    display: none;
-}
-
 .body-state-window {
     position: fixed;
     top: 10px;

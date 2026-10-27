@@ -182,20 +182,14 @@ export class InteractionController {
         const delta = [offset.x - active.x, offset.y - active.y, offset.z - active.z];
         const ndc = this.mouse.clone();
         ndc.x = ((e.clientX - (right ? width / 2 : 0)) / (width / 2)) * 2 - 1;
-        const aspect = camera.aspect;
-        camera.aspect = width / 2 / height;
-        camera.updateProjectionMatrix();
-        camera.position.x += delta[0];
-        camera.position.y += delta[1];
-        camera.position.z += delta[2];
-        camera.updateMatrixWorld();
-        this.raycaster.setFromCamera(ndc, camera);
-        camera.position.x -= delta[0];
-        camera.position.y -= delta[1];
-        camera.position.z -= delta[2];
-        camera.aspect = aspect;
-        camera.updateProjectionMatrix();
-        camera.updateMatrixWorld();
+        const cam = camera.clone();
+        cam.aspect = width / 2 / height;
+        cam.updateProjectionMatrix();
+        cam.position.x += delta[0];
+        cam.position.y += delta[1];
+        cam.position.z += delta[2];
+        cam.updateMatrixWorld();
+        this.raycaster.setFromCamera(ndc, cam);
     }
 
     // Point-cloud analog of showTerrainTooltip: recolors the whole body by

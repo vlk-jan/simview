@@ -4,7 +4,7 @@ import { colorMapOptions } from "../vendor/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
 import { serializeViewState } from "../utils/viewState.js";
 
-// Hover text per control (keyed by its property) and per folder (by title).
+// Hover text per control, keyed by its property.
 const CONTROL_TIPS = {
     bodyVisualizationMode: "How bodies are drawn: mesh, wireframe, primitive shapes, or none to hide them.",
     showPointClouds: "Show or hide the point-cloud bodies.",
@@ -35,11 +35,6 @@ const CONTROL_TIPS = {
     splitBatchA: "Batch shown in the first half of the split screen.",
     splitBatchB: "Batch shown in the second half of the split screen.",
     copyViewLink: "Copy a link that reopens this view: camera, toggles and selections.",
-};
-const FOLDER_TIPS = {
-    "Body Options": "How bodies and point clouds are drawn.",
-    "Terrain Options": "How the terrain is drawn and colored.",
-    "Camera Options": "Camera, body tracking and split screen.",
 };
 
 // The lil-gui Controls panel (Body/Terrain/Camera Options, Scene Info) and
@@ -538,9 +533,6 @@ export class UIControls {
         // Before Scene Info is added: its keys are free-form metadata.
         for (const c of this.gui.controllersRecursive()) {
             if (CONTROL_TIPS[c.property]) c.domElement.title = CONTROL_TIPS[c.property];
-        }
-        for (const f of this.gui.foldersRecursive()) {
-            if (FOLDER_TIPS[f._title]) f.$title.title = FOLDER_TIPS[f._title];
         }
 
         if (this.app.metadata && Object.keys(this.app.metadata).length > 0) {

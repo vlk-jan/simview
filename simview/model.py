@@ -522,6 +522,7 @@ class SimViewBody:
                 )
             shape_extra["embedding"] = embedding
         if color_layers:
+            shape_extra["colorLayers"] = {}
             for layer, rgb in color_layers.items():
                 if layer in ("pca", "similarity"):
                     raise ValueError(f"color layer name {layer!r} is reserved.")
@@ -529,9 +530,7 @@ class SimViewBody:
                     raise ValueError(
                         f"color layer {layer!r} must have shape ({N}, 3); got {tuple(rgb.shape)}."
                     )
-            shape_extra["colorLayers"] = {
-                layer: _encode_blob(rgb.cpu().numpy()) for layer, rgb in color_layers.items()
-            }
+                shape_extra["colorLayers"][layer] = _encode_blob(rgb.cpu().numpy())
         # Per-point `color` lives in the shape, so it can't go through
         # `create`'s kwargs (where `color` is the body-level tint).
         body = SimViewBody.create(
