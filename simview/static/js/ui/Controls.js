@@ -830,3 +830,4 @@ export class UIControls {
         }
     }
 }
+            if (type === "surface" && this.app.legend) this.app.legend.update();
