@@ -8,7 +8,7 @@ import {
     createArrow,
     toFlatFloat32Array,
 } from "./utils.js";
-import { getCallableFromColorMapName } from "./colormap.js";
+import { colormapLUT, getCallableFromColorMapName, NO_DATA_COLOR } from "./colormap.js";
 import { cosineSimilarityToQuery } from "./similarity.js";
 
 export class Body {
@@ -797,14 +797,23 @@ export class Body {
             this.pointCount
         );
 
-        const cmap = getCallableFromColorMapName(cmapName);
+        // A lookup table, not a colormap call per point (which allocates a
+        // THREE.Color each: ~60% of the recolor time at 200k points).
+        const lut = colormapLUT(getCallableFromColorMapName(cmapName));
+        const last = lut.length / 3 - 1;
         const colors = new Float32Array(this.pointCount * 3);
         for (let i = 0; i < this.pointCount; i++) {
-            const value = 0.5 + 0.5 * Math.max(-1, Math.min(1, similarities[i]));
-            const c = cmap(value);
-            colors[i * 3] = c.r;
-            colors[i * 3 + 1] = c.g;
-            colors[i * 3 + 2] = c.b;
+            const sim = similarities[i];
+            if (Number.isFinite(sim)) {
+                const k = Math.round((0.5 + 0.5 * Math.max(-1, Math.min(1, sim))) * last) * 3;
+                colors[i * 3] = lut[k];
+                colors[i * 3 + 1] = lut[k + 1];
+                colors[i * 3 + 2] = lut[k + 2];
+            } else {
+                colors[i * 3] = NO_DATA_COLOR.r;
+                colors[i * 3 + 1] = NO_DATA_COLOR.g;
+                colors[i * 3 + 2] = NO_DATA_COLOR.b;
+            }
         }
         this.setPointColors(colors);
         this.selectedPointIndex = queryIndex;
