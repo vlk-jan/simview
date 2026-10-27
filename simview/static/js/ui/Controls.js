@@ -4,6 +4,44 @@ import { colorMapOptions } from "../vendor/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
 import { serializeViewState } from "../utils/viewState.js";
 
+// Hover text per control (keyed by its property) and per folder (by title).
+const CONTROL_TIPS = {
+    bodyVisualizationMode: "How bodies are drawn: mesh, wireframe, primitive shapes, or none to hide them.",
+    showPointClouds: "Show or hide the point-cloud bodies.",
+    showPolylines: "Show or hide the polylines.",
+    showAxes: "Draw each body's local coordinate axes.",
+    showTrails: "Draw the path each body has travelled.",
+    smoothInterpolation: "Interpolate poses between recorded frames instead of snapping to the nearest one.",
+    renderAllBatches: "Draw every batch at once. Off draws only the active batch and its neighbours, which is faster for many batches.",
+    pointColorMode: "What colors the points: pca (stored colors), a named color layer, or similarity (click a point to color every point by its similarity to it).",
+    linkPointSimilarity: "A similarity click recolors every point cloud with the same point count, not just the clicked one.",
+    showContacts: "Show contact points and forces.",
+    showVelocity: "Show each body's linear velocity as an arrow.",
+    showAngularVelocity: "Show each body's angular velocity as an arrow.",
+    showForce: "Show the linear force acting on each body as an arrow.",
+    showTorque: "Show the torque acting on each body as an arrow.",
+    showSurface: "Show or hide the colored terrain surface (and its legend).",
+    showWireframe: "Overlay the terrain's grid lines.",
+    showNormals: "Draw the terrain's surface normals as short lines.",
+    colorMap: "Colormap used to color the terrain surface.",
+    colorMode: "What the terrain color encodes: height, a terrain property, a diff between two batches, or feature similarity.",
+    diffLayer: "Terrain layer to compare between the two batches.",
+    diffBatchA: "Baseline batch for the diff (the diff is B minus A).",
+    diffBatchB: "Batch compared against the baseline (the diff is B minus A).",
+    terrainProbe: "Hover the terrain to read its values at the cursor.",
+    fov: "Camera field of view in degrees.",
+    trackBody: "Keep the camera following the chosen body.",
+    splitScreen: "Show two batches side by side.",
+    splitBatchA: "Batch shown in the first half of the split screen.",
+    splitBatchB: "Batch shown in the second half of the split screen.",
+    copyViewLink: "Copy a link that reopens this view: camera, toggles and selections.",
+};
+const FOLDER_TIPS = {
+    "Body Options": "How bodies and point clouds are drawn.",
+    "Terrain Options": "How the terrain is drawn and colored.",
+    "Camera Options": "Camera, body tracking and split screen.",
+};
+
 // The lil-gui Controls panel (Body/Terrain/Camera Options, Scene Info) and
 // its global keyboard shortcuts.
 export class UIControls {
@@ -64,6 +102,7 @@ export class UIControls {
         const ctrl = old.options(names).onChange((value) => {
             this.app.uiState.trackBody = value;
         });
+        ctrl.domElement.title = old.domElement.title;
         parent.insertBefore(ctrl.domElement, next);
         if (!names.includes(ctrl.getValue())) ctrl.setValue("None");
         this.trackBodyCtrl = ctrl;
@@ -496,6 +535,14 @@ export class UIControls {
         this.cameraControls = cameraControls;
         cameraFolder.close();
 
+        // Before Scene Info is added: its keys are free-form metadata.
+        for (const c of this.gui.controllersRecursive()) {
+            if (CONTROL_TIPS[c.property]) c.domElement.title = CONTROL_TIPS[c.property];
+        }
+        for (const f of this.gui.foldersRecursive()) {
+            if (FOLDER_TIPS[f._title]) f.$title.title = FOLDER_TIPS[f._title];
+        }
+
         if (this.app.metadata && Object.keys(this.app.metadata).length > 0) {
             this.metadataFolder = this.gui.addFolder("Scene Info");
 
@@ -786,6 +833,7 @@ export class UIControls {
                 this.app.uiState.terrainVisualizationModes = {};
             }
             this.app.uiState.terrainVisualizationModes[type] = visible;
+            if (type === "surface" && this.app.legend) this.app.legend.update();
         }
     }
 
@@ -830,4 +878,3 @@ export class UIControls {
         }
     }
 }
-            if (type === "surface" && this.app.legend) this.app.legend.update();
