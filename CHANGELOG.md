@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.4.0] - 2026-10-28
+
 ### Added
 
 - Point clouds accept named color layers (`create_pointcloud(color_layers=)`),
@@ -946,7 +948,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.3.1...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.4.0...HEAD
+[6.4.0]: https://github.com/vlk-jan/simview/compare/v6.3.1...v6.4.0
 [6.3.1]: https://github.com/vlk-jan/simview/compare/v6.3.0...v6.3.1
 [6.3.0]: https://github.com/vlk-jan/simview/compare/v6.2.3...v6.3.0
 [6.2.3]: https://github.com/vlk-jan/simview/compare/v6.2.2...v6.2.3
