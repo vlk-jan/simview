@@ -131,6 +131,9 @@ export class BodyStateWindow {
         }
 
         this.bodyListContainer.appendChild(list);
+        // Nothing to read in a scene with no posed bodies (e.g. only static
+        // point clouds); the BatchLegend already covers batch switching.
+        this.window.hidden = this.bodyListItems.size === 0;
     }
 
     selectBody(name) {
