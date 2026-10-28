@@ -1437,7 +1437,7 @@ on (and ignores) unknown keys. Supported keys, all optional:
 - <strong><code>ui</code></strong> <em>(object)</em> — values for the viewer's UI state, deep-merged over its
     defaults before the controls are built: <code>pointCloudsVisible</code>, <code>axesVisible</code>,
     <code>trailsVisible</code>, <code>smoothInterpolation</code>, <code>terrainColorMode</code>, <code>terrainColorMap</code>,
-    <code>bodyVisualizationMode</code>, <code>polylinesVisible</code>, <code>terrainProbe</code>, <code>pointColorMode</code>, <code>attributeVisible.*</code> (<code>contacts</code>,
+    <code>bodyVisualizationMode</code>, <code>polylinesVisible</code>, <code>terrainProbe</code>, <code>pointColorMode</code>, <code>linkPointSimilarity</code>, <code>attributeVisible.*</code> (<code>contacts</code>,
     <code>velocity</code>, <code>angularVelocity</code>, <code>force</code>, <code>torque</code>) and <code>terrainVisualizationModes.*</code>
     (<code>surface</code>, <code>wireframe</code>, <code>normals</code>). Wins over the viewer's automatic
     <code>bodyVisualizationMode</code> choice.
@@ -1464,7 +1464,10 @@ on (and ignores) unknown keys. Supported keys, all optional:
     per-point K-wide feature vector (e.g. a reduced-dim PCA projection of a learned
     backbone's features); enables the viewer's click-to-similarity "similarity" Point
     Color Mode, computed client-side as cosine similarity to a clicked point (see
-    <a href="../../usage/controls/#point-cloud-and-terrain-similarity-coloring">Controls</a>).</li>
+    <a href="../../usage/controls/#point-cloud-and-terrain-similarity-coloring">Controls</a>).
+    Optional <code>colorLayers</code> <em>(object: name → array[array[3]])</em> — extra named per-point
+    RGB colorings (e.g. a class or session label); each name becomes a Point Color
+    Mode choice, shown by every body that ships it. <code>pca</code> and <code>similarity</code> are reserved.</li>
 <li><code>"mesh"</code> — requires <code>vertices</code> <em>(array[array[3]])</em> and <code>faces</code> <em>(array[array[3]])</em>.</li>
 </ul>
 </li>
