@@ -44,7 +44,8 @@ export const UI_DEFAULT_CONFIG = {
     terrainColorMap: "magma", // Default colormap
     terrainColorMode: "height", // "height", or any named terrain property (e.g. friction, stiffness)
     terrainProbe: false, // interactive terrain probe on click
-    pointColorMode: "pca", // "pca" or "similarity" (point clouds with embeddings)
+    pointColorMode: "pca", // "pca", "similarity" (point clouds with embeddings) or a color layer name
+    linkPointSimilarity: false, // a point click recolors every same-size point cloud
 };
 
 export const FREQ_CONFIG = {

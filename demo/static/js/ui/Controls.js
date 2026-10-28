@@ -4,6 +4,39 @@ import { colorMapOptions } from "../vendor/js-colormaps.js";
 import { RENDER_ALL, RENDER_FOCUSED } from "../utils/batchVisibility.js";
 import { serializeViewState } from "../utils/viewState.js";
 
+// Hover text per control, keyed by its property.
+const CONTROL_TIPS = {
+    bodyVisualizationMode: "How bodies are drawn: mesh, wireframe, primitive shapes, or none to hide them.",
+    showPointClouds: "Show or hide the point-cloud bodies.",
+    showPolylines: "Show or hide the polylines.",
+    showAxes: "Draw each body's local coordinate axes.",
+    showTrails: "Draw the path each body has travelled.",
+    smoothInterpolation: "Interpolate poses between recorded frames instead of snapping to the nearest one.",
+    renderAllBatches: "Draw every batch at once. Off draws only the focused batch (plus any pinned by split screen), which is faster for many batches.",
+    pointColorMode: "What colors the points: pca (stored colors), a named color layer, or similarity (click a point to color every point by its similarity to it).",
+    linkPointSimilarity: "A similarity click recolors every point cloud with the same point count, not just the clicked one.",
+    showContacts: "Show contact points.",
+    showVelocity: "Show each body's linear velocity as an arrow.",
+    showAngularVelocity: "Show each body's angular velocity as an arrow.",
+    showForce: "Show the linear force acting on each body as an arrow.",
+    showTorque: "Show the torque acting on each body as an arrow.",
+    showSurface: "Show or hide the colored terrain surface (and its legend).",
+    showWireframe: "Overlay the terrain's grid lines.",
+    showNormals: "Draw the terrain's surface normals as short lines.",
+    colorMap: "Colormap used to color the terrain surface.",
+    colorMode: "What the terrain color encodes: height, a terrain property, a diff between two batches, or feature similarity.",
+    diffLayer: "Terrain layer to compare between the two batches.",
+    diffBatchA: "Baseline batch for the diff (the diff is B minus A).",
+    diffBatchB: "Batch compared against the baseline (the diff is B minus A).",
+    terrainProbe: "Hover the terrain to read its values at the cursor.",
+    fov: "Camera field of view in degrees.",
+    trackBody: "Keep the camera following the chosen body.",
+    splitScreen: "Show two batches side by side.",
+    splitBatchA: "Batch shown in the first half of the split screen.",
+    splitBatchB: "Batch shown in the second half of the split screen.",
+    copyViewLink: "Copy a link that reopens this view: camera, toggles and selections.",
+};
+
 // The lil-gui Controls panel (Body/Terrain/Camera Options, Scene Info) and
 // its global keyboard shortcuts.
 export class UIControls {
@@ -64,6 +97,7 @@ export class UIControls {
         const ctrl = old.options(names).onChange((value) => {
             this.app.uiState.trackBody = value;
         });
+        ctrl.domElement.title = old.domElement.title;
         parent.insertBefore(ctrl.domElement, next);
         if (!names.includes(ctrl.getValue())) ctrl.setValue("None");
         this.trackBodyCtrl = ctrl;
@@ -223,26 +257,53 @@ export class UIControls {
             }
 
             // Only shown when at least one body ships a per-point similarity
-            // embedding (see Body.js's pointEmbedding / recolorBySimilarity).
-            // Point clicks only recolor by similarity once this is set to
-            // "similarity" (InteractionController's #handlePointClick);
-            // switching back restores the static PCA-RGB view.
-            const bodiesWithEmbedding = [...this.app.bodies.values()].filter(
-                (body) => body.pointEmbedding
+            // embedding (see Body.js's pointEmbedding / recolorBySimilarity)
+            // or named color layers (Body.js's pointColorLayers). Point clicks
+            // only recolor by similarity once this is set to "similarity"
+            // (InteractionController's #handlePointClick); "pca" restores the
+            // static coloring, a layer name shows that layer on every body
+            // that has it.
+            const pointBodies = [...this.app.bodies.values()].filter(
+                (body) => body.pointEmbedding || body.pointColorLayers?.size
             );
-            if (bodiesWithEmbedding.length > 0) {
+            if (pointBodies.length > 0) {
+                const layerNames = [
+                    ...new Set(pointBodies.flatMap((body) => [...body.pointColorLayers.keys()])),
+                ];
+                const hasEmbedding = pointBodies.some((body) => body.pointEmbedding);
+                const modes = ["pca", ...layerNames, ...(hasEmbedding ? ["similarity"] : [])];
+                if (!modes.includes(this.app.uiState.pointColorMode)) {
+                    this.app.uiState.pointColorMode = "pca";
+                }
+                const applyMode = (value) => {
+                    if (value === "similarity") return; // waits for a click
+                    pointBodies.forEach((body) =>
+                        value === "pca" ? body.resetPointColors() : body.showColorLayer(value)
+                    );
+                };
                 const pointColorControls = {
                     pointColorMode: this.app.uiState.pointColorMode,
+                    linkPointSimilarity: this.app.uiState.linkPointSimilarity,
                 };
                 this.bodyFolder
-                    .add(pointColorControls, "pointColorMode", ["pca", "similarity"])
+                    .add(pointColorControls, "pointColorMode", modes)
                     .name("Point Color Mode")
                     .onChange((value) => {
                         this.app.uiState.pointColorMode = value;
-                        if (value === "pca") {
-                            bodiesWithEmbedding.forEach((body) => body.resetPointColors());
-                        }
+                        applyMode(value);
                     });
+                applyMode(this.app.uiState.pointColorMode);
+                if (hasEmbedding) {
+                    // A click recolors every body with the same point count by
+                    // the clicked index -- meaningful when bodies share point
+                    // order (e.g. one cloud's features from several models).
+                    this.bodyFolder
+                        .add(pointColorControls, "linkPointSimilarity")
+                        .name("Link Similarity")
+                        .onChange((value) => {
+                            this.app.uiState.linkPointSimilarity = value;
+                        });
+                }
             }
 
             // Only create toggles for attributes actually present in the loaded data.
@@ -468,6 +529,11 @@ export class UIControls {
 
         this.cameraControls = cameraControls;
         cameraFolder.close();
+
+        // Before Scene Info is added: its keys are free-form metadata.
+        for (const c of this.gui.controllersRecursive()) {
+            if (CONTROL_TIPS[c.property]) c.domElement.title = CONTROL_TIPS[c.property];
+        }
 
         if (this.app.metadata && Object.keys(this.app.metadata).length > 0) {
             this.metadataFolder = this.gui.addFolder("Scene Info");
@@ -759,6 +825,7 @@ export class UIControls {
                 this.app.uiState.terrainVisualizationModes = {};
             }
             this.app.uiState.terrainVisualizationModes[type] = visible;
+            if (type === "surface" && this.app.legend) this.app.legend.update();
         }
     }
 

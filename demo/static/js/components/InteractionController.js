@@ -103,7 +103,7 @@ export class InteractionController {
         const similarityActive = this.app.uiState?.pointColorMode === "similarity";
         if (!probeActive && !similarityActive) return;
 
-        this.raycaster.setFromCamera(this.mouse, this.app.scene.camera);
+        this.#setRayFromClick(e);
         // THREE's raycaster ignores `visible`, so hidden objects (a focused-
         // mode batch's point cloud that was built earlier, a hidden body) are
         // filtered out here or a click lands on something not on screen.
@@ -162,6 +162,36 @@ export class InteractionController {
         this.hideTerrainTooltip();
     }
 
+    // In split screen each half is rendered with the camera shifted to its
+    // batch and a half-width aspect (Scene.animate); raycast the same way, or
+    // a click in either half picks whatever sits under it in the full view.
+    #setRayFromClick(e) {
+        const app = this.app;
+        const camera = app.scene.camera;
+        const bm = app.batchManager;
+        if (!(app.uiState?.splitScreen && bm && bm.simBatches >= 2)) {
+            this.raycaster.setFromCamera(this.mouse, camera);
+            return;
+        }
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const right = e.clientX >= width / 2;
+        const batch = right ? (app.uiState.splitBatchB ?? 1) : (app.uiState.splitBatchA ?? 0);
+        const offset = bm.getBatchOffset(batch);
+        const active = bm.getBatchOffset(bm.currentlyActiveBatch);
+        const delta = [offset.x - active.x, offset.y - active.y, offset.z - active.z];
+        const ndc = this.mouse.clone();
+        ndc.x = ((e.clientX - (right ? width / 2 : 0)) / (width / 2)) * 2 - 1;
+        const cam = camera.clone();
+        cam.aspect = width / 2 / height;
+        cam.updateProjectionMatrix();
+        cam.position.x += delta[0];
+        cam.position.y += delta[1];
+        cam.position.z += delta[2];
+        cam.updateMatrixWorld();
+        this.raycaster.setFromCamera(ndc, cam);
+    }
+
     // Point-cloud analog of showTerrainTooltip: recolors the whole body by
     // cosine similarity to the clicked point instead of showing a props
     // tooltip (there's no single "value" to display -- the whole point of
@@ -170,6 +200,13 @@ export class InteractionController {
         const body = this.app.bodies.get(hit.object.userData.bodyName);
         if (!body) return;
         body.recolorBySimilarity(hit.index);
+        if (this.app.uiState?.linkPointSimilarity) {
+            for (const other of this.app.bodies.values()) {
+                if (other !== body && other.pointEmbedding && other.pointCount === body.pointCount) {
+                    other.recolorBySimilarity(hit.index);
+                }
+            }
+        }
         this.#hideTooltipText();
         if (this.probeSphere) {
             this.probeSphere.position.copy(hit.point);

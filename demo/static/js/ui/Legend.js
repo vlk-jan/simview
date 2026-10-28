@@ -27,7 +27,9 @@ export class Legend {
     }
 
     #updateTerrainLegend() {
-        if (!this.app.terrain) {
+        // Only the surface is colored by the mode (wireframe/normals aren't).
+        const surfaceShown = this.app.uiState.terrainVisualizationModes?.surface ?? true;
+        if (!this.app.terrain || !surfaceShown) {
             this.container.style.display = "none";
             return;
         }
@@ -107,7 +109,7 @@ export class Legend {
         }
         this.pointContainer.style.display = "flex";
         // Stack above the terrain legend, or take its slot when there's none.
-        this.pointContainer.style.bottom = this.app.terrain ? "90px" : "20px";
+        this.pointContainer.style.bottom = this.container.style.display !== "none" ? "90px" : "20px";
         // Fixed coolwarm/[-1,1], matching Body.recolorBySimilarity's own
         // hardcoded colormap and cosine-similarity range.
         this.#renderGradient(

@@ -436,24 +436,26 @@ export class SimView {
         // appendBodyHistories has run (see BodyStateWindow.updateBodyList).
         if (this.bodyStateWindow) this.bodyStateWindow.updateBodyList();
         if (this.uiControls) this.uiControls.updateTrackBodyOptions();
-        if (this.errorMetrics) {
-            this.errorMetrics.onHistoryReady();
-        }
-        this.maybeAttachTerrainProfile();
+        this.maybeAttachTrajectoryPanels();
     }
 
-    // The Terrain tab needs a body with an actual trajectory to sample
+    // The Error Metrics and Terrain tabs need a body with an actual trajectory to sample
     // terrain along (a static point cloud with no states doesn't count),
     // which is only known once appendBodyHistories() has filled each body's
-    // validStates.
-    maybeAttachTerrainProfile() {
-        if (!this.terrain || this.terrainProfile) return;
+    // validStates. Error Metrics compares batches over time, so it needs the
+    // same plus at least two batches; a static scene gets neither tab.
+    maybeAttachTrajectoryPanels() {
         if (!hasBodyTrajectory(this.bodies)) return;
-        if (!this.analysisPanel) {
-            this.analysisPanel = new AnalysisPanel(this);
+        this.analysisPanel ??= new AnalysisPanel(this);
+        if (this.batchManager.simBatches >= 2 && !this.errorMetrics) {
+            this.errorMetrics = new ErrorMetrics(this);
+            this.errorMetrics.onHistoryReady();
+            this.analysisPanel.attach("errorMetrics", this.errorMetrics, this.errorMetrics.content);
         }
-        this.terrainProfile = new TerrainProfile(this);
-        this.analysisPanel.attach("terrain", this.terrainProfile, this.terrainProfile.content);
+        if (this.terrain && !this.terrainProfile) {
+            this.terrainProfile = new TerrainProfile(this);
+            this.analysisPanel.attach("terrain", this.terrainProfile, this.terrainProfile.content);
+        }
     }
 
     // Resolves and records position/orientation (and contacts, vectors, ...)
@@ -562,13 +564,10 @@ export class SimView {
             // so the camera's clipping/orbit range can stop being a guess.
             this.scene.applySceneExtent(this.terrain.bounds);
             const hasScalars = model.scalarNames && model.scalarNames.length > 0;
-            const hasErrorMetrics = this.batchManager.simBatches >= 2;
-            // The Terrain tab is attached later, from onStoreReady (see
-            // maybeAttachTerrainProfile).
-            if (hasScalars || hasErrorMetrics) {
-                this.analysisPanel = new AnalysisPanel(this);
-            }
+            // The Error Metrics and Terrain tabs are attached later, from
+            // onStoreReady (see maybeAttachTrajectoryPanels).
             if (hasScalars) {
+                this.analysisPanel = new AnalysisPanel(this);
                 console.debug(
                     "Initializing scalar plotter for scalars",
                     model.scalarNames
@@ -576,10 +575,6 @@ export class SimView {
                 this.scalarPlotter = new ScalarPlotter(this, model.scalarNames);
                 const { tabBar, plotArea } = this.scalarPlotter;
                 this.analysisPanel.attach("scalars", this.scalarPlotter, tabBar, plotArea);
-            }
-            if (hasErrorMetrics) {
-                this.errorMetrics = new ErrorMetrics(this);
-                this.analysisPanel.attach("errorMetrics", this.errorMetrics, this.errorMetrics.content);
             }
             this.interactionController = new InteractionController(this);
             this.uiControls = new UIControls(this);
