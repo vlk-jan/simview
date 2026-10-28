@@ -15,6 +15,7 @@ globalThis.document ??= {
     }),
 };
 const { Body } = await import("../../simview/static/js/objects/Body.js");
+const { getCallableFromColorMapName } = await import("../../simview/static/js/objects/colormap.js");
 
 function fakeApp(simBatches = 1) {
     return {
@@ -145,6 +146,13 @@ describe("Body pointcloud color/embedding", () => {
             expect(attr.array[11]).toBeCloseTo(0, 5);
         });
 
+        it("maps an orthogonal point (cosine = 0) to the middle of the colormap", () => {
+            body.recolorBySimilarity(0, "grayscale");
+            const attr = body.representations.points[0].geometry.getAttribute("color");
+            // Sampled from a lookup table, so within a step of the exact colormap.
+            expect(attr.array[6]).toBeCloseTo(getCallableFromColorMapName("grayscale")(0.5).r, 2);
+        });
+
         it("sets selectedPointIndex to the queried point", () => {
             body.recolorBySimilarity(2);
             expect(body.selectedPointIndex).toBe(2);
@@ -168,6 +176,32 @@ describe("Body pointcloud color/embedding", () => {
                 const attr = multiBatchBody.representations.points[i].geometry.getAttribute("color");
                 expect(attr.array[0]).toBeCloseTo(1, 5);
             }
+        });
+    });
+
+    describe("showColorLayer", () => {
+        const LAYER = new Float32Array([0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0]);
+        let body;
+        beforeEach(() => {
+            body = new Body(
+                makePointcloudBodyData({ color: COLORS, colorLayers: { class: LAYER } }),
+                fakeApp(2)
+            );
+        });
+
+        it("shows the named layer on every batch", () => {
+            body.showColorLayer("class");
+            for (let i = 0; i < 2; i++) {
+                const attr = body.representations.points[i].geometry.getAttribute("color");
+                expect(Array.from(attr.array)).toEqual(Array.from(LAYER));
+            }
+        });
+
+        it("falls back to the static color for a layer this body lacks", () => {
+            body.showColorLayer("class");
+            body.showColorLayer("session");
+            const attr = body.representations.points[0].geometry.getAttribute("color");
+            expect(Array.from(attr.array)).toEqual(Array.from(COLORS));
         });
     });
 

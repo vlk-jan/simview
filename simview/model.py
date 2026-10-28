@@ -488,6 +488,7 @@ class SimViewBody:
         points: torch.Tensor,
         color: torch.Tensor | None = None,
         embedding: torch.Tensor | None = None,
+        color_layers: dict[str, torch.Tensor] | None = None,
         **kwargs,
     ) -> "SimViewBody":
         """Build a point-cloud body from `(N, 3)` `points`.
@@ -497,7 +498,10 @@ class SimViewBody:
         an optional per-point K-wide feature vector (e.g. a reduced-dim PCA
         projection of a learned backbone's features) enabling the viewer's
         click-to-similarity color mode: cosine similarity to a clicked point,
-        computed entirely in-browser from this data. Both are stored as
+        computed entirely in-browser from this data. `color_layers` maps a
+        name to another (N, 3) RGB coloring (e.g. a class or session label);
+        each becomes an extra choice of the viewer's "Point Color Mode", shown
+        by every body that ships a layer of that name. All are stored as
         ``__b64__`` blobs."""
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError(
@@ -517,6 +521,16 @@ class SimViewBody:
                     f"embedding must have shape ({N}, K) matching points; got {tuple(embedding.shape)}."
                 )
             shape_extra["embedding"] = embedding
+        if color_layers:
+            shape_extra["colorLayers"] = {}
+            for layer, rgb in color_layers.items():
+                if layer in ("pca", "similarity"):
+                    raise ValueError(f"color layer name {layer!r} is reserved.")
+                if tuple(rgb.shape) != (N, 3):
+                    raise ValueError(
+                        f"color layer {layer!r} must have shape ({N}, 3); got {tuple(rgb.shape)}."
+                    )
+                shape_extra["colorLayers"][layer] = _encode_blob(rgb.cpu().numpy())
         # Per-point `color` lives in the shape, so it can't go through
         # `create`'s kwargs (where `color` is the body-level tint).
         body = SimViewBody.create(

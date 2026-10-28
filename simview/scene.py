@@ -794,6 +794,7 @@ class SimulationScene:
         points: torch.Tensor,
         color: torch.Tensor | None = None,
         embedding: torch.Tensor | None = None,
+        color_layers: dict[str, torch.Tensor] | None = None,
         **kwargs,
     ) -> None:
         """Add a point-cloud body named `body_name` to the model.
@@ -802,11 +803,18 @@ class SimulationScene:
         `(N, 3)` per-point RGB in [0, 1] for static vertex-colored rendering.
         `embedding` is an optional `(N, K)` per-point feature vector (e.g. a
         reduced-dim PCA projection) enabling the viewer's click-to-similarity
-        color mode. Other `**kwargs` go to `SimViewBody.create`.
+        color mode. `color_layers` maps names to extra `(N, 3)` RGB colorings
+        selectable as "Point Color Mode" choices. Other `**kwargs` go to
+        `SimViewBody.create`.
         """
         self.model.add_body(
             SimViewBody.create_pointcloud(
-                body_name, points, color=color, embedding=embedding, **kwargs
+                body_name,
+                points,
+                color=color,
+                embedding=embedding,
+                color_layers=color_layers,
+                **kwargs,
             )
         )
 
