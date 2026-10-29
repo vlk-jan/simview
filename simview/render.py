@@ -92,6 +92,12 @@ def render_screenshot(
                     "#loading-splash", state="detached", timeout=_LOAD_TIMEOUT_MS
                 )
                 page.wait_for_timeout(_SETTLE_DELAY_MS)
+                # A view in a terrain property color mode fetches that layer on
+                # demand (Terrain.loadProperty); let it land and repaint.
+                if page.evaluate(
+                    "async () => (await window.__debugSimView?.terrain?.propertyLoadsSettled())?.length"
+                ):
+                    page.wait_for_timeout(_SETTLE_DELAY_MS)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 page.screenshot(path=str(output_path))
             finally:

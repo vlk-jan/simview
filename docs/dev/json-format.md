@@ -146,8 +146,8 @@ produces.
         grid per batch (a single flat array is also accepted and treated as one batch).
     - **`normals`** *(array[array[array[3]]], optional)* — per-batch surface normals, one `[x, y, z]`
         per grid point. When absent (`create_terrain(compute_normals=False)`) the viewer
-        computes shading normals from the heightfield itself; only the "normals" arrow
-        visualization then has nothing to draw.
+        computes shading normals from the heightfield itself and draws the "normals"
+        arrows from them.
     - **`properties`** *(object, optional)* — arbitrary named per-cell scalar fields over
         the grid (e.g. `friction`, `stiffness`, or any custom name), each selectable as a
         terrain color mode with no viewer code changes. Keyed by property name, each entry
@@ -160,6 +160,8 @@ produces.
         if either bound is missing or the range is degenerate the viewer falls back to
         clamping the raw value into `[0, 1]`.
         Example: `{"friction": {"data": [...], "min": 0.2, "max": 0.9}}`.
+        A `data` served as a `/blob/` reference is fetched only when the property is first
+        needed (its color mode, the diff layer or terrain profile, or a terrain hover).
     - **`embeddingData`** *(array[array[float]] | null, optional)* — per-batch, per-cell
         K-wide feature vectors (flattened `resolutionX * resolutionY * K` per batch),
         enabling the viewer's click-to-similarity "features" terrain color mode, mirroring

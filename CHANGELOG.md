@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Terrain property layers are no longer downloaded with the scene. Each is
+  fetched the first time it's needed: picking its color mode, diffing it,
+  plotting it in the Terrain profile, or hovering the terrain (the tooltip
+  lists every property). A terrain with seven ~1.9 MB layers loads ~13 MB
+  less up front.
+
+### Fixed
+
+- A terrain saved with `create_terrain(compute_normals=False)` draws its
+  "normals" arrows from the normals the viewer computes for shading, instead
+  of drawing nothing.
+
 ## [6.4.0] - 2026-10-28
 
 ### Added
@@ -148,6 +162,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test files). The docs build now runs with `--strict` in CI.
 
 ## [6.2.2] - 2026-10-19
+
+### Removed
+
+- `AnimationController.getCurrentStateIndex()`, `getCurrentTime()`,
+  `getTotalTime()` and `getFirstTime()`. Read the `currentStateIndex`,
+  `currentTime`, `totalTime` and `firstTime` properties instead. (This entry was
+  added later; the release notes originally left it out.)
 
 ### Security
 

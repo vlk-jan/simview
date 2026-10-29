@@ -9,6 +9,10 @@ export class Terrain {
     // #ensureNormals.
     #normals = null;
     #singletonNormals = null;
+    // Property layers still on the server (name -> loader, see
+    // SimView.deferTerrainPropertyBlobs) and their in-flight/settled fetches.
+    #propertyLoaders = new Map();
+    #propertyLoads = new Map();
 
     constructor(terrainData, app) {
         this.app = app; // Store reference to app for accessing batch manager
@@ -50,7 +54,11 @@ export class Terrain {
                 );
                 continue;
             }
-            this.properties.set(name, this.#normalizeScalarField(prop.data));
+            if (typeof prop.data?.load === "function") {
+                this.#propertyLoaders.set(name, prop.data.load);
+            } else {
+                this.properties.set(name, this.#normalizeScalarField(prop.data));
+            }
             this.propertyBounds.set(name, { min: prop.min, max: prop.max });
         }
     }
@@ -284,22 +292,28 @@ export class Terrain {
         }
     }
 
-    // Builds batch i's normal arrows the first time they're wanted.
+    // Builds batch i's normal arrows the first time they're wanted. Without
+    // shipped normals (compute_normals=False) they're read off the surface's
+    // computed vertex normals instead.
     #ensureNormals(i) {
-        const target = this.group.children[i]?.getObjectByName("normals");
-        if (!target || target.userData.built || !this.#normals) return;
+        const batchGroup = this.group.children[i];
+        const target = batchGroup?.getObjectByName("normals");
+        if (!target || target.userData.built) return;
         target.userData.built = true;
-        let source;
-        if (this.isSingleton) {
-            this.#singletonNormals ??= this.#createNormalVectors(
-                this.heightData[0],
-                this.#normals[0]
-            );
-            source = this.#singletonNormals.clone();
-        } else {
-            source = this.#createNormalVectors(this.heightData[i], this.#normals[i]);
-        }
-        target.add(...source.children);
+        const b = this.isSingleton ? 0 : i;
+        const build = () =>
+            this.#normals?.[b]
+                ? this.#createNormalVectors(this.heightData[b], this.#normals[b])
+                : this.#createNormalVectors(
+                      this.heightData[b],
+                      this.group.children[b].getObjectByName("surface")?.geometry.attributes.normal
+                          ?.array,
+                      true
+                  );
+        const source = this.isSingleton
+            ? (this.#singletonNormals ??= build()).clone()
+            : build();
+        if (source.children.length) target.add(...source.children);
     }
 
     // Normalize a value into [0, 1] against an explicit [min, max] range.
@@ -466,7 +480,9 @@ export class Terrain {
 
     // Returns a THREE.Group of ArrowHelpers sampling `normals` (flat or
     // nested, see #normalAt) across the grid; empty when none were shipped.
-    #createNormalVectors(heightData, normals) {
+    // `vertexOrder`: `normals` is a surface geometry's flat normal attribute,
+    // whose rows run opposite to the data's (see #createSurfaceGeometryFromHeightData).
+    #createNormalVectors(heightData, normals, vertexOrder = false) {
         const { sizeX, sizeY, resolutionX, resolutionY } = this.dimensions;
         const { minX, minY } = this.bounds;
 
@@ -494,7 +510,10 @@ export class Terrain {
                     const y = minY + row * (sizeY / (resolutionY - 1));
                     const z = heightData[dataIndex];
 
-                    const [nx, ny, nz] = Terrain.#normalAt(normals, dataIndex);
+                    const [nx, ny, nz] = Terrain.#normalAt(
+                        normals,
+                        vertexOrder ? (resolutionY - row - 1) * resolutionX + col : dataIndex
+                    );
 
                     const origin = new THREE.Vector3(x, y, z);
                     const direction = new THREE.Vector3(nx, ny, nz);
@@ -524,6 +543,39 @@ export class Terrain {
                 this.#ensureNormals(i);
             }
         });
+    }
+
+    // True while a property layer's data hasn't arrived yet (see loadProperty).
+    isPropertyPending(name) {
+        return this.#propertyLoaders.has(name) && !this.properties.has(name);
+    }
+
+    // Fetches a deferred property layer into this.properties, once; resolves
+    // when it's there. A failed fetch is logged and stays failed (no retry
+    // storm from the hover tooltip asking on every mouse move).
+    loadProperty(name) {
+        if (!this.isPropertyPending(name)) return Promise.resolve();
+        let load = this.#propertyLoads.get(name);
+        if (!load) {
+            load = this.#propertyLoaders
+                .get(name)()
+                .then((data) => {
+                    this.properties.set(name, this.#normalizeScalarField(data));
+                });
+            load.catch((error) => console.error(`Terrain property '${name}' failed to load:`, error));
+            this.#propertyLoads.set(name, load);
+        }
+        return load;
+    }
+
+    // Resolves once every property fetch started so far has settled -- for
+    // render.py, so a screenshot doesn't catch a layer before it's colored.
+    propertyLoadsSettled() {
+        return Promise.allSettled(this.#propertyLoads.values());
+    }
+
+    #loadAllProperties() {
+        for (const name of this.#propertyLoaders.keys()) this.loadProperty(name);
     }
 
     // Returns the per-batch data array for a diff layer name ("height", or
@@ -709,6 +761,18 @@ export class Terrain {
 
     // Update terrain colors with current mode
     setColorMode(mode) {
+        // A property layer not fetched yet: color with what's here now (the
+        // height fallback, or diff's center color) and again once it lands.
+        const layer =
+            mode === "diff"
+                ? this.app.uiState.terrainDiffLayer || this.getAvailableDiffLayers()[0]
+                : mode;
+        if (this.isPropertyPending(layer)) {
+            this.loadProperty(layer).then(() => {
+                this.setColorMode(this.app.uiState.terrainColorMode);
+                this.app.legend?.update();
+            }, () => {});
+        }
         const callableColormap = getCallableFromColorMapName(this.app.uiState.terrainColorMap);
         const batchesToUpdate = this.isSingleton ? 1 : this.app.batchManager.simBatches;
 
@@ -725,8 +789,9 @@ export class Terrain {
         if (this.heightData && this.heightData.length > 0) {
             modes.push("height");
         }
-        for (const [name, data] of this.properties) {
-            if (data && data.length > 0) modes.push(name);
+        for (const name of this.propertyBounds.keys()) {
+            const data = this.properties.get(name);
+            if ((data && data.length > 0) || this.#propertyLoaders.has(name)) modes.push(name);
         }
         if (this.app.batchManager.simBatches >= 2) {
             modes.push("diff");
@@ -790,7 +855,10 @@ export class Terrain {
         return props;
     }
 
+    // Hovering the terrain is what asks for every property's value, so it's
+    // what fetches the deferred layers; they show up on a later mouse move.
     getPropertiesAt(x, y, batchIndex) {
+        this.#loadAllProperties();
         const dataIndex = this.#resolveGridIndex(x, y, batchIndex);
         if (dataIndex === null) return null;
         const dataBatchIndex = this.isSingleton ? 0 : batchIndex;
@@ -808,6 +876,7 @@ export class Terrain {
     // outside the terrain extent; otherwise a `Map<batchIndex, props>`
     // (batches whose data lookup fails, e.g. a missing field, are omitted).
     getPropertiesAtAllBatches(x, y, hoveredBatchIndex) {
+        this.#loadAllProperties();
         const dataIndex = this.#resolveGridIndex(x, y, hoveredBatchIndex);
         if (dataIndex === null) return null;
 

@@ -678,8 +678,7 @@ class SimulationScene:
         computed from the heightmap gradients, unless `compute_normals=False`,
         which stores no normals at all (three floats per cell less on disk and
         over the wire). The viewer then shades the surface from normals it
-        computes itself, and the "normals" arrow visualization has nothing to
-        draw.
+        computes itself, and draws the "normals" arrows from those too.
 
         `x_lim`/`y_lim` are the `(min, max)` coordinates of the X/Y axes.
         `grid_res` is the spacing between adjacent grid nodes; if `x_lim` and

@@ -206,6 +206,22 @@ describe("Terrain surface shading normals", () => {
         // normal -- PlaneGeometry's default -- would mean nothing was computed.
         expect(Math.abs(normal.getZ(0))).toBeLessThan(0.99);
     });
+
+    it("draws the normal arrows from the computed normals when none are supplied", async () => {
+        const THREE = await import("three");
+        const data = makeTerrainData(false);
+        delete data.normals;
+        const terrain = new Terrain(data, fakeApp(2));
+        terrain.toggleVisualization("normals", true);
+        const batch0 = terrain.group.getObjectByName("batch0");
+        const arrows = batch0.getObjectByName("normals").children;
+        expect(arrows.length).toBe(RESOLUTION * RESOLUTION);
+        // Arrow 0 sits on data cell 0 (row 0, col 0), which is vertex 2.
+        const normal = batch0.getObjectByName("surface").geometry.attributes.normal;
+        const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(arrows[0].quaternion);
+        expect(dir.x).toBeCloseTo(normal.getX(2));
+        expect(dir.z).toBeCloseTo(normal.getZ(2));
+    });
 });
 
 describe("Terrain surface geometry", () => {
@@ -310,5 +326,42 @@ describe("Terrain robustness", () => {
         terrain.dispose();
         expect(parent.removed).toBeDefined();
         expect(terrain.group).toBeNull();
+    });
+});
+
+describe("Terrain deferred property layers", () => {
+    function deferredTerrain(app) {
+        const data = makeTerrainData(false);
+        const blob = data.properties.friction.data;
+        let fetches = 0;
+        data.properties.friction.data = { load: async () => (fetches++, blob) };
+        return { terrain: new Terrain(data, app), fetches: () => fetches };
+    }
+
+    it("lists the layer as a mode without fetching it", () => {
+        const { terrain, fetches } = deferredTerrain(fakeApp(2));
+        expect(terrain.getAvailableColorModes()).toContain("friction");
+        expect(terrain.isPropertyPending("friction")).toBe(true);
+        expect(fetches()).toBe(0);
+    });
+
+    it("fetches once on first pick, then recolors with the data", async () => {
+        const app = fakeApp(2);
+        app.uiState.terrainDiffLayer = "friction";
+        app.uiState.terrainColorMode = "diff";
+        const { terrain, fetches } = deferredTerrain(app);
+        terrain.setColorMode("diff");
+        terrain.setColorMode("diff");
+        await terrain.propertyLoadsSettled();
+        expect(fetches()).toBe(1);
+        expect(terrain.isPropertyPending("friction")).toBe(false);
+        expect(terrain.getDiffMaxAbsDelta()).toBeCloseTo(0.6);
+    });
+
+    it("hovering fetches the layers so the tooltip fills in", async () => {
+        const { terrain } = deferredTerrain(fakeApp(2));
+        expect(terrain.getPropertiesAt(0, 1, 0).friction).toBeUndefined();
+        await terrain.propertyLoadsSettled();
+        expect(terrain.getPropertiesAt(0, 1, 0).friction).toBeCloseTo(0.3);
     });
 });
