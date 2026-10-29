@@ -687,6 +687,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Serving the data yourself: static bundles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#serving-simviews-own-assets-from-your-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serving SimView's own assets from your app
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1293,6 +1310,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Serving the data yourself: static bundles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#serving-simviews-own-assets-from-your-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serving SimView's own assets from your app
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1462,16 +1496,43 @@ before the viewer's scripts load.) The viewer page itself is vendored with</p>
 your origin. The GitHub Pages demo serves the same static layout
 (<code>.github/workflows/demo.yml</code> dumps it from a running server);
 <code>simview.columnar.write_static_bundle</code> is the stdlib-only writer behind <code>save_static</code>.</p>
+<h3 id="serving-simviews-own-assets-from-your-app">Serving SimView's own assets from your app</h3>
+<p><code>simview static-viewer</code> output is ready to host. An app that instead serves the
+package's <code>templates/index.html</code> and <code>static/</code> itself (say, from a FastAPI app next to
+its bundles) misses two things SimView's server does, both of which help on a slow link:</p>
+<ul>
+<li><strong>Module preloads.</strong> <code>index.html</code> has a <code>&lt;!-- @modulepreload --&gt;</code> placeholder. Serve
+  <code>simview.preload.render_index(index_path, package_dir)</code> instead of the raw file, so
+  the browser fetches the module graph (~50 files) in parallel instead of one import
+  level at a time.</li>
+<li><strong>Gzip on <code>/static</code>.</strong> ~2.4 MB of JS shrinks to ~570 KB. Compress <code>/static</code> only:
+  blobs are float data that barely compresses, and the viewer range-fetches them.</li>
+</ul>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">HTMLResponse</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">starlette.middleware.gzip</span><span class="w"> </span><span class="kn">import</span> <span class="n">GZipMiddleware</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">starlette.staticfiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">StaticFiles</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">simview.preload</span><span class="w"> </span><span class="kn">import</span> <span class="n">render_index</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">pkg</span> <span class="o">=</span> <span class="n">files</span><span class="p">(</span><span class="s2">&quot;simview&quot;</span><span class="p">)</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">app</span><span class="o">.</span><span class="n">mount</span><span class="p">(</span><span class="s2">&quot;/simview/static&quot;</span><span class="p">,</span> <span class="n">GZipMiddleware</span><span class="p">(</span><span class="n">StaticFiles</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">pkg</span> <span class="o">/</span> <span class="s2">&quot;static&quot;</span><span class="p">)),</span> <span class="n">minimum_size</span><span class="o">=</span><span class="mi">1024</span><span class="p">))</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/simview/&quot;</span><span class="p">)</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">viewer</span><span class="p">():</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="k">return</span> <span class="n">HTMLResponse</span><span class="p">(</span><span class="n">render_index</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">pkg</span> <span class="o">/</span> <span class="s2">&quot;templates&quot;</span> <span class="o">/</span> <span class="s2">&quot;index.html&quot;</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">pkg</span><span class="p">)))</span>
+</span></code></pre></div>
+<p>Terrain property layers are fetched when first needed rather than at load, so a host
+sees those <code>blob/&lt;id&gt;</code> requests arrive later, while the user explores the scene.</p>
 <p>Declare how the viewer should <em>start</em> at authoring time instead of patching it after
 load — see <code>viewerDefaults</code> and the per-body <code>color</code>/<code>opacity</code>/<code>visible</code> fields in the
 <a href="../../dev/json-format/">JSON format spec</a>:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">scene</span> <span class="o">=</span> <span class="n">SimulationScene</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">viewer_defaults</span><span class="o">=</span><span class="p">{</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">&quot;ui&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pointCloudsVisible&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;terrainColorMode&quot;</span><span class="p">:</span> <span class="s2">&quot;friction&quot;</span><span class="p">},</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="s2">&quot;folders&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Camera Options&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;Terrain Options&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="s2">&quot;bodyStatesOpen&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="s2">&quot;panels&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;analysis&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">})</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="s2">&quot;ghost&quot;</span><span class="p">,</span> <span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.28</span><span class="p">),</span> <span class="n">opacity</span><span class="o">=</span><span class="mf">0.55</span><span class="p">,</span> <span class="n">hx</span><span class="o">=...</span><span class="p">,</span> <span class="n">hy</span><span class="o">=...</span><span class="p">,</span> <span class="n">hz</span><span class="o">=...</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">scene</span> <span class="o">=</span> <span class="n">SimulationScene</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="n">viewer_defaults</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">&quot;ui&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pointCloudsVisible&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;terrainColorMode&quot;</span><span class="p">:</span> <span class="s2">&quot;friction&quot;</span><span class="p">},</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="s2">&quot;folders&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Camera Options&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;Terrain Options&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="s2">&quot;bodyStatesOpen&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="s2">&quot;panels&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;analysis&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">})</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">scene</span><span class="o">.</span><span class="n">create_body</span><span class="p">(</span><span class="s2">&quot;ghost&quot;</span><span class="p">,</span> <span class="n">BodyShapeType</span><span class="o">.</span><span class="n">BOX</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.28</span><span class="p">),</span> <span class="n">opacity</span><span class="o">=</span><span class="mf">0.55</span><span class="p">,</span> <span class="n">hx</span><span class="o">=...</span><span class="p">,</span> <span class="n">hy</span><span class="o">=...</span><span class="p">,</span> <span class="n">hz</span><span class="o">=...</span><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="driving-the-viewer-from-javascript">Driving the viewer from JavaScript</h2>
 <p>A same-origin host page can reach the instance as <code>iframe.contentWindow.simview</code> (in
@@ -1505,6 +1566,10 @@ the page itself: <code>window.simview</code>). The supported surface:</p>
 <td>playback</td>
 </tr>
 <tr>
+<td><code>animationController.currentStateIndex</code> / <code>currentTime</code> / <code>firstTime</code> / <code>totalTime</code> / <code>isPlaying</code></td>
+<td>playback state, read-only (<code>currentTime</code> and <code>firstTime</code> are absolute, <code>totalTime</code> is a duration; the <code>get...()</code> getters were removed in 6.2.2)</td>
+</tr>
+<tr>
 <td><code>uiControls.findController(name).setValue(v)</code></td>
 <td>flip a control so the widget and the scene stay in sync (<code>showPointClouds</code>, <code>trackBody</code>, <code>colorMode</code>, ...)</td>
 </tr>
@@ -1514,12 +1579,12 @@ the page itself: <code>window.simview</code>). The supported surface:</p>
 </tr>
 </tbody>
 </table>
-<div class="language-js highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kd">const</span><span class="w"> </span><span class="nx">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">document</span><span class="p">.</span><span class="nx">querySelector</span><span class="p">(</span><span class="s2">&quot;iframe&quot;</span><span class="p">);</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nx">frame</span><span class="p">.</span><span class="nx">contentWindow</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;simview:ready&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">({</span><span class="w"> </span><span class="nx">detail</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">simview</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nx">simview</span><span class="p">.</span><span class="nx">focusBody</span><span class="p">(</span><span class="s2">&quot;robot&quot;</span><span class="p">);</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nx">simview</span><span class="p">.</span><span class="nx">animationController</span><span class="p">.</span><span class="nx">play</span><span class="p">();</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">});</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nx">frame</span><span class="p">.</span><span class="nx">contentWindow</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;simview:frame&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">({</span><span class="w"> </span><span class="nx">detail</span><span class="w"> </span><span class="p">})</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">showImageFor</span><span class="p">(</span><span class="nx">detail</span><span class="p">.</span><span class="nx">index</span><span class="p">));</span>
+<div class="language-js highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kd">const</span><span class="w"> </span><span class="nx">frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">document</span><span class="p">.</span><span class="nx">querySelector</span><span class="p">(</span><span class="s2">&quot;iframe&quot;</span><span class="p">);</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nx">frame</span><span class="p">.</span><span class="nx">contentWindow</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;simview:ready&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">({</span><span class="w"> </span><span class="nx">detail</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">simview</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nx">simview</span><span class="p">.</span><span class="nx">focusBody</span><span class="p">(</span><span class="s2">&quot;robot&quot;</span><span class="p">);</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nx">simview</span><span class="p">.</span><span class="nx">animationController</span><span class="p">.</span><span class="nx">play</span><span class="p">();</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">});</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="nx">frame</span><span class="p">.</span><span class="nx">contentWindow</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;simview:frame&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">({</span><span class="w"> </span><span class="nx">detail</span><span class="w"> </span><span class="p">})</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">showImageFor</span><span class="p">(</span><span class="nx">detail</span><span class="p">.</span><span class="nx">index</span><span class="p">));</span>
 </span></code></pre></div>
 <p><code>window.__debugSimView</code> remains as an alias of <code>window.simview</code> for older code.</p>
 <h2 id="headless-figures">Headless figures</h2>

@@ -1536,8 +1536,8 @@ Polylines" (<code>polylinesVisible</code> in <code>viewerDefaults.ui</code> / th
     grid per batch (a single flat array is also accepted and treated as one batch).
 - <strong><code>normals</code></strong> <em>(array[array[array[3]]], optional)</em> — per-batch surface normals, one <code>[x, y, z]</code>
     per grid point. When absent (<code>create_terrain(compute_normals=False)</code>) the viewer
-    computes shading normals from the heightfield itself; only the "normals" arrow
-    visualization then has nothing to draw.
+    computes shading normals from the heightfield itself and draws the "normals"
+    arrows from them.
 - <strong><code>properties</code></strong> <em>(object, optional)</em> — arbitrary named per-cell scalar fields over
     the grid (e.g. <code>friction</code>, <code>stiffness</code>, or any custom name), each selectable as a
     terrain color mode with no viewer code changes. Keyed by property name, each entry
@@ -1550,6 +1550,8 @@ Polylines" (<code>polylinesVisible</code> in <code>viewerDefaults.ui</code> / th
     if either bound is missing or the range is degenerate the viewer falls back to
     clamping the raw value into <code>[0, 1]</code>.
     Example: <code>{"friction": {"data": [...], "min": 0.2, "max": 0.9}}</code>.
+    A <code>data</code> served as a <code>/blob/</code> reference is fetched only when the property is first
+    needed (its color mode, the diff layer or terrain profile, or a terrain hover).
 - <strong><code>embeddingData</code></strong> <em>(array[array[float]] | null, optional)</em> — per-batch, per-cell
     K-wide feature vectors (flattened <code>resolutionX * resolutionY * K</code> per batch),
     enabling the viewer's click-to-similarity "features" terrain color mode, mirroring
