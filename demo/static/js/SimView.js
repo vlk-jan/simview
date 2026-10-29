@@ -138,6 +138,7 @@ export class SimView {
             statesReady.catch(() => {}); // surfaced where it's awaited below
 
             console.time("fetch_blobs");
+            this.deferTerrainPropertyBlobs(model);
             await this.fetchBlobs(model);
             console.timeEnd("fetch_blobs");
 
@@ -260,7 +261,6 @@ export class SimView {
     // from /blob/{token}/{id} → {staticBase}/blob/{id} so they resolve against
     // the pre-dumped flat files deployed alongside the demo page.
     async fetchBlobs(obj) {
-        const base = this.staticBase;
         const refs = [];
         const collect = (node) => {
             if (!node || typeof node !== 'object') return;
@@ -271,11 +271,7 @@ export class SimView {
             for (const key of Object.keys(node)) {
                 const val = node[key];
                 if (typeof val === 'string' && val.startsWith('/blob/')) {
-                    // Static mode: /blob/{token}/{id} → {base}/blob/{id}
-                    const url = base
-                        ? `${base}/blob/${val.split("/").pop()}`
-                        : val;
-                    refs.push({ container: node, key, url });
+                    refs.push({ container: node, key, url: this.blobUrl(val) });
                 } else if (typeof val === 'object') {
                     collect(val);
                 }
@@ -285,17 +281,38 @@ export class SimView {
 
         await Promise.all(
             refs.map(async ({ container, key, url }) => {
-                const res = await fetch(url);
-                // Without this check a 404/500 body (an error page) would be
-                // silently reinterpreted as float32 data, corrupting whatever
-                // geometry/trajectory referenced this blob.
-                if (!res.ok) {
-                    throw new Error(`Failed to fetch blob ${url}: ${res.status} ${res.statusText}`);
-                }
-                // Little-endian float32 by contract (Python "<f4").
-                container[key] = new Float32Array(await res.arrayBuffer());
+                container[key] = await this.fetchBlob(url);
             })
         );
+    }
+
+    // Static mode: /blob/{token}/{id} → {staticBase}/blob/{id}
+    blobUrl(ref) {
+        return this.staticBase ? `${this.staticBase}/blob/${ref.split("/").pop()}` : ref;
+    }
+
+    async fetchBlob(url) {
+        const res = await fetch(url);
+        // Without this check a 404/500 body (an error page) would be
+        // silently reinterpreted as float32 data, corrupting whatever
+        // geometry/trajectory referenced this blob.
+        if (!res.ok) {
+            throw new Error(`Failed to fetch blob ${url}: ${res.status} ${res.statusText}`);
+        }
+        // Little-endian float32 by contract (Python "<f4").
+        return new Float32Array(await res.arrayBuffer());
+    }
+
+    // Swaps each terrain property layer's blob URL for a loader, so fetchBlobs
+    // skips it (it only collects strings) and Terrain fetches the layer the
+    // first time it's shown -- one color mode is visible at a time and most
+    // sessions never leave "height". See Terrain.loadProperty.
+    deferTerrainPropertyBlobs(model) {
+        for (const prop of Object.values(model.terrain?.properties || {})) {
+            if (typeof prop?.data !== "string" || !prop.data.startsWith("/blob/")) continue;
+            const url = this.blobUrl(prop.data);
+            prop.data = { load: () => this.fetchBlob(url) };
+        }
     }
 
     // Opens the live-streaming WebSocket (see simview.live.LiveViewer): each

@@ -195,6 +195,12 @@ export class TerrainProfile {
             this.times = [];
             this.fullSeries = [];
         } else {
+            if (terrain.isPropertyPending(this.layer)) {
+                terrain.loadProperty(this.layer).then(() => {
+                    this.dirty = true;
+                    if (this.isExpanded) this._recompute();
+                }, () => {});
+            }
             const grid = this._gridForLayer(this.layer) || [];
             const paths = this._buildPaths(body);
             const referenceBatch = this.pathMode === "own" ? null : parseInt(this.pathMode, 10);
