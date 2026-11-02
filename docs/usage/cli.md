@@ -151,6 +151,9 @@ simview --version                               # print the installed version
 Note that the server has no authentication: binding to a non-loopback host (as
 above) exposes the scene data to everyone who can reach that address, which the
 server logs a warning about at startup. Do it only on networks you trust.
+Other machines must open the viewer by address (e.g. `http://10.0.0.5:8080`), not
+by hostname: requests naming any host other than `localhost` or an IP address
+are refused, which blocks DNS-rebinding attacks from web pages.
 
 ## Opening a file on a remote host
 
