@@ -23,7 +23,7 @@ import { ColumnarStateStore, LegacyStateStore } from "./components/StateStore.js
 import { WindowedField } from "./components/WindowedField.js";
 import { escapeHtml } from "./utils/html.js";
 import { bytesPerFrame, shouldWindowField } from "./utils/blobWindow.js";
-import { shouldFollowLive } from "./utils/liveFollow.js";
+import { shouldFollowLive, unseenLiveStates } from "./utils/liveFollow.js";
 import { shiftEpisodes } from "./utils/episodes.js";
 import { parseViewState, parseStartupOptions, safeStaticBase, serializeViewState, toggleMapFromUiState } from "./utils/viewState.js";
 import { mergeUiDefaults, applyViewerDomDefaults, panelHideCss } from "./utils/viewerDefaults.js";
@@ -56,6 +56,8 @@ export class SimView {
         // viewer's frame 0 -- a late-joining tab only gets the catch-up window.
         // null until the first chunk arrives; see shiftEpisodes.
         this.liveFrameOffset = null;
+        // Live mode: absolute index of the next frame this viewer expects.
+        this.liveNextIndex = null;
         // Static demo mode: set from window.__simviewStaticBase (the GitHub
         // Pages demo index.html) or the `data=` startup hash key; all data
         // fetches then go to flat static files (model.json, states.json,
@@ -320,13 +322,27 @@ export class SimView {
                 this.applyEpisodes(message.episodes);
                 return;
             }
-            const { states, frameOffset } = message;
+            const { states } = message;
             if (!states || states.length === 0) return;
+            // Absent on an older server: assume contiguous frames from 0.
+            const frameOffset = Number.isInteger(message.frameOffset)
+                ? message.frameOffset
+                : (this.liveNextIndex ?? 0);
             if (this.liveFrameOffset === null) {
-                // Absent on an older server: assume the stream starts at 0.
-                this.liveFrameOffset = Number.isInteger(frameOffset) ? frameOffset : 0;
+                this.liveFrameOffset = frameOffset;
+                this.liveNextIndex = frameOffset;
             }
-            this.processStatesChunk(states);
+            if (frameOffset > this.liveNextIndex) {
+                // Frames dropped under backpressure: accept and play on as if
+                // contiguous (a reload replays them from the server's catch-up
+                // buffer), so episode
+                // markers past the gap sit early by its size.
+                console.warn(`Live stream skipped frames ${this.liveNextIndex}-${frameOffset - 1}.`);
+            }
+            const unseen = unseenLiveStates(states, frameOffset, this.liveNextIndex);
+            if (unseen.length === 0) return;
+            this.liveNextIndex = frameOffset + states.length;
+            this.processStatesChunk(unseen);
             if (splash) splash.remove();
         };
         socket.onclose = () => {

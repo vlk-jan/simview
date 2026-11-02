@@ -317,6 +317,10 @@ class SimViewServer:
         self.sim_path = self.sim_paths[0] if self.sim_paths else None
         self._preloaded_data = data
         self.model_data = None
+        # Serializes model_data mutate+repack: the producer thread
+        # (set_episodes) and the event loop (/batch-names) both repack, and
+        # gzip releases the GIL, so an older snapshot could land last.
+        self._model_lock = threading.Lock()
 
         @asynccontextmanager
         async def lifespan(app: FastAPI):
@@ -621,8 +625,9 @@ class SimViewServer:
                     status_code=400,
                 )
 
-            self.model_data["batchNames"] = names
-            self._pack_model()
+            with self._model_lock:
+                self.model_data["batchNames"] = names
+                self._pack_model()
 
             names_path = self._names_sidecar_path()
             persisted = False
@@ -726,8 +731,9 @@ class SimViewServer:
         """
         if self.model_data is None:
             return
-        self.model_data["episodes"] = episodes
-        self._pack_model()
+        with self._model_lock:
+            self.model_data["episodes"] = episodes
+            self._pack_model()
 
     async def broadcast_episodes(self, episodes: list[dict]) -> None:
         """Push updated episode boundaries to every connected /ws/states client.
