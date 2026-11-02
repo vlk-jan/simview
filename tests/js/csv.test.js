@@ -72,3 +72,16 @@ describe("sanitizeForFilename", () => {
         expect(sanitizeForFilename(undefined)).toBe("");
     });
 });
+
+describe("escapeCsvField formula injection", () => {
+    it("prefixes text cells a spreadsheet would run as a formula", () => {
+        expect(escapeCsvField("=WEBSERVICE(1)")).toBe("'=WEBSERVICE(1)");
+        expect(escapeCsvField("+1")).toBe("'+1");
+        expect(escapeCsvField("@SUM(A1)")).toBe("'@SUM(A1)");
+        expect(escapeCsvField("=a,b")).toBe('"\'=a,b"');
+    });
+
+    it("leaves numbers, including negative ones, untouched", () => {
+        expect(escapeCsvField(-1.5)).toBe("-1.5");
+    });
+});

@@ -5,7 +5,10 @@
 // Escapes a single CSV field per RFC 4180: wraps in double quotes if it
 // contains a comma, double quote, or newline, doubling any embedded quotes.
 export function escapeCsvField(field) {
-    const str = field === null || field === undefined ? "" : String(field);
+    let str = field === null || field === undefined ? "" : String(field);
+    // A text cell starting with = + - @ is run as a formula by spreadsheets
+    // (e.g. a batch named =WEBSERVICE(...)); a leading ' keeps it literal.
+    if (typeof field === "string" && /^[=+\-@\t\r]/.test(str)) str = `'${str}`;
     if (/[",\n\r]/.test(str)) {
         return `"${str.replace(/"/g, '""')}"`;
     }

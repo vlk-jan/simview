@@ -477,3 +477,19 @@ describe("Body state robustness", () => {
         expect([lit(0), lit(1)]).toEqual([0, 0]);
     });
 });
+
+describe("Body history with omitted frames", () => {
+    it("holds the last pose (or backfills the first) instead of the origin", () => {
+        const body = new Body(makePointcloudBodyData(), trailApp());
+        // Body absent at frame 0, at x=1 in frame 1, absent at 2, x=4 at 3.
+        body.appendHistoryPointAt(1, { bodyTransform: [[1, 2, 3, 1, 0, 0, 0]] });
+        body.appendHistoryPointAt(3, { bodyTransform: [[4, 5, 6, 1, 0, 0, 0]] });
+        expect(body.validStates).toBe(4);
+        expect(Array.from(body.positionHistory[0].slice(0, 12))).toEqual([
+            1, 2, 3, 1, 2, 3, 1, 2, 3, 4, 5, 6,
+        ]);
+        // Quaternions stored (x, y, z, w): identity everywhere, none zeroed.
+        expect(body.quaternionHistory[0][3]).toBe(1);
+        expect(body.quaternionHistory[0][11]).toBe(1);
+    });
+});
