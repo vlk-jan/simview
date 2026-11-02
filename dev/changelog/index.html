@@ -1185,7 +1185,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.4.0...HEAD">Unreleased</a></h2>
+<h2 id="unreleased"><a href="https://github.com/vlk-jan/simview/compare/v6.4.1...HEAD">Unreleased</a></h2>
+<h2 id="641-2026-11-02"><a href="https://github.com/vlk-jan/simview/compare/v6.4.0...v6.4.1">6.4.1</a> - 2026-11-02</h2>
 <h3 id="changed">Changed</h3>
 <ul>
 <li>Terrain property layers are no longer downloaded with the scene. Each is
@@ -1193,12 +1194,46 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   plotting it in the Terrain profile, or hovering the terrain (the tooltip
   lists every property). A terrain with seven ~1.9 MB layers loads ~13 MB
   less up front.</li>
+<li>The server refuses HTTP requests whose <code>Host</code> is not <code>localhost</code> or an IP
+  address (400), the rule the live WebSocket already applied. This blocks DNS
+  rebinding; open the viewer by IP (e.g. <code>http://10.0.0.5:5420</code>), not by
+  hostname.</li>
 </ul>
 <h3 id="fixed">Fixed</h3>
 <ul>
 <li>A terrain saved with <code>create_terrain(compute_normals=False)</code> draws its
   "normals" arrows from the normals the viewer computes for shading, instead
   of drawing nothing.</li>
+<li>NaN/Infinity values are written as <code>null</code>, so saved scenes, static bundles,
+  live WebSocket messages and <code>info</code>/<code>diff</code>/<code>terrain</code>/merge <code>--json</code> output
+  are valid JSON. A NaN in live mode no longer drops frames. Files already
+  written with bare <code>NaN</code> still load and merge.</li>
+<li>A viewer that connects mid-run in live mode no longer receives duplicate
+  frames, and concurrent episode/batch-name updates can't leave <code>/model</code> stale.</li>
+<li><code>SimViewLauncher</code> runs the same checks as <code>show()</code>/<code>save()</code>, so undeclared
+  attributes (velocity, force, contacts) show up in the viewer.</li>
+<li>Merging: polylines in any input (not only the first) are rejected instead of
+  silently dropped; frames without <code>contacts</code> merge as empty contacts; inputs
+  sharing a file name keep separate <code>metadata.sources</code> entries.</li>
+<li>Terrain sampling at a NaN position returns NaN instead of raising.</li>
+<li><code>simview host:~</code> expands the remote home directory.</li>
+<li>Contact markers clear when a frame has an empty or shorter <code>contacts</code> list.</li>
+<li>Recording a single-frame scene captures the frame instead of an empty video.</li>
+<li>The scalar plot tooltip shows the episode sum/mean of the hovered batch.</li>
+<li>Resetting similarity colors on a point cloud without base colors removes
+  them.</li>
+<li>A failed windowed-field fetch backs off for 5 s instead of retrying every
+  frame.</li>
+<li>Point and contact-marker textures are disposed with their materials.</li>
+<li>A body omitted from some frames holds its last pose in trails, error metrics
+  and the terrain profile instead of jumping to the origin.</li>
+<li>Focus mode hides other batches' copies of a singleton static mesh.</li>
+<li>CSV export prefixes text cells starting with <code>=</code>, <code>+</code>, <code>-</code> or <code>@</code> with <code>'</code>,
+  so spreadsheets don't evaluate batch names as formulas.</li>
+<li>The Jupyter iframe HTML escapes the <code>view</code> string.</li>
+<li>The Terrain profile and Error Metrics tabs need at least two frames, so a
+  single-frame scene no longer shows empty tabs; a live run that starts on one
+  frame gains them once it has two.</li>
 </ul>
 <h2 id="640-2026-10-28"><a href="https://github.com/vlk-jan/simview/compare/v6.3.1...v6.4.0">6.4.0</a> - 2026-10-28</h2>
 <h3 id="added">Added</h3>
