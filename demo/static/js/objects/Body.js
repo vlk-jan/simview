@@ -164,7 +164,17 @@ export class Body {
             this.allocatedStates = newNumStates;
         }
         this.setHistoryPointAt(stateIndex, bodyState);
-        this.validStates = Math.max(this.validStates || 0, stateIndex + 1);
+        // Frames this body was omitted from would otherwise read as the origin:
+        // hold the last known pose (or, before its first frame, this one).
+        const filled = this.validStates || 0;
+        const source = filled > 0 ? filled - 1 : stateIndex;
+        for (let s = filled; s < stateIndex; s++) {
+            for (let i = 0; i < this.simBatches; i++) {
+                this.positionHistory[i].copyWithin(s * 3, source * 3, source * 3 + 3);
+                this.quaternionHistory[i].copyWithin(s * 4, source * 4, source * 4 + 4);
+            }
+        }
+        this.validStates = Math.max(filled, stateIndex + 1);
     }
 
     // A point cloud with no per-frame data is a static prop, not a body with

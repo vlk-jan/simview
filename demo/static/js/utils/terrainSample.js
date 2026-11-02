@@ -3,14 +3,14 @@
 // stay numerically identical for the same input) plus a series builder that
 // walks per-frame body positions against per-batch terrain grids.
 
-// Whether any body has per-frame trajectory data (validStates > 0). A body
-// never given add_state/add_trajectory has no path to profile, so SimView.js
-// shows the Terrain tab only when this is true.
+// Whether any body has a trajectory (validStates >= 2). A body never given
+// add_state/add_trajectory, or posed at a single frame, has no path to
+// profile, so SimView.js shows the analysis tabs only when this is true.
 export function hasBodyTrajectory(bodies) {
     if (!bodies) return false;
     const iter = typeof bodies.values === "function" ? bodies.values() : bodies;
     for (const body of iter) {
-        if ((body.validStates || 0) > 0) return true;
+        if ((body.validStates || 0) >= 2) return true;
     }
     return false;
 }

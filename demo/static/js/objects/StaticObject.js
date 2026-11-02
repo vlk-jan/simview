@@ -135,15 +135,31 @@ export class StaticObject {
     }
 
     // Hides the batches BatchManager isn't rendering (see
-    // utils/batchVisibility.js). Only meaningful for non-singleton static
-    // objects, which get one group per batch; the singleton path is a single
-    // instanced draw covering all of them.
+    // utils/batchVisibility.js).
     refreshBatchVisibility() {
         const batchManager = this.app.batchManager;
         if (!batchManager?.isBatchVisible) return;
         this.batchGroups.forEach((batchGroup, i) => {
             if (batchGroup) batchGroup.visible = batchManager.isBatchVisible(i);
         });
+        // A singleton mesh is one InstancedMesh covering every batch, with no
+        // per-instance visibility flag: collapse hidden batches to zero scale.
+        const instanced = ["mesh", "wireframe"]
+            .map((key) => this.representations[key])
+            .filter((rep) => rep instanceof THREE.InstancedMesh);
+        if (instanced.length > 0) {
+            const matrix = new THREE.Matrix4();
+            for (let i = 0; i < this.batchSize; i++) {
+                const offset = batchManager.getBatchOffset(i);
+                if (batchManager.isBatchVisible(i)) {
+                    matrix.makeTranslation(offset.x, offset.y, offset.z);
+                } else {
+                    matrix.makeScale(0, 0, 0);
+                }
+                instanced.forEach((rep) => rep.setMatrixAt(i, matrix));
+            }
+            instanced.forEach((rep) => (rep.instanceMatrix.needsUpdate = true));
+        }
         // Singleton point clouds are one object per batch rather than a group.
         const points = this.representations["points"];
         if (this.isSingleton && Array.isArray(points)) {
