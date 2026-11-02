@@ -72,6 +72,7 @@ export class AnimationController {
         // Content seconds played since recording started; the recording stops
         // once this reaches totalTime (one loop), whatever the playback speed.
         this._recordedSeconds = 0;
+        this._capturedFrames = 0; // captureFrame() calls since recording started
         this.simulationTimestep = simulationTimestep; // Simulation timestep
         this.lastUpdateTime = null;
 
@@ -253,6 +254,7 @@ export class AnimationController {
         this.isRecording = true;
         this.startTime = performance.now();
         this._recordedSeconds = 0;
+        this._capturedFrames = 0;
         if (!this.isPlaying) {
             this.play();
         }
@@ -397,8 +399,11 @@ export class AnimationController {
         // here -- the browser samples the canvas on its own timer.
 
         // Stop recording once one loop of content has played (content
-        // seconds, not wall-clock, so 2x doesn't record two loops).
-        if (this._recordedSeconds >= this.totalTime) {
+        // seconds, not wall-clock, so 2x doesn't record two loops). Never on
+        // the first captured tick: a single-frame scene (totalTime 0) would
+        // stop before its frame landed, leaving an empty video.
+        this._capturedFrames++;
+        if (this._capturedFrames > 1 && this._recordedSeconds >= this.totalTime) {
             this.playbackControls.recordButton.click();
         }
     }

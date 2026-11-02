@@ -5,6 +5,7 @@ import {
     createMesh,
     createPoints,
     createContactPoints,
+    disposeMaterial,
     createArrow,
     toFlatFloat32Array,
 } from "./utils.js";
@@ -668,19 +669,14 @@ export class Body {
             }
         });
 
-        if (Array.isArray(bodyState.contacts)) {
-            const contactsData = bodyState.contacts;
-            for (let i = 0; i < Math.min(this.simBatches, contactsData.length); i++) {
-                this.updateAttribute("contacts", contactsData[i], i);
-            }
-        } else {
-            // No contacts this frame (columnar `null`, or the key is absent):
-            // clear whatever the previous frame left lit, otherwise stale
-            // markers persist until the next frame that has contacts.
-            const storage = this.attributeStorage.get("contacts");
-            for (let i = 0; i < this.simBatches; i++) {
-                if (storage[i].length) this.updateAttribute("contacts", [], i);
-            }
+        // Batches with no contacts this frame (columnar `null`, absent key, or
+        // beyond a short/empty array) are cleared, otherwise the previous
+        // frame's markers stay lit until the next frame that has contacts.
+        const contactsData = Array.isArray(bodyState.contacts) ? bodyState.contacts : [];
+        const storage = this.attributeStorage.get("contacts");
+        for (let i = 0; i < this.simBatches; i++) {
+            if (i < contactsData.length) this.updateAttribute("contacts", contactsData[i], i);
+            else if (storage[i].length) this.updateAttribute("contacts", [], i);
         }
 
         // Finally update all instance matrices in one go
@@ -841,7 +837,18 @@ export class Body {
     // Restores the static PCA-RGB coloring (or clears to no color data if
     // this body never had any), undoing recolorBySimilarity.
     resetPointColors() {
-        if (this.pointColors) this.setPointColors(this.pointColors);
+        if (this.pointColors) {
+            this.setPointColors(this.pointColors);
+        } else {
+            // Undo setPointColors' first-use allocation (createPoints without colors).
+            this.shownPointColors = null;
+            for (const points of this.representations.points ?? []) {
+                if (!points) continue;
+                points.geometry.deleteAttribute("color");
+                points.material.vertexColors = false;
+                points.material.needsUpdate = true;
+            }
+        }
         this.selectedPointIndex = null;
         if (this.app.legend) this.app.legend.update();
     }
@@ -901,8 +908,8 @@ export class Body {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) {
                     Array.isArray(child.material)
-                        ? child.material.forEach((m) => m.dispose())
-                        : child.material.dispose();
+                        ? child.material.forEach(disposeMaterial)
+                        : disposeMaterial(child.material);
                 }
             });
         }

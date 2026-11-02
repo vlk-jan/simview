@@ -251,6 +251,20 @@ describe("AnimationController timeline that does not start at t=0", () => {
         expect(ac.isRecording).toBe(false);
     });
 
+    it("recording a single-frame scene captures a frame before stopping", () => {
+        const ac = makeController([5]); // totalTime 0
+        ac.isRecording = true;
+        ac._recordedSeconds = 0;
+        ac.play();
+        ac.lastUpdateTime = 984;
+        ac.animate(1000);
+        ac.captureFrame(1000);
+        expect(ac.isRecording).toBe(true);
+        ac.animate(1016);
+        ac.captureFrame(1016);
+        expect(ac.isRecording).toBe(false);
+    });
+
     it("setSpeed rejects non-positive and non-finite speeds", () => {
         const ac = makeController([0, 1]);
         ac.setSpeed(-1);

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { WindowedField } from "../../simview/static/js/components/WindowedField.js";
+import { describe, expect, it, vi } from "vitest";
+import { RETRY_BACKOFF_MS, WindowedField } from "../../simview/static/js/components/WindowedField.js";
 
 // A fake blob server: serves float32 data from an in-memory buffer, honoring
 // the Range header the way simview/server.py's /blob endpoint does, and
@@ -158,6 +158,37 @@ describe("WindowedField", () => {
         // Still null -- the field is optional per frame, so the viewer just
         // goes without it rather than breaking.
         expect(field.rowsAt(0)).toBe(null);
+    });
+
+    it("backs off after a failed window instead of refetching every frame", async () => {
+        let calls = 0;
+        const failing = () => {
+            calls++;
+            return Promise.resolve({ ok: false, status: 404, statusText: "Gone" });
+        };
+        const originalError = console.error;
+        console.error = () => {};
+        vi.useFakeTimers({ toFake: ["Date"] });
+        try {
+            const field = new WindowedField("/blob/tok/0", {
+                totalFrames: TOTAL_FRAMES,
+                batchCount: BATCHES,
+                width: WIDTH,
+                fetchImpl: failing,
+            });
+            field.rowsAt(0); // current window + prefetched next
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(calls).toBe(2);
+            for (let i = 0; i < 10; i++) field.rowsAt(0);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(calls).toBe(2);
+            vi.advanceTimersByTime(RETRY_BACKOFF_MS);
+            field.rowsAt(0);
+            expect(calls).toBe(4);
+        } finally {
+            vi.useRealTimers();
+            console.error = originalError;
+        }
     });
 });
 
