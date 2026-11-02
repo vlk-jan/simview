@@ -273,11 +273,11 @@ export class ScalarPlotter {
     }
 
     // Extra tooltip lines describing the episode the cursor is inside, for the
-    // focused batch. `sum` is what an RL run calls the episode return.
-    _episodeTooltipText(scalarName, frameIndex) {
+    // hovered batch. `sum` is what an RL run calls the episode return.
+    _episodeTooltipText(scalarName, frameIndex, batchIndex) {
         if (this.episodes.length === 0) return "";
         const aggregatesByBatch = this._episodeAggregatesFor(scalarName);
-        const aggregates = aggregatesByBatch[this.currentFocusedBatch];
+        const aggregates = aggregatesByBatch[batchIndex];
         if (!aggregates) return "";
         const index = episodeIndexAt(this.episodes, frameIndex);
         const aggregate = aggregates.find((a) => a.index === index);
@@ -385,7 +385,7 @@ export class ScalarPlotter {
         const batchLabel = this.app.batchManager.getBatchName(batchIndex);
         return (
             `<span style="color:${color};">Batch: ${escapeHtml(batchLabel)}<br>Time: ${time.toFixed(3)}<br>Value: ${value.toFixed(3)}` +
-            this._episodeTooltipText(name, idx) +
+            this._episodeTooltipText(name, idx, batchIndex) +
             "</span>"
         );
     }

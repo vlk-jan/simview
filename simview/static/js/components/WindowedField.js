@@ -8,6 +8,11 @@ import {
     windowsToPrefetch,
 } from "../utils/blobWindow.js";
 
+// A failed window isn't refetched for this long: rowsAt runs every frame, so
+// without it a dead URL (e.g. a blob token invalidated by a server restart)
+// would be hit ~60 times a second.
+export const RETRY_BACKOFF_MS = 5000;
+
 // One columnar field fetched in windows around the playhead instead of whole,
 // for long trajectories where the full (T, B, k) blob would be hundreds of
 // megabytes. See utils/blobWindow.js for which fields qualify and why, and
@@ -39,6 +44,8 @@ export class WindowedField {
         this._windows = new Map();
         // windowIndex -> in-flight promise, so a window is only fetched once.
         this._pending = new Map();
+        // windowIndex -> Date.now() of its last failed fetch (see RETRY_BACKOFF_MS).
+        this._failedAt = new Map();
         // windowIndex list, least recently used first.
         this._accessOrder = [];
         this.fetchCount = 0;
@@ -97,6 +104,9 @@ export class WindowedField {
             this.bytesPerFrame
         );
         if (!range) return Promise.resolve();
+        if (Date.now() - (this._failedAt.get(windowIndex) ?? -Infinity) < RETRY_BACKOFF_MS) {
+            return Promise.resolve();
+        }
 
         this.fetchCount++;
         const promise = this._fetch(this.url, {
@@ -123,6 +133,7 @@ export class WindowedField {
             })
             .then((buffer) => {
                 this._windows.set(windowIndex, new Float32Array(buffer)); // little-endian "<f4"
+                this._failedAt.delete(windowIndex);
                 this._touch(windowIndex);
                 this._evict();
                 if (this.onLanded) this.onLanded();
@@ -132,6 +143,7 @@ export class WindowedField {
                 // failed window degrades to "no arrow" rather than a broken
                 // viewer. Logged so it isn't silent.
                 console.error(error);
+                this._failedAt.set(windowIndex, Date.now());
             })
             .finally(() => {
                 this._pending.delete(windowIndex);

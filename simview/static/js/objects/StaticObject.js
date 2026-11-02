@@ -4,6 +4,7 @@ import {
     createGeometry,
     createMesh,
     createPoints,
+    disposeMaterial,
     createWireframe,
 } from "./utils.js";
 
@@ -200,7 +201,7 @@ export class StaticObject {
                 }
             });
             geometries.forEach((g) => g.dispose());
-            materials.forEach((m) => m.dispose());
+            materials.forEach(disposeMaterial);
 
             this.group = null;
             this.representations = { mesh: [], wireframe: [], points: [] };

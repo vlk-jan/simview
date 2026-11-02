@@ -166,6 +166,16 @@ describe("Body pointcloud color/embedding", () => {
             expect(body.selectedPointIndex).toBeNull();
         });
 
+        it("resetPointColors drops similarity coloring on a body without static colors", () => {
+            const plain = new Body(makePointcloudBodyData({ embedding: EMBEDDING }), fakeApp());
+            plain.recolorBySimilarity(0);
+            plain.resetPointColors();
+            const points = plain.representations.points[0];
+            expect(points.geometry.getAttribute("color")).toBeUndefined();
+            expect(points.material.vertexColors).toBe(false);
+            expect(plain.shownPointColors).toBeNull();
+        });
+
         it("recolors every batch's points object, not just batch 0", () => {
             const multiBatchBody = new Body(
                 makePointcloudBodyData({ color: COLORS, embedding: EMBEDDING }),
@@ -449,5 +459,21 @@ describe("Body state robustness", () => {
         body.updateState({ contacts: [[1]] });
         body.updateState({}); // legacy store omits the key entirely
         expect(Array.from(body.contactPointSizes[0]).every((s) => s === 0)).toBe(true);
+    });
+
+    it("clears batches beyond a short or empty contacts array", () => {
+        const body = new Body(
+            { ...makePointcloudBodyData(), availableAttributes: ["contacts"] },
+            fakeApp(2)
+        );
+        const lit = (b) => Array.from(body.contactPointSizes[b]).filter((s) => s > 0).length;
+        body.updateState({ contacts: [[0], [1, 2]] });
+        expect([lit(0), lit(1)]).toEqual([1, 2]);
+
+        body.updateState({ contacts: [[3]] }); // batch 1 absent
+        expect([lit(0), lit(1)]).toEqual([1, 0]);
+
+        body.updateState({ contacts: [] }); // Python's empty contacts list
+        expect([lit(0), lit(1)]).toEqual([0, 0]);
     });
 });
