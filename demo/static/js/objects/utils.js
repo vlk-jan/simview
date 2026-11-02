@@ -231,6 +231,14 @@ export function createContactPoints(pointCloud, pointsConfig) {
     return new THREE.Points(geometry, material);
 }
 
+// Disposes a material plus the point texture createPoints/createContactPoints
+// loaded for it -- Material.dispose() leaves textures alone.
+export function disposeMaterial(material) {
+    material.map?.dispose();
+    material.uniforms?.pointTexture?.value?.dispose();
+    material.dispose();
+}
+
 // Creates a LineSegments wireframe of `geometry` (visible by default), or
 // null without one.
 export function createWireframe(geometry, wireframeConfig, visible = true) {
