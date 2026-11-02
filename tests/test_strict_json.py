@@ -76,6 +76,7 @@ def test_live_messages_are_strict_json():
     with TestClient(server.app) as client:
         with client.websocket_connect("/ws/states") as ws:
             catchup = _strict_loads(ws.receive_text())
+            assert server.loop is not None
             asyncio.run_coroutine_threadsafe(
                 server.broadcast_frame(frame, 1), server.loop
             ).result(timeout=5.0)
