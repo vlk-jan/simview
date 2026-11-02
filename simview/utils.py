@@ -3,6 +3,7 @@ import gzip
 import io
 import json
 import logging
+import math
 import socket
 from pathlib import Path
 from typing import Any
@@ -165,6 +166,38 @@ def cap(items: list, n: int) -> tuple[list, bool]:
     """`(first n items, whether anything was dropped)` -- for capped terminal
     renderings of otherwise-untruncated result dicts."""
     return items[:n], len(items) > n
+
+
+def _nan_to_none(obj: Any) -> Any:
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _nan_to_none(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_nan_to_none(v) for v in obj]
+    return obj
+
+
+def dumps_json(obj: Any, **kwargs: Any) -> str:
+    """`json.dumps` that writes NaN/Infinity as `null`, keeping the output
+    strict JSON (`JSON.parse`, orjson and jq reject the bare tokens stdlib
+    emits). The viewer already treats null values as gaps."""
+    try:
+        return json.dumps(obj, allow_nan=False, **kwargs)
+    except ValueError:
+        # Only pay for the copy when a non-finite float is actually present.
+        return json.dumps(_nan_to_none(obj), allow_nan=False, **kwargs)
+
+
+def loads_json(raw: bytes) -> Any:
+    """`orjson.loads`, falling back to stdlib `json` for files written before
+    `dumps_json` with bare NaN/Infinity tokens (which orjson rejects)."""
+    import orjson
+
+    try:
+        return orjson.loads(raw)
+    except orjson.JSONDecodeError:
+        return json.loads(raw)
 
 
 def _load_doc(path: str | Path) -> dict:

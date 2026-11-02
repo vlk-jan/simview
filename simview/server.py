@@ -30,7 +30,13 @@ from starlette.types import Scope
 
 from simview.columnar import columnarize_states, is_columnar, rewrite_blobs
 from simview.preload import render_index
-from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
+from simview.utils import (
+    dialable_host,
+    dumps_json,
+    find_free_port,
+    loads_json,
+    read_maybe_gzipped_bytes,
+)
 
 logger = logging.getLogger("simview.server")
 
@@ -412,7 +418,7 @@ class SimViewServer:
             assert self.sim_path is not None
             logger.info("Loading simulation data from %s...", self.sim_path)
             raw = read_maybe_gzipped_bytes(self.sim_path)
-            data = orjson.loads(raw)
+            data = loads_json(raw)
 
         model_data = data.get("model")
         states_data = data.get("states")
@@ -703,7 +709,7 @@ class SimViewServer:
             for start in range(0, len(pending), _CATCHUP_CHUNK_SIZE):
                 chunk = pending[start : start + _CATCHUP_CHUNK_SIZE]
                 await websocket.send_text(
-                    json.dumps(
+                    dumps_json(
                         {
                             "states": [frame for _, frame in chunk],
                             "frameOffset": pending[start][0],
@@ -736,7 +742,7 @@ class SimViewServer:
         the model, not a frame, and arrive far more rarely. See the onmessage
         handler in SimView.js.
         """
-        await self._broadcast_text(json.dumps({"episodes": episodes}))
+        await self._broadcast_text(dumps_json({"episodes": episodes}))
 
     async def _broadcast_text(self, message: str) -> None:
         """Send one already-serialized message to every connected client.
@@ -767,7 +773,7 @@ class SimViewServer:
         thread rather than calling it directly.
         """
         await self._broadcast_text(
-            json.dumps({"states": [frame], "frameOffset": frame_index})
+            dumps_json({"states": [frame], "frameOffset": frame_index})
         )
 
     def run(

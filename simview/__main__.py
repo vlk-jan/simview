@@ -10,7 +10,7 @@ from pathlib import Path
 
 from simview import CACHE_DIR, __version__, remote
 from simview.server import SimViewServer
-from simview.utils import human_bytes, load_scene, load_scene_model
+from simview.utils import dumps_json, human_bytes, load_scene, load_scene_model
 
 logger = logging.getLogger("simview.cli")
 
@@ -104,7 +104,7 @@ def run_info(path: Path, as_json: bool) -> None:
         sys.exit(1)
 
     if as_json:
-        print(json.dumps(summary, indent=2))
+        print(dumps_json(summary, indent=2))
     else:
         print(format_text(summary))
 
@@ -196,7 +196,7 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
     if args.csv:
         print(csv_fn(result), end="")
     elif args.json:
-        print(json.dumps(result, indent=2))
+        print(dumps_json(result, indent=2))
     else:
         print(text_fn(result))
 
@@ -246,7 +246,7 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
     if args.csv:
         print(diff_mod.format_diff_csv(result), end="")
     elif args.json:
-        print(json.dumps(result, indent=2))
+        print(dumps_json(result, indent=2))
     else:
         print(diff_mod.format_diff_text(result))
 
@@ -315,7 +315,7 @@ def save_merged(
     columnar_states = columnarize_states(merged["states"], merged["model"], inline_blob)
     if columnar_states is not None:
         merged["states"] = columnar_states
-    payload = json.dumps(merged).encode("utf-8")
+    payload = dumps_json(merged).encode("utf-8")
     if out_path.suffix == ".gz":
         payload = gzip.compress(payload, compresslevel=1)
     try:

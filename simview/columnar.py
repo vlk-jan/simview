@@ -466,8 +466,9 @@ def write_static_bundle(data: dict, directory) -> None:
     ``model.json``, ``states.json`` and raw ``blob/<id>`` files, with blob
     references rewritten to ``/blob/<id>`` (the viewer maps these to
     ``<base>/blob/<id>``). Stdlib-only."""
-    import json
     from pathlib import Path
+
+    from simview.utils import dumps_json
 
     out = Path(directory)
     (out / "blob").mkdir(parents=True, exist_ok=True)
@@ -486,4 +487,4 @@ def write_static_bundle(data: dict, directory) -> None:
     if is_columnar(data["states"]):
         rewrite_blobs(data["states"], write_blob)
     for name in ("model", "states"):
-        (out / f"{name}.json").write_text(json.dumps(data[name]))
+        (out / f"{name}.json").write_text(dumps_json(data[name]))
