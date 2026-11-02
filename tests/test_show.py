@@ -165,7 +165,8 @@ def test_show_declares_attributes_the_states_carry():
 def test_repr_html_escapes_view():
     handle = object.__new__(ViewerHandle)
     handle.host, handle.port = "127.0.0.1", 5420
-    handle.view, handle.iframe_height = 'x"><script>alert(1)</script>', '1" onload="x'
+    handle.view = 'x"><script>alert(1)</script>'
+    handle.iframe_height = '1" onload="x'  # pyright: ignore  # hostile non-int on purpose
     html = handle._repr_html_()
     assert "<script>" not in html
     assert 'onload="' not in html
