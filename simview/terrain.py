@@ -127,7 +127,10 @@ def _bilinear_sample(
     """Bilinearly interpolate `values` (row=y, col=x, per `model.py`'s "column
     index is x" convention) on grid `g` at world point `(x, y)`. Out-of-extent
     points are clamped to the nearest edge, with `clamped=True` returned so
-    callers can warn."""
+    callers can warn. A NaN coordinate (e.g. a diverged body) samples NaN,
+    unclamped."""
+    if math.isnan(x) or math.isnan(y):
+        return math.nan, False
     shape_x, shape_y = g.shape_x, g.shape_y
     min_x, max_x, min_y, max_y = g.min_x, g.max_x, g.min_y, g.max_y
     fx = (x - min_x) / (max_x - min_x) * (shape_x - 1) if max_x != min_x else 0.0
@@ -448,7 +451,9 @@ def query_along_body(
     layers_out = {}
     for layer in resolved_layers:
         values, clamped = layer_values[layer], layer_clamped[layer]
-        summary = series_stats(values)
+        # NaN samples (NaN positions) would make min/max order-dependent.
+        finite = [v for v in values if not math.isnan(v)]
+        summary = series_stats(finite or values)
         summary["clamped_count"] = sum(clamped)
         layers_out[layer] = {"values": values, "clamped": clamped, "summary": summary}
 

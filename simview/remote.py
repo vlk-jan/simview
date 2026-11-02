@@ -148,7 +148,7 @@ def quote_remote_path(path: str) -> str:
     user name) and only the remainder is quoted.
     """
     head, sep, tail = path.partition("/")
-    if sep and _TILDE_RE.match(head):
+    if _TILDE_RE.match(head):
         return head + sep + (shlex.quote(tail) if tail else "")
     return shlex.quote(path)
 

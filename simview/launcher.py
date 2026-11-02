@@ -59,6 +59,7 @@ class SimViewLauncher:
                 # Serialize the scene once and hand it to the server directly,
                 # avoiding a temp-file write + read-back round-trip.
                 logger.info("SimViewLauncher: Serving in-memory SimulationScene")
+                self._scene._prepare_for_output()
                 data = {
                     "model": self._scene.model.to_json(),
                     "states": self._scene.states,

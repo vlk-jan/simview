@@ -144,3 +144,22 @@ def test_constructor_rejects_missing_file(tmp_path):
 def test_constructor_rejects_unsupported_source_type():
     with pytest.raises(TypeError, match="SimulationScene object or a file path"):
         SimViewLauncher(12345)  # type: ignore[arg-type]  # deliberately wrong type to test runtime validation
+
+
+def test_launch_reconciles_undeclared_attributes(monkeypatch):
+    scene = build_scene(batch_size=1)
+    scene.model.bodies["Box"].available_attributes = []
+    received = {}
+
+    class _FakeServer:
+        def __init__(self, data=None, sim_path=None):
+            received["data"] = data
+
+        def run(self, host, port):
+            pass
+
+    monkeypatch.setattr(launcher_module, "SimViewServer", _FakeServer)
+    SimViewLauncher(scene).launch()
+
+    body = received["data"]["model"]["bodies"][0]
+    assert body["availableAttributes"] == ["velocity"]

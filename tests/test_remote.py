@@ -144,6 +144,8 @@ def test_existing_local_file_wins_over_remote_syntax(tmp_path, monkeypatch):
         ("~/results/sim.json", "~/results/sim.json"),
         ("~/dir with space/sim.json", "~/'dir with space/sim.json'"),
         ("~someone/sim.json", "~someone/sim.json"),
+        ("~", "~"),
+        ("~someone", "~someone"),
         ("/abs/a b.json", "'/abs/a b.json'"),
         ("relative/sim.json", "relative/sim.json"),
         # A tilde component that isn't a plain user name gets quoted wholesale.

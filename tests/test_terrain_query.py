@@ -9,6 +9,7 @@ import base64
 import csv
 import io
 import json
+import math
 import struct
 
 import pytest
@@ -460,6 +461,20 @@ def test_query_along_body_samples_height_along_trajectory():
     assert summary["min"] == pytest.approx(0.0)
     assert summary["max"] == pytest.approx(2.0)
     assert summary["clamped_count"] == 0
+
+
+def test_query_along_body_nan_position_samples_nan():
+    model = _along_model(batch_size=1)
+    states = _along_states_single_batch()
+    states[1]["bodies"][0]["bodyTransform"] = _along_transform(math.nan)
+    result = query_along_body(model, states, body="Box")
+    values = result["layers"]["height"]["values"]
+    assert values[0] == pytest.approx(0.0) and math.isnan(values[1])
+    assert result["layers"]["height"]["clamped"] == [False, False, False]
+    summary = result["layers"]["height"]["summary"]
+    assert summary["min"] == pytest.approx(0.0)
+    assert summary["max"] == pytest.approx(2.0)
+    format_along_text(result)
 
 
 def test_query_along_body_every_subsamples_frames():
