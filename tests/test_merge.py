@@ -1109,3 +1109,47 @@ def test_merge_keeps_visible_ranges_and_rejects_polylines(tmp_path):
     scene_a.save(path_a)
     with pytest.raises(ValueError, match="polylines"):
         merge_simulation_files([path_a, path_b])
+
+
+def test_merge_rejects_polylines_in_a_later_file(tmp_path):
+    scene_a, scene_b = build_scene(1), build_scene(1)
+    scene_b.create_polyline("route", torch.zeros(2, 3))
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    with pytest.raises(ValueError, match="'b.json' has polylines"):
+        merge_simulation_files([path_a, path_b])
+
+
+def test_merge_treats_a_frame_without_contacts_as_empty(tmp_path):
+    scene_a = build_scene(batch_size=2)
+    scene_b = build_scene(batch_size=1)
+    for scene in (scene_a, scene_b):
+        for i, state in enumerate(scene.states):
+            if i != 1:
+                state["bodies"][0]["contacts"] = [[0]] * scene.model.batch_size
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    merged = merge_simulation_files([path_a, path_b], ["1", None])
+
+    assert merged["states"][0]["bodies"][0]["contacts"] == [[0], [0]]
+    assert merged["states"][1]["bodies"][0]["contacts"] == [[], []]
+
+
+def test_merge_metadata_keys_stay_unique_for_same_basenames(tmp_path):
+    paths = []
+    for d in ("a", "b"):
+        scene = build_scene(batch_size=1)
+        scene.model.metadata = {"run": d}
+        (tmp_path / d).mkdir()
+        paths.append(tmp_path / d / "run.json")
+        scene.save(paths[-1])
+
+    merged = merge_simulation_files(paths)
+
+    assert merged["model"]["metadata"]["sources"] == {
+        str(paths[0]): {"run": "a"},
+        str(paths[1]): {"run": "b"},
+    }

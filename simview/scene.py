@@ -455,6 +455,13 @@ class SimulationScene:
                 state[name] = arr[t].tolist()
             self.states.append(state)
 
+    def _prepare_for_output(self) -> None:
+        """Validate and reconcile the model against the states before it is
+        serialized: shared by `save()`, `show()` and `SimViewLauncher`."""
+        self._check_episodes_in_range()
+        self._check_polyline_frames()
+        self.reconcile_available_attributes()
+
     def _check_episodes_in_range(self) -> None:
         """Every episode must start at a frame this scene actually has."""
         for episode in self.model.episodes or []:
@@ -545,9 +552,7 @@ class SimulationScene:
             raise ValueError(
                 "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
             )
-        self._check_episodes_in_range()
-        self._check_polyline_frames()
-        self.reconcile_available_attributes()
+        self._prepare_for_output()
 
         output_path = Path(filepath)
         if compress and output_path.suffix != ".gz":
@@ -637,9 +642,7 @@ class SimulationScene:
                 "Cannot show scene: the simulation model is not complete "
                 "(e.g. terrain might be missing)."
             )
-        self._check_episodes_in_range()
-        self._check_polyline_frames()
-        self.reconcile_available_attributes()
+        self._prepare_for_output()
 
         data = {"model": self.model.to_json(), "states": self.states}
         handle = ViewerHandle(

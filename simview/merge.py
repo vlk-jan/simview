@@ -758,12 +758,11 @@ def _merge_states(
                         )
                     )
                 if contacts is not None:
-                    if "contacts" not in body_state:
-                        raise ValueError(
-                            f"'{labels[file_idx]}' body '{name}' declares 'contacts' as "
-                            f"available but is missing it at t={states[state_idx]['time']}."
-                        )
-                    contacts.extend(_select(body_state["contacts"], selection))
+                    # A frame may omit contacts (save/view treat that as none).
+                    body_contacts = body_state.get("contacts")
+                    if body_contacts is None:
+                        body_contacts = [[] for _ in range(batch_size)]
+                    contacts.extend(_select(body_contacts, selection))
 
             transform = field_values["bodyTransform"]
             if len(transform) != total_batches:
@@ -858,13 +857,13 @@ def merge_simulation_files(
     # file's batch count), so they only pass through unchanged when nothing
     # about the batch layout changes.
     polylines = models[0].get("polylines") or []
-    if polylines and (
-        len(models) > 1 or any(sel is not None for sel in batch_selections)
-    ):
-        raise ValueError(
-            f"'{labels[0]}' has polylines, which cannot be merged across files "
-            "or batch selections; drop them before merging."
-        )
+    if len(models) > 1 or any(sel is not None for sel in batch_selections):
+        for model, label in zip(models, labels):
+            if model.get("polylines"):
+                raise ValueError(
+                    f"'{label}' has polylines, which cannot be merged across "
+                    "files or batch selections; drop them before merging."
+                )
     merged_states = _merge_states(
         states_list, batch_sizes, bodies, scalar_names, labels, batch_selections
     )
@@ -916,9 +915,15 @@ def merge_simulation_files(
     # Keep every input's run provenance (engine, checkpoint, git commit, ...)
     # instead of silently dropping it -- namespaced per source file since the
     # inputs may come from entirely different runs.
+    # Basenames can collide ('a/run.json', 'b/run.json'), so a duplicate is
+    # keyed by its path as given, then also by input position.
+    source_keys: list[str] = []
+    for i, (path, label) in enumerate(zip(resolved_paths, labels)):
+        key = label if labels.count(label) == 1 else str(path)
+        source_keys.append(key if key not in source_keys else f"{key} [{i}]")
     source_metadata = {
-        label: model["metadata"]
-        for model, label in zip(models, labels)
+        key: model["metadata"]
+        for model, key in zip(models, source_keys)
         if model.get("metadata") is not None
     }
     if source_metadata:
