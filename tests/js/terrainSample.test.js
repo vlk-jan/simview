@@ -21,7 +21,11 @@ describe("hasBodyTrajectory", () => {
         expect(hasBodyTrajectory(bodies)).toBe(false);
     });
 
-    it("is true when at least one body has validStates > 0", () => {
+    it("is false when the only states are a single frame (no path to profile)", () => {
+        expect(hasBodyTrajectory([{ validStates: 1 }, { validStates: 0 }])).toBe(false);
+    });
+
+    it("is true when at least one body has validStates >= 2", () => {
         const bodies = new Map([
             ["a", { validStates: 0 }],
             ["b", { validStates: 12 }],

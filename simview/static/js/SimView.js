@@ -441,6 +441,8 @@ export class SimView {
             if (this.terrainProfile) {
                 this.terrainProfile.onStatesAppended();
             }
+            // A live run that started on a single frame gains its trajectory here.
+            this.maybeAttachTrajectoryPanels();
             if (wasFollowingLive) {
                 this.animationController.goToTime(this.store.lastTime());
             }
@@ -473,7 +475,7 @@ export class SimView {
     }
 
     // The Error Metrics and Terrain tabs need a body with an actual trajectory to sample
-    // terrain along (a static point cloud with no states doesn't count),
+    // terrain along (a body with no states, or only one frame, doesn't count),
     // which is only known once appendBodyHistories() has filled each body's
     // validStates. Error Metrics compares batches over time, so it needs the
     // same plus at least two batches; a static scene gets neither tab.
