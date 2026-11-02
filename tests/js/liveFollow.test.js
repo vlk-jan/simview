@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldFollowLive } from "../../simview/static/js/utils/liveFollow.js";
+import { shouldFollowLive, unseenLiveStates } from "../../simview/static/js/utils/liveFollow.js";
 
 describe("shouldFollowLive", () => {
     it("follows when there is no animation controller yet", () => {
@@ -27,5 +27,24 @@ describe("shouldFollowLive", () => {
     it("does not follow when paused but scrubbed back from the last frame", () => {
         const ac = { store: { length: 5 }, isPlaying: false, currentStateIndex: 2 };
         expect(shouldFollowLive(ac)).toBe(false);
+    });
+});
+
+describe("unseenLiveStates", () => {
+    it("passes a contiguous message through", () => {
+        const states = ["a", "b"];
+        expect(unseenLiveStates(states, 5, 5)).toBe(states);
+    });
+
+    it("drops a frame already received in catch-up", () => {
+        expect(unseenLiveStates(["a"], 4, 5)).toEqual([]);
+    });
+
+    it("keeps only the unseen tail of a partially overlapping message", () => {
+        expect(unseenLiveStates(["a", "b", "c"], 3, 5)).toEqual(["c"]);
+    });
+
+    it("accepts a message after a gap", () => {
+        expect(unseenLiveStates(["a"], 8, 5)).toEqual(["a"]);
     });
 });

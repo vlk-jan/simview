@@ -15,3 +15,13 @@ export function shouldFollowLive(animationController) {
     if (ac.isPlaying) return false;
     return ac.currentStateIndex >= ac.store.length - 1;
 }
+
+// The part of a live message's `states` this viewer hasn't received yet.
+// `frameOffset` is the absolute index of states[0]; `nextIndex` the absolute
+// index this viewer expects next. A frame pushed while a client is between
+// catch-up and broadcast registration arrives twice (once in each), so the
+// already-seen prefix is dropped.
+export function unseenLiveStates(states, frameOffset, nextIndex) {
+    const seen = Math.max(0, nextIndex - frameOffset);
+    return seen > 0 ? states.slice(seen) : states;
+}
