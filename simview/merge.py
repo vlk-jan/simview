@@ -23,8 +23,6 @@ import re
 from pathlib import Path
 from typing import Sequence
 
-import orjson
-
 from .columnar import (
     STATE_FIELD_WIDTHS,
     batch_rows,
@@ -34,7 +32,7 @@ from .columnar import (
     is_blob,
     is_columnar,
 )
-from .utils import bodies_by_name, read_maybe_gzipped_bytes
+from .utils import bodies_by_name, loads_json, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.merge")
 
@@ -230,7 +228,7 @@ def _decode_per_batch(
 
 def _load_json(path: Path) -> dict:
     raw = read_maybe_gzipped_bytes(path)
-    doc = orjson.loads(raw)
+    doc = loads_json(raw)
     # Merging works frame by frame (resampling onto the first file's timeline),
     # so a columnar file is expanded to the per-frame layout up front rather
     # than teaching every step below a second shape. expand_columnar_states is

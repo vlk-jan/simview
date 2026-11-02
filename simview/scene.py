@@ -36,7 +36,7 @@ from .state import (
     LocalTransformLike,
     SimViewBodyState,
 )
-from .utils import iter_names, read_maybe_gzipped_bytes
+from .utils import dumps_json, iter_names, read_maybe_gzipped_bytes
 
 logger = logging.getLogger("simview.scene")
 
@@ -576,11 +576,11 @@ class SimulationScene:
         with (gzip.open if compress else open)(output_path, "wt") as f:
             f.write("{\n")
             f.write('  "model": ')
-            json.dump(model_json, f, indent=2)
+            f.write(dumps_json(model_json, indent=2))
             f.write(",\n")
             if columnar_states is not None:
                 f.write('  "states": ')
-                json.dump(columnar_states, f)
+                f.write(dumps_json(columnar_states))
                 f.write("\n}")
             else:
                 # Streamed frame by frame: the per-frame layout is only
@@ -591,7 +591,7 @@ class SimulationScene:
                     if i > 0:
                         f.write(",\n")
                     f.write("    ")
-                    json.dump(state, f)
+                    f.write(dumps_json(state))
                 f.write("\n  ]\n}")
         logger.info("Simulation data successfully saved to %s", output_path)
 
