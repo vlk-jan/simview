@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.4.1] - 2026-11-02
+
 ### Changed
 
 - Terrain property layers are no longer downloaded with the scene. Each is
@@ -14,12 +16,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plotting it in the Terrain profile, or hovering the terrain (the tooltip
   lists every property). A terrain with seven ~1.9 MB layers loads ~13 MB
   less up front.
+- The server refuses HTTP requests whose `Host` is not `localhost` or an IP
+  address (400), the rule the live WebSocket already applied. This blocks DNS
+  rebinding; open the viewer by IP (e.g. `http://10.0.0.5:5420`), not by
+  hostname.
 
 ### Fixed
 
 - A terrain saved with `create_terrain(compute_normals=False)` draws its
   "normals" arrows from the normals the viewer computes for shading, instead
   of drawing nothing.
+- NaN/Infinity values are written as `null`, so saved scenes, static bundles,
+  live WebSocket messages and `info`/`diff`/`terrain`/merge `--json` output
+  are valid JSON. A NaN in live mode no longer drops frames. Files already
+  written with bare `NaN` still load and merge.
+- A viewer that connects mid-run in live mode no longer receives duplicate
+  frames, and concurrent episode/batch-name updates can't leave `/model` stale.
+- `SimViewLauncher` runs the same checks as `show()`/`save()`, so undeclared
+  attributes (velocity, force, contacts) show up in the viewer.
+- Merging: polylines in any input (not only the first) are rejected instead of
+  silently dropped; frames without `contacts` merge as empty contacts; inputs
+  sharing a file name keep separate `metadata.sources` entries.
+- Terrain sampling at a NaN position returns NaN instead of raising.
+- `simview host:~` expands the remote home directory.
+- Contact markers clear when a frame has an empty or shorter `contacts` list.
+- Recording a single-frame scene captures the frame instead of an empty video.
+- The scalar plot tooltip shows the episode sum/mean of the hovered batch.
+- Resetting similarity colors on a point cloud without base colors removes
+  them.
+- A failed windowed-field fetch backs off for 5 s instead of retrying every
+  frame.
+- Point and contact-marker textures are disposed with their materials.
+- A body omitted from some frames holds its last pose in trails, error metrics
+  and the terrain profile instead of jumping to the origin.
+- Focus mode hides other batches' copies of a singleton static mesh.
+- CSV export prefixes text cells starting with `=`, `+`, `-` or `@` with `'`,
+  so spreadsheets don't evaluate batch names as formulas.
+- The Jupyter iframe HTML escapes the `view` string.
+- The Terrain profile and Error Metrics tabs need at least two frames, so a
+  single-frame scene no longer shows empty tabs; a live run that starts on one
+  frame gains them once it has two.
 
 ## [6.4.0] - 2026-10-28
 
@@ -969,7 +1005,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.4.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v6.4.1...HEAD
+[6.4.1]: https://github.com/vlk-jan/simview/compare/v6.4.0...v6.4.1
 [6.4.0]: https://github.com/vlk-jan/simview/compare/v6.3.1...v6.4.0
 [6.3.1]: https://github.com/vlk-jan/simview/compare/v6.3.0...v6.3.1
 [6.3.0]: https://github.com/vlk-jan/simview/compare/v6.2.3...v6.3.0
