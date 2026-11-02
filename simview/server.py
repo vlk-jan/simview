@@ -4,6 +4,7 @@ import asyncio
 import copy
 import gzip
 import hashlib
+import html
 import json
 import logging
 import os
@@ -187,8 +188,39 @@ def _ws_origin_allowed(websocket: WebSocket) -> bool:
     host_header = websocket.headers.get("host", "")
     if match.group(1) != host_header:
         return False
+    return _host_allowed(host_header)
+
+
+def _host_allowed(host_header: str) -> bool:
+    """Whether a Host header names 'localhost' or an address -- anything else
+    may be an attacker's DNS-rebound name (see _ws_origin_allowed)."""
     host = _host_of(host_header)
     return host == "localhost" or _IP_LITERAL_RE.match(host) is not None
+
+
+class _HostCheckMiddleware:
+    """Rejects HTTP requests whose Host isn't 'localhost' or an address.
+
+    The DNS-rebinding guard for the HTTP routes, the same Host rule
+    _ws_origin_allowed applies: after a rebind an attacker's page is
+    same-origin with the server, so CORS no longer stops it reading /model
+    (which carries the blob token) or POSTing /batch-names. A request with no
+    Host header (HTTP/1.0 tooling) is let through; browsers always send one.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive, send):
+        if scope["type"] == "http":
+            host_header = Headers(scope=scope).get("host")
+            if host_header is not None and not _host_allowed(host_header):
+                response = JSONResponse(
+                    {"message": "Invalid Host header"}, status_code=400
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class _BodySizeLimitMiddleware:
@@ -343,6 +375,8 @@ class SimViewServer:
         # CORS above, so it wraps it and rejects oversized payloads before any
         # middleware or handler runs.
         self.app.add_middleware(_BodySizeLimitMiddleware)
+        # Outermost: refuse DNS-rebound requests before anything else runs.
+        self.app.add_middleware(_HostCheckMiddleware)
 
         # Mount static files. StaticFiles adds ETag/Last-Modified headers so
         # unchanged assets (vendored libs, textures, our own JS) are served
@@ -934,9 +968,10 @@ class ViewerHandle:
         """Jupyter calls this automatically when the handle is the result of
         a cell, embedding the viewer inline without the user having to open a
         separate browser tab."""
-        src = self.url_for(self.view) if self.view else self.url
+        src = html.escape(self.url_for(self.view) if self.view else self.url)
+        height = html.escape(str(self.iframe_height))
         return (
-            f'<iframe src="{src}" width="100%" height="{self.iframe_height}" '
+            f'<iframe src="{src}" width="100%" height="{height}" '
             f'style="border:none;" allow="fullscreen"></iframe>'
         )
 

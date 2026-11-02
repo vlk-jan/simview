@@ -469,3 +469,23 @@ def test_start_applies_batch_selection_to_a_single_file(monkeypatch, tmp_path):
 
     assert served[0]["simBatches"] == 2
     assert served[0]["batchNames"] == ["sim[0]", "sim[2]"]
+
+
+@pytest.mark.parametrize(
+    ("host", "status"),
+    [
+        ("localhost:5420", 200),
+        ("127.0.0.1:5420", 200),
+        ("[::1]:5420", 200),
+        ("10.0.0.5:5420", 200),
+        ("evil.example", 400),
+        ("evil.example:5420", 400),
+    ],
+)
+def test_http_routes_refuse_rebound_host(client, host, status):
+    for path in ("/", "/model", "/states"):
+        assert client.get(path, headers={"host": host}).status_code == status
+    resp = client.post(
+        "/batch-names", json={"names": ["a", "b"]}, headers={"host": host}
+    )
+    assert resp.status_code == status

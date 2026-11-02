@@ -160,3 +160,13 @@ def test_show_declares_attributes_the_states_carry():
     finally:
         handle.stop()
     assert model["bodies"][0]["availableAttributes"] == ["velocity"]
+
+
+def test_repr_html_escapes_view():
+    handle = object.__new__(ViewerHandle)
+    handle.host, handle.port = "127.0.0.1", 5420
+    handle.view, handle.iframe_height = 'x"><script>alert(1)</script>', '1" onload="x'
+    html = handle._repr_html_()
+    assert "<script>" not in html
+    assert 'onload="' not in html
+    assert "&quot;&gt;&lt;script&gt;" in html

@@ -1,3 +1,8 @@
+import functools
+
+import pytest
+from fastapi.testclient import TestClient
+
 try:
     import torch
 
@@ -48,3 +53,15 @@ def build_scene(batch_size: int = 2) -> "SimulationScene":
         )
 
     return scene
+
+
+@pytest.fixture(autouse=True)
+def _testclient_on_localhost(monkeypatch):
+    """TestClient's default Host 'testserver' is refused by the server's
+    DNS-rebinding guard (_HostCheckMiddleware); talk to it as localhost, as a
+    real local browser would. An explicit base_url/Host still wins."""
+    monkeypatch.setattr(
+        TestClient,
+        "__init__",
+        functools.partialmethod(TestClient.__init__, base_url="http://localhost"),
+    )
