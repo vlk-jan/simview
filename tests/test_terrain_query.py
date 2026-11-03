@@ -271,7 +271,13 @@ def test_query_area_diff_returns_expected_subgrids_and_delta():
         "mean_abs_delta": pytest.approx(100.0),
         "max_abs_delta": pytest.approx(100.0),
         "min_abs_delta": pytest.approx(100.0),
+        "mean_delta": pytest.approx(100.0),
+        "rmse": pytest.approx(100.0),
+        "p95_abs_delta": pytest.approx(100.0),
+        "count": 4,
     }
+    assert layer["stats_a"]["mean"] == pytest.approx(2.0)
+    assert layer["stats_b"]["mean"] == pytest.approx(102.0)
 
 
 def test_query_area_diff_stats_mean_max_min_for_nonuniform_delta():

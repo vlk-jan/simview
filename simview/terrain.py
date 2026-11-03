@@ -18,6 +18,8 @@ providing a skimmable terminal rendering of the same data.
 """
 
 import math
+import operator
+import re
 from typing import Any, NamedTuple
 
 from simview.columnar import blob_floats
@@ -25,13 +27,16 @@ from simview.diff import pose_resolver
 from simview.utils import (
     body_label,
     cap,
+    in_time_window,
     iter_names,
     resolve_body,
     series_stats,
+    value_stats,
     write_csv,
 )
 
 _MAX_SERIES_ROWS = 10
+_STAT_COLUMNS = ("count", "nan_count", "min", "p05", "mean", "p50", "p95", "max", "std")
 
 
 def _layer_data(terrain: dict, layer: str) -> Any:
@@ -188,6 +193,61 @@ def _grid_coord(index: int, min_b: float, max_b: float, shape: int) -> float:
     return min_b + index / (shape - 1) * (max_b - min_b) if shape > 1 else min_b
 
 
+_MASK_OPS = {
+    ">=": operator.ge,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+    ">": operator.gt,
+    "<": operator.lt,
+}
+_MASK_RE = re.compile(r"^\s*([^<>=!\s]+)\s*(>=|<=|==|!=|>|<)\s*(\S+)\s*$")
+
+
+def parse_mask(expr: str) -> tuple[str, str, float]:
+    """Parse a `LAYER OP VALUE` mask expression (e.g. ``"known>0.5"``) into
+    `(layer, op, value)`. Raises ValueError on anything else."""
+    match = _MASK_RE.match(expr)
+    if not match:
+        raise ValueError(
+            f"mask '{expr}' must look like LAYER OP VALUE with OP one of "
+            f"{', '.join(_MASK_OPS)} (e.g. 'known>0.5')"
+        )
+    layer, op, value = match.groups()
+    try:
+        return layer, op, float(value)
+    except ValueError:
+        raise ValueError(f"mask '{expr}': '{value}' is not a number") from None
+
+
+def _mask_cells(
+    model_data: dict,
+    mask: tuple[str, str, float],
+    batch: int,
+    rows: list[int],
+    cols: list[int],
+) -> list[list[bool]]:
+    """Per-cell `mask` verdicts over the sampled `rows` x `cols` of `batch`'s
+    mask layer (NaN cells never pass)."""
+    terrain, g, batch_size = _grid_info(model_data)
+    layer, op, value = mask
+    _resolve_layers(terrain, layer)
+    grid = _decode_grid(
+        _layer_data(terrain, layer), g.shape_x, g.shape_y, batch_size, batch
+    )
+    test = _MASK_OPS[op]
+    return [
+        [not math.isnan(grid[r][c]) and test(grid[r][c], value) for c in cols]
+        for r in rows
+    ]
+
+
+def _masked(values: list[list[float]], keep: list[list[bool]] | None) -> list[float]:
+    if keep is None:
+        return [v for row in values for v in row]
+    return [v for row, k in zip(values, keep) for v, ok in zip(row, k) if ok]
+
+
 def query_point(
     model_data: dict,
     x: float,
@@ -221,43 +281,58 @@ def query_point(
     }
 
 
+def _area_indices(
+    g: _Grid, bounds: tuple[float, float, float, float] | None, stride: int
+) -> tuple[list[int], list[int]]:
+    """`(rows, cols)` grid indices covered by `bounds` (None = whole extent),
+    every `stride`-th one. Raises ValueError on a bad stride or no overlap."""
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1; got {stride}")
+    if bounds is None:
+        col_start, col_end = 0, g.shape_x - 1
+        row_start, row_end = 0, g.shape_y - 1
+    else:
+        xmin, xmax, ymin, ymax = bounds
+        col_start, col_end = _grid_index_range(xmin, xmax, g.min_x, g.max_x, g.shape_x)
+        row_start, row_end = _grid_index_range(ymin, ymax, g.min_y, g.max_y, g.shape_y)
+        if col_start > col_end or row_start > row_end:
+            raise ValueError("requested area does not overlap the terrain extent")
+    return (
+        list(range(row_start, row_end + 1, stride)),
+        list(range(col_start, col_end + 1, stride)),
+    )
+
+
 def query_area(
     model_data: dict,
     bounds: tuple[float, float, float, float] | None = None,
     layers: str | list[str] = "all",
     batch: int = 0,
     stride: int = 1,
+    mask: tuple[str, str, float] | None = None,
+    mask_batch: int | None = None,
 ) -> dict:
-    """Raw terrain value grid over a rectangular area.
+    """Terrain value grid over a rectangular area, plus per-layer statistics.
 
     `bounds` is `(xmin, xmax, ymin, ymax)`, or `None` for the whole terrain
     extent. `stride` subsamples every Nth grid point in both directions.
+    `mask` (see `parse_mask`) restricts the statistics -- not the grid -- to
+    cells where that layer of `mask_batch` (default: `batch`) passes the test,
+    e.g. `("known", ">", 0.5)`.
+
     Returns a JSON-serializable dict: `{"batch", "is_singleton", "x_coords",
-    "y_coords", "layers": {layer: [[value, ...], ...]}}` (rows follow
-    `y_coords`, columns follow `x_coords`). Raises `ValueError` on the same
-    conditions as `query_point`, plus a non-overlapping area or a
-    non-positive `stride`.
+    "y_coords", "layers": {layer: [[value, ...], ...]}, "stats": {layer:
+    value_stats}, "mask": {"expr", "selected", "total"} | None}` (rows follow
+    `y_coords`, columns follow `x_coords`; see `simview.utils.value_stats`).
+    Raises `ValueError` on the same conditions as `query_point`, plus a
+    non-overlapping area or a non-positive `stride`.
     """
     terrain, g, batch_size = _grid_info(model_data)
     shape_x, shape_y = g.shape_x, g.shape_y
     min_x, max_x, min_y, max_y = g.min_x, g.max_x, g.min_y, g.max_y
     resolved_layers = _resolve_layers(terrain, layers)
 
-    if stride < 1:
-        raise ValueError(f"stride must be >= 1; got {stride}")
-
-    if bounds is None:
-        col_start, col_end = 0, shape_x - 1
-        row_start, row_end = 0, shape_y - 1
-    else:
-        xmin, xmax, ymin, ymax = bounds
-        col_start, col_end = _grid_index_range(xmin, xmax, min_x, max_x, shape_x)
-        row_start, row_end = _grid_index_range(ymin, ymax, min_y, max_y, shape_y)
-        if col_start > col_end or row_start > row_end:
-            raise ValueError("requested area does not overlap the terrain extent")
-
-    cols = list(range(col_start, col_end + 1, stride))
-    rows = list(range(row_start, row_end + 1, stride))
+    rows, cols = _area_indices(g, bounds, stride)
     x_coords = [_grid_coord(c, min_x, max_x, shape_x) for c in cols]
     y_coords = [_grid_coord(r, min_y, max_y, shape_y) for r in rows]
 
@@ -268,12 +343,29 @@ def query_area(
         )
         layers_out[layer] = [[grid[r][c] for c in cols] for r in rows]
 
+    keep = None
+    mask_out = None
+    if mask is not None:
+        keep = _mask_cells(
+            model_data, mask, batch if mask_batch is None else mask_batch, rows, cols
+        )
+        mask_out = {
+            "expr": f"{mask[0]}{mask[1]}{mask[2]:g}",
+            "selected": sum(map(sum, keep)),
+            "total": len(rows) * len(cols),
+        }
+
     return {
         "batch": batch,
         "is_singleton": bool(terrain.get("isSingleton", False)),
         "x_coords": x_coords,
         "y_coords": y_coords,
         "layers": layers_out,
+        "stats": {
+            layer: value_stats(_masked(grid, keep))
+            for layer, grid in layers_out.items()
+        },
+        "mask": mask_out,
     }
 
 
@@ -327,23 +419,31 @@ def query_area_diff(
     batch_b: int,
     layers: str | list[str] = "all",
     stride: int = 1,
+    mask: tuple[str, str, float] | None = None,
 ) -> dict:
     """Like `query_area`, but samples both `batch_a` and `batch_b` and
     additionally returns their elementwise delta (`value_b - value_a`) per
-    layer.
+    layer. `mask` is evaluated on `batch_a` and applies to every statistic.
 
     Returns a JSON-serializable dict: `{"batch_a", "batch_b", "is_singleton",
-    "x_coords", "y_coords", "layers": {layer: {"value_a", "value_b",
+    "x_coords", "y_coords", "mask", "layers": {layer: {"value_a", "value_b",
     "delta", "abs_delta", "stats": {"mean_abs_delta", "max_abs_delta",
-    "min_abs_delta"}}}}` (the first four are nested grids, rows follow
-    `y_coords`, columns follow `x_coords`). Raises `ValueError` on the same conditions
-    as `query_area`, plus `batch_a == batch_b`.
+    "min_abs_delta", "mean_delta", "rmse", "p95_abs_delta", "count"},
+    "stats_a", "stats_b"}}}` (the first four are nested grids, rows follow
+    `y_coords`, columns follow `x_coords`; `stats_a`/`stats_b` are each
+    batch's `value_stats`). Raises `ValueError` on the same conditions as
+    `query_area`, plus `batch_a == batch_b`.
     """
     if batch_a == batch_b:
         raise ValueError("batch_a and batch_b must differ")
 
-    result_a = query_area(model_data, bounds, layers, batch_a, stride)
-    result_b = query_area(model_data, bounds, layers, batch_b, stride)
+    result_a = query_area(model_data, bounds, layers, batch_a, stride, mask, batch_a)
+    result_b = query_area(model_data, bounds, layers, batch_b, stride, mask, batch_a)
+    keep = None
+    if mask is not None:
+        _, g, _ = _grid_info(model_data)
+        rows, cols = _area_indices(g, bounds, stride)
+        keep = _mask_cells(model_data, mask, batch_a, rows, cols)
 
     layers_out = {}
     for layer, value_a in result_a["layers"].items():
@@ -353,17 +453,27 @@ def query_area_diff(
             for ri in range(len(value_a))
         ]
         abs_delta = [[abs(v) for v in row] for row in delta]
-        flat_abs_delta = [v for row in abs_delta for v in row]
+        flat_delta = [v for v in _masked(delta, keep) if math.isfinite(v)]
+        abs_stats = value_stats(abs(v) for v in flat_delta)
+        n = len(flat_delta)
         layers_out[layer] = {
             "value_a": value_a,
             "value_b": value_b,
             "delta": delta,
             "abs_delta": abs_delta,
             "stats": {
-                "mean_abs_delta": sum(flat_abs_delta) / len(flat_abs_delta),
-                "max_abs_delta": max(flat_abs_delta),
-                "min_abs_delta": min(flat_abs_delta),
+                "mean_abs_delta": abs_stats["mean"],
+                "max_abs_delta": abs_stats["max"],
+                "min_abs_delta": abs_stats["min"],
+                "mean_delta": math.fsum(flat_delta) / n if n else None,
+                "rmse": math.sqrt(math.fsum(v * v for v in flat_delta) / n)
+                if n
+                else None,
+                "p95_abs_delta": abs_stats["p95"],
+                "count": n,
             },
+            "stats_a": result_a["stats"][layer],
+            "stats_b": result_b["stats"][layer],
         }
 
     return {
@@ -372,6 +482,7 @@ def query_area_diff(
         "is_singleton": result_a["is_singleton"],
         "x_coords": result_a["x_coords"],
         "y_coords": result_a["y_coords"],
+        "mask": result_a["mask"],
         "layers": layers_out,
     }
 
@@ -383,10 +494,12 @@ def query_along_body(
     layers: str | list[str] = "all",
     batch: int = 0,
     every: int = 1,
+    t0: float | None = None,
+    t1: float | None = None,
 ) -> dict:
     """Bilinearly-interpolated terrain value(s) sampled along `body`'s
     trajectory in batch `batch`, for every `every`-th state where `body` has
-    a resolvable world pose. Answers "what terrain is under this body's
+    a resolvable world pose (only states with `t0 <= time <= t1`, when given). Answers "what terrain is under this body's
     path" -- e.g. sampling a DRIFT-style scene's friction/stiffness under
     the robot's driven path, per batch.
 
@@ -433,7 +546,7 @@ def query_along_body(
     layer_clamped: dict[str, list[bool]] = {layer: [] for layer in resolved_layers}
 
     for idx, state in enumerate(states_data):
-        if idx % every != 0:
+        if idx % every != 0 or not in_time_window(state.get("time"), t0, t1):
             continue
         row = resolve(state, batch).get(lookup_name)
         if row is None:
@@ -477,6 +590,8 @@ def query_along_body_diff(
     batch_b: int,
     layers: str | list[str] = "all",
     every: int = 1,
+    t0: float | None = None,
+    t1: float | None = None,
 ) -> dict:
     """Like `query_along_body`, but samples both `batch_a` and `batch_b`'s
     terrains at the same positions and reports the delta.
@@ -502,7 +617,9 @@ def query_along_body_diff(
 
     # Positions and batch_a's own values come straight from the single-batch
     # query -- batch_a is the reference path both terrains get sampled along.
-    result_a = query_along_body(model_data, states_data, body, layers, batch_a, every)
+    result_a = query_along_body(
+        model_data, states_data, body, layers, batch_a, every, t0, t1
+    )
 
     resolved_layers = list(result_a["layers"])
     xs, ys = result_a["x"], result_a["y"]
@@ -583,15 +700,67 @@ def format_point_text(result: dict) -> str:
     return "\n".join(lines)
 
 
-def format_area_text(result: dict) -> str:
-    x_coords, y_coords = result["x_coords"], result["y_coords"]
+def _area_extent(result: dict) -> dict:
+    if "area" in result:
+        return result["area"]
+    xs, ys = result["x_coords"], result["y_coords"]
+    return {
+        "x_min": xs[0],
+        "x_max": xs[-1],
+        "y_min": ys[0],
+        "y_max": ys[-1],
+        "nx": len(xs),
+        "ny": len(ys),
+    }
+
+
+def area_summary(result: dict) -> dict:
+    """`query_area`/`query_area_diff` output without its per-cell grids: the
+    sampled extent (`area`), the mask and the statistics only -- what
+    `simview terrain --area` prints unless `--full` is given."""
+    out = {
+        k: v for k, v in result.items() if k not in ("x_coords", "y_coords", "layers")
+    }
+    out["area"] = _area_extent(result)
+    if "batch_a" in result:
+        out["layers"] = {
+            layer: {k: info[k] for k in ("stats", "stats_a", "stats_b")}
+            for layer, info in result["layers"].items()
+        }
+    return out
+
+
+def _fmt(v: Any) -> str:
+    if v is None:
+        return "-"
+    return str(v) if isinstance(v, int) else f"{v:.4g}"
+
+
+def _area_header(result: dict, batches: str) -> list[str]:
+    a = _area_extent(result)
     lines = [
-        f"Area x=[{x_coords[0]:.4g}, {x_coords[-1]:.4g}] "
-        f"y=[{y_coords[0]:.4g}, {y_coords[-1]:.4g}]  "
-        f"({len(x_coords)} x {len(y_coords)} points)  batch={result['batch']}"
+        f"Area x=[{a['x_min']:.4g}, {a['x_max']:.4g}] "
+        f"y=[{a['y_min']:.4g}, {a['y_max']:.4g}]  "
+        f"({a['nx']} x {a['ny']} points)  {batches}"
     ]
+    mask = result.get("mask")
+    if mask:
+        lines.append(
+            f"  mask {mask['expr']}: {mask['selected']}/{mask['total']} cells "
+            "(statistics only)"
+        )
+    return lines
+
+
+def format_area_text(result: dict) -> str:
+    lines = _area_header(result, f"batch={result['batch']}")
     lines.extend(_singleton_note(result))
-    for layer, grid in result["layers"].items():
+    lines.append("\n  layer        " + "  ".join(f"{k:<10}" for k in _STAT_COLUMNS))
+    for layer, st in result["stats"].items():
+        lines.append(
+            f"  {layer:<12} " + "  ".join(f"{_fmt(st[k]):<10}" for k in _STAT_COLUMNS)
+        )
+    for layer, grid in (result.get("layers") or {}).items():
         lines.append(f"\n{layer}:")
         for row in grid:
             lines.append("  " + " ".join(f"{v:.4g}" for v in row))
@@ -609,6 +778,14 @@ def format_point_csv(result: dict) -> str:
 
 
 def format_area_csv(result: dict) -> str:
+    if "layers" not in result:
+        return write_csv(
+            ["layer", *_STAT_COLUMNS],
+            (
+                [layer, *(st[k] for k in _STAT_COLUMNS)]
+                for layer, st in result["stats"].items()
+            ),
+        )
     layers = list(result["layers"])
     return write_csv(
         ["x", "y", *layers],
@@ -638,24 +815,24 @@ def format_point_diff_text(result: dict) -> str:
 
 
 def format_area_diff_text(result: dict) -> str:
-    x_coords, y_coords = result["x_coords"], result["y_coords"]
-    lines = [
-        f"Area x=[{x_coords[0]:.4g}, {x_coords[-1]:.4g}] "
-        f"y=[{y_coords[0]:.4g}, {y_coords[-1]:.4g}]  "
-        f"({len(x_coords)} x {len(y_coords)} points)  "
-        f"batch_a={result['batch_a']}  batch_b={result['batch_b']}"
-    ]
+    lines = _area_header(
+        result, f"batch_a={result['batch_a']}  batch_b={result['batch_b']}"
+    )
     lines.extend(_singleton_diff_note(result))
-    for layer, grids in result["layers"].items():
-        stats = grids["stats"]
+    for layer, info in result["layers"].items():
+        st, a, b = info["stats"], info["stats_a"], info["stats_b"]
         lines.append(
-            f"\n{layer} delta (b - a), |delta|: "
-            f"mean={stats['mean_abs_delta']:.4g}  "
-            f"max={stats['max_abs_delta']:.4g}  "
-            f"min={stats['min_abs_delta']:.4g}:"
+            f"\n{layer}: mean a={_fmt(a['mean'])}  b={_fmt(b['mean'])}  "
+            f"delta (b - a) mean={_fmt(st['mean_delta'])}  rmse={_fmt(st['rmse'])}"
         )
-        for row in grids["delta"]:
-            lines.append("  " + " ".join(f"{v:+.4g}" for v in row))
+        lines.append(
+            f"  |delta|: mean={_fmt(st['mean_abs_delta'])}  "
+            f"p95={_fmt(st['p95_abs_delta'])}  max={_fmt(st['max_abs_delta'])}  "
+            f"min={_fmt(st['min_abs_delta'])}  ({st['count']} cells)"
+        )
+        if "delta" in info:
+            for row in info["delta"]:
+                lines.append("  " + " ".join(f"{v:+.4g}" for v in row))
     return "\n".join(lines)
 
 
@@ -670,6 +847,24 @@ def format_point_diff_csv(result: dict) -> str:
 
 
 def format_area_diff_csv(result: dict) -> str:
+    if "x_coords" not in result:
+        keys = (
+            list(next(iter(result["layers"].values()))["stats"])
+            if result["layers"]
+            else []
+        )
+        return write_csv(
+            ["layer", "mean_a", "mean_b", *keys],
+            (
+                [
+                    layer,
+                    info["stats_a"]["mean"],
+                    info["stats_b"]["mean"],
+                    *(info["stats"][k] for k in keys),
+                ]
+                for layer, info in result["layers"].items()
+            ),
+        )
     layers = list(result["layers"])
     header = ["x", "y"]
     for layer in layers:
