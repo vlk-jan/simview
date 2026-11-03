@@ -65,6 +65,7 @@ nav:
   - Usage:
       - Quick Start & Installation: usage/getting-started.md
       - CLI Utilities: usage/cli.md
+      - Scripts & Coding Agents: usage/agents.md
       - Live Streaming: usage/live-streaming.md
       - Episodes: usage/episodes.md
       - Jupyter / Non-blocking Viewing: usage/jupyter.md

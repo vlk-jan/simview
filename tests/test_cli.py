@@ -322,7 +322,7 @@ def test_terrain_area_whole_extent_and_subbox(capsys, monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["simview", "terrain", str(sim_file), "--area", "--json"],
+        ["simview", "terrain", str(sim_file), "--area", "--json", "--full"],
     )
     cli.main()
     whole = json.loads(capsys.readouterr().out)
@@ -331,7 +331,18 @@ def test_terrain_area_whole_extent_and_subbox(capsys, monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["simview", "terrain", str(sim_file), "--area", "-5", "0", "-5", "0", "--json"],
+        [
+            "simview",
+            "terrain",
+            str(sim_file),
+            "--area",
+            "-5",
+            "0",
+            "-5",
+            "0",
+            "--json",
+            "--full",
+        ],
     )
     cli.main()
     sub = json.loads(capsys.readouterr().out)
@@ -658,7 +669,8 @@ def test_diff_per_axis_flag_adds_axis_fields_to_json(capsys, monkeypatch, tmp_pa
 
 
 def test_diff_requires_batches_flag(capsys, monkeypatch, tmp_path):
-    scene = build_scene(batch_size=2)
+    # Optional for exactly 2 batches (see test_agent_cli.py); required otherwise.
+    scene = build_scene(batch_size=3)
     sim_file = tmp_path / "sim.json"
     scene.save(sim_file)
 
@@ -666,7 +678,7 @@ def test_diff_requires_batches_flag(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "requires --batches" in capsys.readouterr().err
+    assert "--batches A B is required" in capsys.readouterr().err
 
 
 def test_diff_missing_file_errors(capsys, monkeypatch, tmp_path):
@@ -727,7 +739,7 @@ def test_diff_single_batch_scene_errors(capsys, monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         cli.main()
     assert exc_info.value.code == 1
-    assert "need at least 2" in capsys.readouterr().err
+    assert "out of range" in capsys.readouterr().err
 
 
 def test_diff_fail_on_exceed_exits_2_when_threshold_exceeded(
@@ -849,6 +861,7 @@ def test_terrain_batches_flag_switches_to_area_diff_mode(capsys, monkeypatch, tm
             "0",
             "1",
             "--json",
+            "--full",
         ],
     )
     cli.main()
@@ -921,7 +934,7 @@ def test_terrain_area_csv_flag_produces_parseable_csv(capsys, monkeypatch, tmp_p
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["simview", "terrain", str(sim_file), "--area", "--csv"],
+        ["simview", "terrain", str(sim_file), "--area", "--csv", "--full"],
     )
     cli.main()
 
@@ -1034,7 +1047,7 @@ def test_render_reports_missing_playwright_cleanly(capsys, monkeypatch, tmp_path
     def _raise_missing_playwright(*args, **kwargs):
         raise ImportError("'simview render' needs the 'playwright' package")
 
-    monkeypatch.setattr(render_mod, "render_screenshot", _raise_missing_playwright)
+    monkeypatch.setattr(render_mod, "render_screenshots", _raise_missing_playwright)
     monkeypatch.setattr(
         cli.sys,
         "argv",

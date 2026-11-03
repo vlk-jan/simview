@@ -12,6 +12,7 @@ which are stdlib-only on this read path.
 
 import gzip
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,7 @@ from simview.columnar import (
     is_blob,
     is_columnar,
 )
-from simview.utils import body_label, cap, human_bytes
+from simview.utils import body_label, cap, human_bytes, iter_names, value_stats
 
 _MAX_DETAIL_ITEMS = 20
 _LARGE_FILE_BYTES = 100_000_000
@@ -96,7 +97,7 @@ def _summarize_terrain(terrain: dict) -> dict:
     }
 
 
-def _summarize_model(model: dict, warnings: list[str]) -> dict:
+def _summarize_model(model: dict, warnings: list[str], limit: int) -> dict:
     terrain = model.get("terrain")
     if terrain is None:
         warnings.append("model has no terrain")
@@ -114,7 +115,7 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
         }
         for b in bodies
     ]
-    shown_bodies, bodies_truncated = cap(body_entries, _MAX_DETAIL_ITEMS)
+    shown_bodies, bodies_truncated = cap(body_entries, limit)
 
     static_objects = model.get("staticObjects") or []
     singleton_count = sum(1 for s in static_objects if s.get("isSingleton", True))
@@ -122,7 +123,7 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
         {"name": s.get("name"), "is_singleton": s.get("isSingleton", True)}
         for s in static_objects
     ]
-    shown_so, so_truncated = cap(so_entries, _MAX_DETAIL_ITEMS)
+    shown_so, so_truncated = cap(so_entries, limit)
 
     return {
         "batch_size": model.get("simBatches"),
@@ -131,6 +132,9 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
         "dt": model.get("dt"),
         "collapse": model.get("collapse"),
         "metadata": model.get("metadata"),
+        "episodes": model.get("episodes") or [],
+        "polyline_count": len(model.get("polylines") or []),
+        "viewer_defaults": model.get("viewerDefaults"),
         "terrain": _summarize_terrain(terrain) if terrain is not None else None,
         "bodies": {
             "count": len(bodies),
@@ -149,7 +153,9 @@ def _summarize_model(model: dict, warnings: list[str]) -> dict:
     }
 
 
-def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
+def _summarize_states(
+    states, model: dict | None, warnings: list[str], limit: int
+) -> dict:
     # A columnar file is expanded to the per-frame layout so every check below
     # describes the same thing for both layouts; `layout` records which one the
     # file actually uses, since that's the first thing you want to know about a
@@ -232,7 +238,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
                     f"scalar '{name}' in frame {i} has length {length}; "
                     f"expected {batch_size}"
                 )
-        shown_missing, missing_truncated = cap(missing, _MAX_DETAIL_ITEMS)
+        shown_missing, missing_truncated = cap(missing, limit)
         scalars_summary[name] = {
             "present_in_all_frames": not missing,
             "missing_in_frames": shown_missing,
@@ -344,7 +350,7 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
                 "exempt from columnar packing)"
             )
 
-        shown_missing, missing_truncated = cap(missing_frames, _MAX_DETAIL_ITEMS)
+        shown_missing, missing_truncated = cap(missing_frames, limit)
         bodies_summary[label] = {
             "first_frame": first_frame,
             "present_in_all_frames_after_first": not missing_frames,
@@ -355,8 +361,16 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
             "contacts_frame_count": len(contacts_frames),
         }
 
+    pose_names = {
+        body_label(body_name_value[key]): next(iter_names(body_name_value[key]))
+        for key in body_order
+    }
+    _add_value_stats(
+        states, model or {}, scalars_summary, bodies_summary, pose_names, warnings
+    )
+
     body_items = list(bodies_summary.items())
-    shown_body_items, bodies_truncated = cap(body_items, _MAX_DETAIL_ITEMS)
+    shown_body_items, bodies_truncated = cap(body_items, limit)
 
     if reasons and layout == "legacy":
         # Only worth warning about for a legacy file, where it means the viewer
@@ -386,15 +400,126 @@ def _summarize_states(states, model: dict | None, warnings: list[str]) -> dict:
     }
 
 
-def summarize_scene(path: str | Path) -> dict:
+def _add_value_stats(
+    states: list,
+    model: dict,
+    scalars_summary: dict,
+    bodies_summary: dict,
+    pose_names: dict,
+    warnings: list[str],
+) -> None:
+    """Attach per-batch value statistics in place: `stats` to each scalar,
+    and `position_bounds` (world space, parent chains resolved) and
+    `contacts` (frames with any contact, mean/max contact count) to each
+    body. `pose_names` maps each body label to the name its pose resolves
+    under (a grouped body's first member). Malformed values are skipped with
+    a warning, never raised: `info` is the tool for diagnosing such files."""
+    # Imported here: diff/sample import utils, which is all info needs at
+    # module scope.
+    from simview.diff import pose_resolver
+    from simview.sample import batch_labels
+
+    batch_size = int(model.get("simBatches") or 1)
+    labels = batch_labels(model)
+
+    for name, entry in scalars_summary.items():
+        per_batch: list[list] = [[] for _ in range(batch_size)]
+        for state in states:
+            value = state.get(name)
+            if value is None:
+                continue
+            row = value if isinstance(value, list) else [value]
+            for b in range(min(batch_size, len(row))):
+                per_batch[b].append(
+                    row[b] if isinstance(row[b], (int, float)) else None
+                )
+        entry["stats"] = {
+            labels[b]: value_stats(per_batch[b]) for b in range(batch_size)
+        }
+
+    try:
+        _, resolve = pose_resolver(model, states)
+    except ValueError as e:
+        warnings.append(f"cannot resolve body poses for position bounds: {e}")
+        return
+    lo: dict = {}
+    hi: dict = {}
+    contact_counts: dict = {}
+    skipped = 0
+    for state in states:
+        for b in range(batch_size):
+            try:
+                rows = resolve(state, b)
+            except (ValueError, TypeError):
+                skipped += 1
+                continue
+            for name, row in rows.items():
+                key = (name, b)
+                bounds_lo = lo.setdefault(key, [math.inf] * 3)
+                bounds_hi = hi.setdefault(key, [-math.inf] * 3)
+                for i in range(3):
+                    # NaN compares false, so a diverged pose never widens bounds.
+                    if row[i] < bounds_lo[i]:
+                        bounds_lo[i] = row[i]
+                    if row[i] > bounds_hi[i]:
+                        bounds_hi[i] = row[i]
+        for entry in state.get("bodies") or []:
+            if not isinstance(entry, dict) or entry.get("name") is None:
+                continue
+            contacts = entry.get("contacts")
+            if isinstance(contacts, list):
+                label = body_label(entry["name"])
+                for b in range(min(batch_size, len(contacts))):
+                    count = contacts[b]
+                    contact_counts.setdefault((label, b), []).append(
+                        len(count) if isinstance(count, list) else 0
+                    )
+    if skipped:
+        warnings.append(
+            f"{skipped} (frame, batch) pose(s) could not be decoded; position "
+            "bounds skip them"
+        )
+
+    def finite_or_none(v: list[float]) -> list:
+        return [x if math.isfinite(x) else None for x in v]
+
+    for label, entry in bodies_summary.items():
+        first = pose_names.get(label, label)
+        entry["position_bounds"] = {
+            labels[b]: {
+                "min": finite_or_none(lo[(first, b)]),
+                "max": finite_or_none(hi[(first, b)]),
+            }
+            for b in range(batch_size)
+            if (first, b) in lo
+        }
+        contacts_out = {}
+        for b in range(batch_size):
+            counts = contact_counts.get((label, b))
+            if counts:
+                contacts_out[labels[b]] = {
+                    "frames": len(counts),
+                    "frames_with_contact": sum(1 for c in counts if c),
+                    "mean_count": sum(counts) / len(counts),
+                    "max_count": max(counts),
+                }
+        if contacts_out:
+            entry["contacts"] = contacts_out
+
+
+def summarize_scene(path: str | Path, full: bool = False) -> dict:
     """Parse the scene JSON at `path` and return a fully structured summary
     dict. This dict IS the --json CLI output (via json.dumps); format_text()
     renders the same dict as pretty text, so the two output modes can never
     drift out of sync.
 
+    Lists (bodies, static objects, missing-frame indices) are capped at
+    `_MAX_DETAIL_ITEMS` entries unless `full` is set.
+
     Raises `json.JSONDecodeError` or `ValueError` on malformed input; callers
     decide how to report that (see `simview.__main__.run_info`).
     """
+    limit = None if full else _MAX_DETAIL_ITEMS
     path = Path(path)
     raw = path.read_bytes()
     gzipped = raw[:2] == b"\x1f\x8b"
@@ -430,16 +555,20 @@ def summarize_scene(path: str | Path) -> dict:
             "gzipped": gzipped,
             "top_level_keys": top_level_keys,
         },
-        "model": _summarize_model(model_data, warnings)
+        "model": _summarize_model(model_data, warnings, limit)
         if model_data is not None
         else None,
         "states": (
-            _summarize_states(states_data, model_data, warnings)
+            _summarize_states(states_data, model_data, warnings, limit)
             if states_data is not None
             else None
         ),
         "warnings": warnings,
     }
+
+
+def _g(v) -> str:
+    return "-" if v is None else f"{v:.4g}"
 
 
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
@@ -474,6 +603,17 @@ def format_text(summary: dict) -> str:
         lines.append(f"  Batches: {model['batch_size']} (names: {names_str})")
         lines.append(f"  Scalars: {', '.join(model['scalar_names']) or '(none)'}")
         lines.append(f"  dt: {model['dt']}   Collapse: {model['collapse']}")
+
+        episodes = model.get("episodes") or []
+        if episodes:
+            lines.append(
+                "  Episodes: "
+                + ", ".join(
+                    f"{e.get('label') or '?'}@{e.get('startIndex')}" for e in episodes
+                )
+            )
+        if model.get("polyline_count"):
+            lines.append(f"  Polylines: {model['polyline_count']}")
 
         metadata = model["metadata"]
         if metadata:
@@ -566,6 +706,17 @@ def format_text(summary: dict) -> str:
                 else (f"missing from {len(scalar['missing_in_frames'])}+ frame(s)")
             )
             lines.append(f"  Scalar '{name}': {status}")
+            for batch, st in (scalar.get("stats") or {}).items():
+                if st["count"]:
+                    lines.append(
+                        f"    {batch}: min={st['min']:.4g} mean={st['mean']:.4g} "
+                        f"max={st['max']:.4g}"
+                        + (
+                            f" (non-finite: {st['nan_count']})"
+                            if st["nan_count"]
+                            else ""
+                        )
+                    )
 
         bodies = states["bodies"]
         lines.append(f"  Bodies ({bodies['count']}):")
@@ -580,6 +731,19 @@ def format_text(summary: dict) -> str:
             lines.append(
                 f"    {label}: first frame {entry['first_frame']}, fields: {fields_str}"
             )
+            for batch, bounds in (entry.get("position_bounds") or {}).items():
+                contacts = (entry.get("contacts") or {}).get(batch)
+                contact_str = (
+                    f"  contact in {contacts['frames_with_contact']}/"
+                    f"{contacts['frames']} frames"
+                    if contacts
+                    else ""
+                )
+                lo_, hi_ = bounds["min"], bounds["max"]
+                axes = " ".join(
+                    f"{a}=[{_g(lo_[i])}, {_g(hi_[i])}]" for i, a in enumerate("xyz")
+                )
+                lines.append(f"      {batch}: {axes}{contact_str}")
         if bodies["truncated"]:
             lines.append(f"    ... (+{bodies['count'] - bodies['shown']} more)")
 
