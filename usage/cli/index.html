@@ -16,7 +16,7 @@
         <link rel="prev" href="../getting-started/">
       
       
-        <link rel="next" href="../live-streaming/">
+        <link rel="next" href="../agents/">
       
       
         
@@ -567,6 +567,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reading-state-values-simview-sample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading state values (simview sample)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#querying-terrain-data" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -681,6 +692,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scripts & Coding Agents
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1363,6 +1402,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reading-state-values-simview-sample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading state values (simview sample)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#querying-terrain-data" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1505,29 +1555,56 @@ host</a>) under <code>$XDG_CACHE_HOME/.simview_cache</code>
 breakdown, plus consistency warnings) without opening the viewer:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>simview<span class="w"> </span>info<span class="w"> </span>scene.json<span class="w">          </span><span class="c1"># human-readable text</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>simview<span class="w"> </span>info<span class="w"> </span>scene.json<span class="w"> </span>--json<span class="w">   </span><span class="c1"># machine-readable JSON (for scripts/agents)</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>simview<span class="w"> </span>info<span class="w"> </span>scene.json<span class="w"> </span>--full<span class="w">   </span><span class="c1"># don&#39;t cap lists (bodies, missing frames) at 20</span>
 </span></code></pre></div>
-<p>Works on gzip-compressed files automatically, and does not require the
-<code>authoring</code> extra.</p>
+<p>Besides structure, the summary carries value statistics per batch: each
+scalar's min/mean/max (and percentiles in <code>--json</code>), each body's world-space
+position bounds, and, for bodies with contacts, how many frames have a contact.
+It also lists episodes and the polyline count. Works on gzip-compressed files
+automatically, and does not require the <code>authoring</code> extra.</p>
+<h2 id="reading-state-values-simview-sample">Reading state values (<code>simview sample</code>)</h2>
+<p>To print the actual numbers at a few frames (world-space position and <code>wxyz</code>
+orientation of every body, any stored velocity/angular velocity/force/torque,
+the contact count, and every scalar) without opening the viewer:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>simview<span class="w"> </span>sample<span class="w"> </span>scene.json<span class="w">                         </span><span class="c1"># 11 evenly spaced frames, first and last included</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>simview<span class="w"> </span>sample<span class="w"> </span>scene.json<span class="w"> </span>--t<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>--t<span class="w"> </span><span class="m">1</span>.0<span class="w">         </span><span class="c1"># the frames nearest these times</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>simview<span class="w"> </span>sample<span class="w"> </span>scene.json<span class="w"> </span>--frames<span class="w"> </span><span class="m">0</span>:2000:200<span class="w">     </span><span class="c1"># a Python slice of frame indices (&#39;-1&#39; = last)</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>simview<span class="w"> </span>sample<span class="w"> </span>scene.json<span class="w"> </span>--body<span class="w"> </span>box<span class="w"> </span>--batch<span class="w"> </span>GT<span class="w">   </span><span class="c1"># one body, one batch (by name or index; --batch repeats)</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>simview<span class="w"> </span>sample<span class="w"> </span>scene.json<span class="w"> </span>--json<span class="w">                  </span><span class="c1"># single-line JSON; --csv: one row per (frame, body, batch)</span>
+</span></code></pre></div>
+<p>Poses go through the same parent-chain resolution as <code>simview diff</code>, so a
+wheel reports where it is in the world, not its offset from the chassis.</p>
 <h2 id="querying-terrain-data">Querying terrain data</h2>
 <p>To read raw numeric terrain values (height, plus any named property the terrain
 was authored with) at a single point or over an area, without opening the viewer:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--point<span class="w"> </span><span class="m">1</span>.5<span class="w"> </span>-2.0<span class="w">        </span><span class="c1"># bilinear-interpolated value(s) at (x, y)</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w">                  </span><span class="c1"># whole terrain extent</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>-5<span class="w"> </span><span class="m">5</span><span class="w"> </span>-5<span class="w"> </span><span class="m">0</span><span class="w">        </span><span class="c1"># xmin xmax ymin ymax sub-box</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--json<span class="w">           </span><span class="c1"># machine-readable JSON (for scripts/agents)</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--csv<span class="w">            </span><span class="c1"># CSV (for pandas/spreadsheets)</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--point<span class="w"> </span><span class="m">1</span>.5<span class="w"> </span>-2.0<span class="w">        </span><span class="c1"># bilinear-interpolated value(s) at (x, y)</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w">                  </span><span class="c1"># whole terrain extent</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>-5<span class="w"> </span><span class="m">5</span><span class="w"> </span>-5<span class="w"> </span><span class="m">0</span><span class="w">        </span><span class="c1"># xmin xmax ymin ymax sub-box</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--json<span class="w">           </span><span class="c1"># machine-readable JSON (for scripts/agents)</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--csv<span class="w">            </span><span class="c1"># CSV, one row per layer</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--mask<span class="w"> </span><span class="s2">&quot;known&gt;0.5&quot;</span><span class="w">  </span><span class="c1"># statistics over cells passing a test only</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--full<span class="w"> </span>--csv<span class="w">     </span><span class="c1"># every grid cell (x, y, layers...)</span>
 </span></code></pre></div>
+<p>An <code>--area</code> query prints the sampled extent and per-layer statistics (count,
+non-finite count, min, 5th/50th/95th percentile, mean, max, std). Add <code>--full</code>
+for the grid itself — the whole grid of a large terrain is megabytes of
+numbers. <code>--mask 'LAYER OP VALUE'</code> (<code>OP</code> one of <code>&gt; &gt;= &lt; &lt;= == !=</code>) restricts
+the statistics, not the grid, to the cells where that layer passes, e.g. only
+the cells a mapping run actually observed.</p>
 <p>Add <code>--layer NAME</code> to restrict to one layer: <code>height</code>, <code>all</code> (the default —
 every layer present), or any property the terrain was authored with (e.g.
 <code>friction</code>, <code>stiffness</code>, or a custom name). Add <code>--batch N</code> to pick a batch
 (only matters when the terrain isn't a singleton), and <code>--stride N</code> to
-subsample an <code>--area</code> query. Like <code>simview info</code>, this works
+subsample an <code>--area</code> query. <code>--batch</code> (and <code>--batches</code> below) takes a batch
+name too (<code>--batch post-adaptation</code>). Like <code>simview info</code>, this works
 on gzip-compressed files and doesn't require the <code>authoring</code> extra.</p>
 <p>Pass <code>--batches A B</code> instead of <code>--batch N</code> to compare two batches directly
 (e.g. a ground-truth terrain vs. a recovered friction/stiffness estimate)
-instead of querying a single one — each layer then reports <code>value_a</code>,
-<code>value_b</code>, and their <code>delta</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--json<span class="w">   </span><span class="c1"># ground truth vs. estimate, whole extent</span>
+instead of querying a single one — each layer then reports both batches'
+statistics and statistics of their delta (<code>b - a</code>: mean, RMSE, mean/p95/max
+of the absolute delta). A <code>--mask</code> is evaluated on batch A. With <code>--full</code>,
+each layer also carries the <code>value_a</code>, <code>value_b</code> and <code>delta</code> grids:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--area<span class="w"> </span>--batches<span class="w"> </span>GT<span class="w"> </span>pred<span class="w"> </span>--json<span class="w">   </span><span class="c1"># ground truth vs. estimate, whole extent</span>
 </span></code></pre></div>
 <h3 id="sampling-terrain-along-a-bodys-trajectory">Sampling terrain along a body's trajectory</h3>
 <p>Pass <code>--along-body BODY</code> instead of <code>--point</code>/<code>--area</code> to sample terrain
@@ -1536,34 +1613,45 @@ fixed point or area — useful for checking what terrain properties a robot
 actually drove over. For example, a DRIFT-style scene with batches
 <code>[GT, baseline, pre-adaptation, post-adaptation]</code>, each batch with its own
 terrain and its own recorded trajectory of a body named <code>box</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--along-body<span class="w"> </span>box<span class="w"> </span>--batch<span class="w"> </span><span class="m">3</span><span class="w"> </span>--json<span class="w">   </span><span class="c1"># friction/stiffness under box&#39;s path, post-adaptation batch</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--along-body<span class="w"> </span>box<span class="w"> </span>--batch<span class="w"> </span><span class="m">3</span><span class="w"> </span>--json<span class="w">   </span><span class="c1"># friction/stiffness under box&#39;s path, post-adaptation batch</span>
 </span></code></pre></div>
 <p>Add <code>--batches A B</code> to compare two batches instead: both batches' terrains
 are sampled <strong>along batch A's trajectory</strong> (batch A is the reference path,
 typically ground truth), so the reported delta reflects a difference in
 terrain properties under the path, not the two batches' trajectories
 diverging from each other — use <code>simview diff</code> to measure that separately.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--along-body<span class="w"> </span>box<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--json<span class="w">   </span><span class="c1"># GT terrain vs. post-adaptation terrain, sampled along GT&#39;s path</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>simview<span class="w"> </span>terrain<span class="w"> </span>scene.json<span class="w"> </span>--along-body<span class="w"> </span>box<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">3</span><span class="w"> </span>--json<span class="w">   </span><span class="c1"># GT terrain vs. post-adaptation terrain, sampled along GT&#39;s path</span>
 </span></code></pre></div>
 <p><code>BODY</code> is matched the same way as <code>simview diff</code>'s <code>--body</code> (full label, or
 any single name inside a rigidly-grouped body). Add <code>--every N</code> to
-subsample frames.</p>
+subsample frames, and <code>--t0</code>/<code>--t1 SECONDS</code> to keep only part of the run.</p>
 <h2 id="comparing-two-batches-trajectories">Comparing two batches' trajectories</h2>
 <p>To check how far apart two batches' trajectories are — e.g. ground truth vs.
 a model's prediction, or baseline vs. post-adaptation — without opening the
 viewer:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w">                 </span><span class="c1"># every body, human-readable text</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--json<span class="w">           </span><span class="c1"># machine-readable JSON (for scripts/agents)</span>
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--csv<span class="w">            </span><span class="c1"># CSV, one row per (body, frame)</span>
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--body<span class="w"> </span>Box<span class="w">       </span><span class="c1"># restrict to one body</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w">                 </span><span class="c1"># every body, human-readable text</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--json<span class="w">           </span><span class="c1"># machine-readable JSON (for scripts/agents)</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--csv<span class="w">            </span><span class="c1"># CSV, one row per (body, frame)</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--body<span class="w"> </span>Box<span class="w">       </span><span class="c1"># restrict to one body</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w">                                </span><span class="c1"># a 2-batch scene needs no --batches</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span>GT<span class="w"> </span>post-adaptation<span class="w">   </span><span class="c1"># batches by name</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>simview<span class="w"> </span>diff<span class="w"> </span>gt.json<span class="w"> </span>pred.json<span class="w">                         </span><span class="c1"># two single-batch files</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>simview<span class="w"> </span>diff<span class="w"> </span>run_a.json#GT<span class="w"> </span>run_b.json#1<span class="w">                </span><span class="c1"># picked batches of two files</span>
 </span></code></pre></div>
+<p>Several inputs (or one with a <code>#&lt;batches&gt;</code> selection) are merged first exactly
+as <code>simview view</code> merges them: later files are matched to the first file's
+timeline by nearest time.</p>
 <p>For each body, this reports per-frame position error (meters) and
 orientation error (degrees, quaternion angular distance) between the two
 batches, plus mean/max/final summaries. Add <code>--per-axis</code> to also report the
 signed per-axis components (<code>err_x</code>/<code>err_y</code>/<code>err_z</code> = batch A minus batch B),
 matching the viewer's Error Metrics "Per-axis" toggle. Add <code>--every N</code> to
-subsample frames, and <code>--pos-threshold METERS</code>/<code>--rot-threshold-deg DEGREES</code> to report the
-first frame where a batch's trajectory diverges past a given tolerance. Like
+subsample frames, <code>--t0</code>/<code>--t1 SECONDS</code> to compare only a time window, and
+<code>--pos-threshold METERS</code>/<code>--rot-threshold-deg DEGREES</code> to report the
+first frame where a batch's trajectory diverges past a given tolerance.
+<code>--align-first-frame</code> expresses each batch's trajectory relative to its own
+pose at the first compared frame (<code>R0⁻¹(p − p0)</code>, <code>R0⁻¹R</code>), so two rollouts
+that start from differently placed poses are compared by their motion only. Like
 <code>simview info</code>/<code>simview terrain</code>, this works on gzip-compressed files and
 doesn't require the <code>authoring</code> extra.</p>
 <p>Poses are compared in <strong>world space</strong>. A parented body's stored transform is
@@ -1579,8 +1667,8 @@ printing the normal output, so you still get the report either way). A frame
 whose pose is NaN in either batch (e.g. a body never initialised there) has a
 NaN error: the summary's mean/min/max skip such frames (<code>nan_count</code> says how
 many) and the frame counts as exceeding any threshold:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--pos-threshold<span class="w"> </span><span class="m">0</span>.1<span class="w"> </span>--fail-on-exceed
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">echo</span><span class="w"> </span><span class="nv">$?</span><span class="w">   </span><span class="c1"># 0 = within threshold, 1 = usage/parse error, 2 = threshold exceeded</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>simview<span class="w"> </span>diff<span class="w"> </span>scene.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span><span class="w"> </span>--pos-threshold<span class="w"> </span><span class="m">0</span>.1<span class="w"> </span>--fail-on-exceed
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">echo</span><span class="w"> </span><span class="nv">$?</span><span class="w">   </span><span class="c1"># 0 = within threshold, 1 = usage/parse error, 2 = threshold exceeded</span>
 </span></code></pre></div>
 <table>
 <thead>
@@ -1606,15 +1694,15 @@ many) and the frame counts as exceeding any threshold:</p>
 </table>
 <h2 id="visualization-of-exported-simulations">Visualization of exported simulations</h2>
 <p>To visualize a simulation defined in a JSON file, run the following command, replacing <code>[path_to_json_file]</code> with the actual path to your JSON data:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>simview<span class="w"> </span><span class="o">[</span>path_to_json_file<span class="o">]</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>simview<span class="w"> </span><span class="o">[</span>path_to_json_file<span class="o">]</span>
 </span></code></pre></div>
 <p>This is the <code>simview view</code> subcommand, which is the default when the first argument
 isn't another subcommand. Gzip-compressed files (e.g. <code>scene.json.gz</code>) are detected automatically and decompressed
 transparently — no separate flag needed.</p>
 <p>Useful flags:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">  </span><span class="c1"># bind to a specific host/port</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--no-browser<span class="w">                </span><span class="c1"># don&#39;t auto-open a browser tab</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>simview<span class="w"> </span>--version<span class="w">                               </span><span class="c1"># print the installed version</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">  </span><span class="c1"># bind to a specific host/port</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>simview<span class="w"> </span>scene.json<span class="w"> </span>--no-browser<span class="w">                </span><span class="c1"># don&#39;t auto-open a browser tab</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>simview<span class="w"> </span>--version<span class="w">                               </span><span class="c1"># print the installed version</span>
 </span></code></pre></div>
 <p>Note that the server has no authentication: binding to a non-loopback host (as
 above) exposes the scene data to everyone who can reach that address, which the
@@ -1625,7 +1713,7 @@ are refused, which blocks DNS-rebinding attacks from web pages.</p>
 <h2 id="opening-a-file-on-a-remote-host">Opening a file on a remote host</h2>
 <p>Anywhere the CLI takes an input file, you can give an scp-style <code>host:path</code> spec instead
 of a local path, and SimView will fetch it over SSH for you:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>simview<span class="w"> </span>rci:~/projects/DRIFT/results/comparison.json
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>simview<span class="w"> </span>rci:~/projects/DRIFT/results/comparison.json
 </span></code></pre></div>
 <p><code>host</code> is passed straight to <code>ssh</code>, so <code>~/.ssh/config</code> aliases, <code>ProxyJump</code>, agent keys
 and password prompts all work exactly as they do for <code>ssh</code> and <code>scp</code>. Nothing needs to
@@ -1633,26 +1721,26 @@ be installed on the remote — just a shell, and <code>gzip</code> if you want t
 compressed. <code>user@host:path</code>, <code>[::1]:path</code> and <code>ssh://host/path</code> are accepted too.</p>
 <p>This works for every input, not just the viewer, including mixing local and remote files
 in one merged scene:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>simview<span class="w"> </span>info<span class="w"> </span>rci:~/results/comparison.json
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>simview<span class="w"> </span>diff<span class="w"> </span>rci:~/results/comparison.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>simview<span class="w"> </span>local_rerun.json<span class="w"> </span>rci:~/results/real_world.json<span class="w">   </span><span class="c1"># merged into one scene</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>simview<span class="w"> </span>info<span class="w"> </span>rci:~/results/comparison.json
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>simview<span class="w"> </span>diff<span class="w"> </span>rci:~/results/comparison.json<span class="w"> </span>--batches<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">1</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>simview<span class="w"> </span>local_rerun.json<span class="w"> </span>rci:~/results/real_world.json<span class="w">   </span><span class="c1"># merged into one scene</span>
 </span></code></pre></div>
 <p><strong>Transfers are compressed.</strong> A plain-JSON scene is gzipped on the remote before it goes
 over the wire and unpacked on arrival, which typically cuts the transfer by 5-10x on
 scene data this redundant; a file that's already <code>*.gz</code> is streamed as-is. The saving is
 reported when the fetch finishes:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Fetching rci:~/results/comparison.json (312.4MB)...
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Fetched 41.2MB over the wire (312.4MB on disk, 7.6x smaller). Cached at ...
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Fetching rci:~/results/comparison.json (312.4MB)...
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Fetched 41.2MB over the wire (312.4MB on disk, 7.6x smaller). Cached at ...
 </span></code></pre></div>
 <p><strong>Files are cached and only re-fetched when they change.</strong> The cached copy is
 byte-identical to the remote file and carries its modification time, so each run costs
 one cheap <code>ssh</code> stat call to check:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Using cached copy of rci:~/results/comparison.json (remote unchanged).
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Using cached copy of rci:~/results/comparison.json (remote unchanged).
 </span></code></pre></div>
 <p>Useful flags:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>simview<span class="w"> </span>rci:~/results/scene.json<span class="w"> </span>--refresh<span class="w">   </span><span class="c1"># re-fetch even if the cache is current</span>
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>simview<span class="w"> </span>rci:~/results/scene.json<span class="w"> </span>--offline<span class="w">   </span><span class="c1"># use the cache, don&#39;t contact the host</span>
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>simview<span class="w"> </span>clear<span class="w">                                </span><span class="c1"># drop the cache entirely</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>simview<span class="w"> </span>rci:~/results/scene.json<span class="w"> </span>--refresh<span class="w">   </span><span class="c1"># re-fetch even if the cache is current</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>simview<span class="w"> </span>rci:~/results/scene.json<span class="w"> </span>--offline<span class="w">   </span><span class="c1"># use the cache, don&#39;t contact the host</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>simview<span class="w"> </span>clear<span class="w">                                </span><span class="c1"># drop the cache entirely</span>
 </span></code></pre></div>
 <p>Remote specs are for <em>inputs</em> only — <code>--output</code> and <code>--save-merged</code> must be local paths.
 A local file whose name happens to contain a colon always wins over the remote reading,
@@ -1660,7 +1748,7 @@ so <code>simview weird:name.json</code> still opens the file sitting next to you
 <h2 id="vendoring-the-viewer-for-a-static-site-simview-static-viewer">Vendoring the viewer for a static site (<code>simview static-viewer</code>)</h2>
 <p>To host the viewer as plain files (GitHub Pages, any static file server) next to
 scenes written with <code>scene.save_static()</code>, copy the page and its assets once:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>simview<span class="w"> </span>static-viewer<span class="w"> </span>site/simview<span class="w">      </span><span class="c1"># writes site/simview/index.html + static/</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>simview<span class="w"> </span>static-viewer<span class="w"> </span>site/simview<span class="w">      </span><span class="c1"># writes site/simview/index.html + static/</span>
 </span></code></pre></div>
 <p>Then open <code>site/simview/index.html#data=../scenes/run42</code> — <code>data=</code> is resolved
 relative to the page, so bundles can live anywhere on the site. See
@@ -1669,28 +1757,38 @@ relative to the page, so bundles can live anywhere on the site. See
 <h2 id="headless-rendering-simview-render">Headless rendering (<code>simview render</code>)</h2>
 <p>To save a single PNG screenshot of a scene without opening a browser — e.g.
 from a SLURM job or CI runner with no display — use <code>simview render</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png
 </span></code></pre></div>
 <p>This starts the server in the background, drives a headless Chromium browser
 via <a href="https://playwright.dev/">Playwright</a>, waits for the scene to load, and
 saves one screenshot. It requires the optional <code>render</code> extra plus a
 one-time browser download:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;simview[render]&quot;</span><span class="w">   </span><span class="c1"># or: uv sync --extra render</span>
-</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>playwright<span class="w"> </span>install<span class="w"> </span>chromium
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;simview[render]&quot;</span><span class="w">   </span><span class="c1"># or: uv sync --extra render</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>playwright<span class="w"> </span>install<span class="w"> </span>chromium
 </span></code></pre></div>
 <p>Useful flags:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--width<span class="w"> </span><span class="m">1920</span><span class="w"> </span>--height<span class="w"> </span><span class="m">1080</span><span class="w">  </span><span class="c1"># custom resolution (default 1280x720)</span>
-</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--view<span class="w"> </span>&lt;hash&gt;<span class="w">                </span><span class="c1"># restore a &quot;Copy view link&quot; hash first</span>
-</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">   </span><span class="c1"># bind the background server explicitly</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--width<span class="w"> </span><span class="m">1920</span><span class="w"> </span>--height<span class="w"> </span><span class="m">1080</span><span class="w">  </span><span class="c1"># custom resolution (default 1280x720)</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--view<span class="w"> </span>&lt;hash&gt;<span class="w">                </span><span class="c1"># restore a &quot;Copy view link&quot; hash first</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>frame.png<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span><span class="w">   </span><span class="c1"># bind the background server explicitly</span>
 </span></code></pre></div>
 <p><code>--view</code> accepts the hash produced by the viewer's "Copy view link" button
 (with or without the leading <code>#</code>), so a screenshot can reproduce a specific
 camera angle, playback time, focused batch, and visualization toggles instead
 of the viewer's default startup state.</p>
+<p>Without a hash, these shortcut flags build one (they can't be combined with
+<code>--view</code>):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>top.png<span class="w"> </span>--camera<span class="w"> </span>top<span class="w"> </span>--terrain-color<span class="w"> </span>friction<span class="w">  </span><span class="c1"># straight down on the whole terrain</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>f.png<span class="w"> </span>--t<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>--t<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span>--t<span class="w"> </span><span class="m">1</span>.5<span class="w"> </span>--track<span class="w"> </span>box<span class="w">     </span><span class="c1"># f_t0.5.png, f_t1.png, f_t1.5.png</span>
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>simview<span class="w"> </span>render<span class="w"> </span>scene.json<span class="w"> </span>--output<span class="w"> </span>f.png<span class="w"> </span>--batch<span class="w"> </span>post-adaptation<span class="w">                 </span><span class="c1"># focus one batch</span>
+</span></code></pre></div>
+<p>Several <code>--t</code> values are captured in one browser session, so each extra frame
+costs about half a second instead of a full page load.</p>
+<p>All commands exit quietly when their output is cut short by a pipe (e.g.
+<code>simview terrain ... | head</code>).</p>
 <h2 id="comparing-multiple-runs-eg-real-world-vs-simulated">Comparing multiple runs (e.g. real-world vs. simulated)</h2>
 <p>Pass multiple JSON files to merge them into a single scene, each file's batches appended
 as extra batches in the viewer:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json
 </span></code></pre></div>
 <p>The files must describe the same physical setup (identical bodies and terrain grid) —
 that's what makes the batches comparable. They don't need to share a timeline: the
@@ -1709,7 +1807,7 @@ precedence over this once saved.</p>
 <p>If several files each carry their own copy of the same ground-truth batch, merging
 them whole duplicates that ground truth once per file. Append <code>#&lt;batches&gt;</code> to a file
 to contribute only some of its batches:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>simview<span class="w"> </span>gt.json<span class="w"> </span>method_a.json#1<span class="w"> </span>method_b.json#1
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>simview<span class="w"> </span>gt.json<span class="w"> </span>method_a.json#1<span class="w"> </span>method_b.json#1
 </span></code></pre></div>
 <p>That merges every batch of <code>gt.json</code> plus batch 1 of each method file — three batches,
 one ground truth. The selector accepts, comma-separated:</p>
@@ -1751,12 +1849,12 @@ existing local file always wins over the selector reading, exactly as it does fo
 remote <code>host:path</code> specs.</p>
 <p>A selection also works with a single file, when you want to view just some of its
 batches:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>simview<span class="w"> </span>run.json#0,2
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>simview<span class="w"> </span>run.json#0,2
 </span></code></pre></div>
 <p>To merge files without launching the viewer, e.g. to inspect or re-share the merged
 scene, pass <code>--save-merged</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz
-</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>simview<span class="w"> </span>gt.json<span class="w"> </span>method_a.json#1<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz<span class="w">   </span><span class="c1"># with a batch selection</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>simview<span class="w"> </span>real_world.json<span class="w"> </span>simulated.json<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>simview<span class="w"> </span>gt.json<span class="w"> </span>method_a.json#1<span class="w"> </span>--save-merged<span class="w"> </span>combined.json.gz<span class="w">   </span><span class="c1"># with a batch selection</span>
 </span></code></pre></div>
 <p>The output is gzipped if the path ends in <code>.gz</code>.</p>
 
