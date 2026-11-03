@@ -1331,7 +1331,7 @@ wheels = [
 
 [[package]]
 name = "simview"
-version = "6.4.1"
+version = "7.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
