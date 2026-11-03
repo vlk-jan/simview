@@ -18,10 +18,31 @@ breakdown, plus consistency warnings) without opening the viewer:
 ```bash
 simview info scene.json          # human-readable text
 simview info scene.json --json   # machine-readable JSON (for scripts/agents)
+simview info scene.json --full   # don't cap lists (bodies, missing frames) at 20
 ```
 
-Works on gzip-compressed files automatically, and does not require the
-`authoring` extra.
+Besides structure, the summary carries value statistics per batch: each
+scalar's min/mean/max (and percentiles in `--json`), each body's world-space
+position bounds, and, for bodies with contacts, how many frames have a contact.
+It also lists episodes and the polyline count. Works on gzip-compressed files
+automatically, and does not require the `authoring` extra.
+
+## Reading state values (`simview sample`)
+
+To print the actual numbers at a few frames (world-space position and `wxyz`
+orientation of every body, any stored velocity/angular velocity/force/torque,
+the contact count, and every scalar) without opening the viewer:
+
+```bash
+simview sample scene.json                         # 11 evenly spaced frames, first and last included
+simview sample scene.json --t 0.5 --t 1.0         # the frames nearest these times
+simview sample scene.json --frames 0:2000:200     # a Python slice of frame indices ('-1' = last)
+simview sample scene.json --body box --batch GT   # one body, one batch (by name or index; --batch repeats)
+simview sample scene.json --json                  # single-line JSON; --csv: one row per (frame, body, batch)
+```
+
+Poses go through the same parent-chain resolution as `simview diff`, so a
+wheel reports where it is in the world, not its offset from the chassis.
 
 ## Querying terrain data
 
@@ -33,23 +54,35 @@ simview terrain scene.json --point 1.5 -2.0        # bilinear-interpolated value
 simview terrain scene.json --area                  # whole terrain extent
 simview terrain scene.json --area -5 5 -5 0        # xmin xmax ymin ymax sub-box
 simview terrain scene.json --area --json           # machine-readable JSON (for scripts/agents)
-simview terrain scene.json --area --csv            # CSV (for pandas/spreadsheets)
+simview terrain scene.json --area --csv            # CSV, one row per layer
+simview terrain scene.json --area --mask "known>0.5"  # statistics over cells passing a test only
+simview terrain scene.json --area --full --csv     # every grid cell (x, y, layers...)
 ```
+
+An `--area` query prints the sampled extent and per-layer statistics (count,
+non-finite count, min, 5th/50th/95th percentile, mean, max, std). Add `--full`
+for the grid itself — the whole grid of a large terrain is megabytes of
+numbers. `--mask 'LAYER OP VALUE'` (`OP` one of `> >= < <= == !=`) restricts
+the statistics, not the grid, to the cells where that layer passes, e.g. only
+the cells a mapping run actually observed.
 
 Add `--layer NAME` to restrict to one layer: `height`, `all` (the default —
 every layer present), or any property the terrain was authored with (e.g.
 `friction`, `stiffness`, or a custom name). Add `--batch N` to pick a batch
 (only matters when the terrain isn't a singleton), and `--stride N` to
-subsample an `--area` query. Like `simview info`, this works
+subsample an `--area` query. `--batch` (and `--batches` below) takes a batch
+name too (`--batch post-adaptation`). Like `simview info`, this works
 on gzip-compressed files and doesn't require the `authoring` extra.
 
 Pass `--batches A B` instead of `--batch N` to compare two batches directly
 (e.g. a ground-truth terrain vs. a recovered friction/stiffness estimate)
-instead of querying a single one — each layer then reports `value_a`,
-`value_b`, and their `delta`:
+instead of querying a single one — each layer then reports both batches'
+statistics and statistics of their delta (`b - a`: mean, RMSE, mean/p95/max
+of the absolute delta). A `--mask` is evaluated on batch A. With `--full`,
+each layer also carries the `value_a`, `value_b` and `delta` grids:
 
 ```bash
-simview terrain scene.json --area --batches 0 1 --json   # ground truth vs. estimate, whole extent
+simview terrain scene.json --area --batches GT pred --json   # ground truth vs. estimate, whole extent
 ```
 
 ### Sampling terrain along a body's trajectory
@@ -77,7 +110,7 @@ simview terrain scene.json --along-body box --batches 0 3 --json   # GT terrain 
 
 `BODY` is matched the same way as `simview diff`'s `--body` (full label, or
 any single name inside a rigidly-grouped body). Add `--every N` to
-subsample frames.
+subsample frames, and `--t0`/`--t1 SECONDS` to keep only part of the run.
 
 ## Comparing two batches' trajectories
 
@@ -90,15 +123,27 @@ simview diff scene.json --batches 0 1                 # every body, human-readab
 simview diff scene.json --batches 0 1 --json           # machine-readable JSON (for scripts/agents)
 simview diff scene.json --batches 0 1 --csv            # CSV, one row per (body, frame)
 simview diff scene.json --batches 0 1 --body Box       # restrict to one body
+simview diff scene.json                                # a 2-batch scene needs no --batches
+simview diff scene.json --batches GT post-adaptation   # batches by name
+simview diff gt.json pred.json                         # two single-batch files
+simview diff run_a.json#GT run_b.json#1                # picked batches of two files
 ```
+
+Several inputs (or one with a `#<batches>` selection) are merged first exactly
+as `simview view` merges them: later files are matched to the first file's
+timeline by nearest time.
 
 For each body, this reports per-frame position error (meters) and
 orientation error (degrees, quaternion angular distance) between the two
 batches, plus mean/max/final summaries. Add `--per-axis` to also report the
 signed per-axis components (`err_x`/`err_y`/`err_z` = batch A minus batch B),
 matching the viewer's Error Metrics "Per-axis" toggle. Add `--every N` to
-subsample frames, and `--pos-threshold METERS`/`--rot-threshold-deg DEGREES` to report the
-first frame where a batch's trajectory diverges past a given tolerance. Like
+subsample frames, `--t0`/`--t1 SECONDS` to compare only a time window, and
+`--pos-threshold METERS`/`--rot-threshold-deg DEGREES` to report the
+first frame where a batch's trajectory diverges past a given tolerance.
+`--align-first-frame` expresses each batch's trajectory relative to its own
+pose at the first compared frame (`R0⁻¹(p − p0)`, `R0⁻¹R`), so two rollouts
+that start from differently placed poses are compared by their motion only. Like
 `simview info`/`simview terrain`, this works on gzip-compressed files and
 doesn't require the `authoring` extra.
 
@@ -253,6 +298,21 @@ simview render scene.json --output frame.png --host 0.0.0.0 --port 8080   # bind
 (with or without the leading `#`), so a screenshot can reproduce a specific
 camera angle, playback time, focused batch, and visualization toggles instead
 of the viewer's default startup state.
+
+Without a hash, these shortcut flags build one (they can't be combined with
+`--view`):
+
+```bash
+simview render scene.json --output top.png --camera top --terrain-color friction  # straight down on the whole terrain
+simview render scene.json --output f.png --t 0.5 --t 1.0 --t 1.5 --track box     # f_t0.5.png, f_t1.png, f_t1.5.png
+simview render scene.json --output f.png --batch post-adaptation                 # focus one batch
+```
+
+Several `--t` values are captured in one browser session, so each extra frame
+costs about half a second instead of a full page load.
+
+All commands exit quietly when their output is cut short by a pipe (e.g.
+`simview terrain ... | head`).
 
 ## Comparing multiple runs (e.g. real-world vs. simulated)
 

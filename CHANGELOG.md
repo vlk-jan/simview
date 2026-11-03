@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `simview sample`: world-space body poses, stored velocities/forces/torques,
+  contact counts and scalars at chosen frames (`--frames 0:2000:100`, `--t`,
+  or 11 evenly spaced by default), as text, single-line JSON or CSV.
+- `simview info` reports value statistics per batch: scalar
+  min/mean/max/percentiles, body world-space position bounds, and contact
+  frame counts. It also lists episodes and the polyline count; `--full` lifts
+  the 20-entry list cap.
+- `simview terrain --area` reports per-layer statistics (count, NaN count,
+  min, p05/p50/p95, mean, max, std); with `--batches A B` it adds both
+  batches' statistics plus delta mean/RMSE/p95. `--mask "known>0.5"`
+  restricts the statistics to cells passing a test.
+- Batches can be given by name wherever an index is taken (`terrain --batch`,
+  `--batches`, `diff --batches`, `sample --batch`, `render --batch`).
+- `simview diff` accepts several files, or `file#batches` selections, and
+  merges them first (`simview diff gt.json pred.json`). `--batches` is
+  optional for a 2-batch scene. New `--t0`/`--t1` time window and
+  `--align-first-frame`. `terrain --along-body` also takes `--t0`/`--t1`.
+- `simview render`: `--t` (repeatable; all shots in one browser session),
+  `--camera top`, `--track BODY`, `--batch`, `--terrain-color`, `--hide-ui`.
+- Docs: "Scripts & Coding Agents" page with output shapes and a DRIFT recipe.
+
+### Changed
+
+- `simview terrain --area` prints only the sampled extent and statistics by
+  default; the per-cell grids (and `x_coords`/`y_coords`) need `--full`, whose
+  `--json` is single-line. `--area --csv` without `--full` is one row per
+  layer. Scripts reading the grids must add `--full`.
+
+### Fixed
+
+- Every command exits quietly when its output pipe closes early (e.g.
+  `| head`) instead of printing a `BrokenPipeError` traceback.
+
 ## [6.4.1] - 2026-11-02
 
 ### Changed
