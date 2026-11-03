@@ -46,10 +46,22 @@ def render_screenshot(
     width: int = 1280,
     height: int = 720,
 ) -> None:
-    """Load `sim_path` in a headless browser and save a PNG screenshot to
-    `output_path`.
+    """Single-shot `render_screenshots`; see there."""
+    render_screenshots(sim_path, [(view, output_path)], host, port, width, height)
 
-    `view` is a shareable view-link hash (with or without a leading '#' --
+
+def render_screenshots(
+    sim_path: str | Path,
+    shots: list[tuple[str | None, str | Path]],
+    host: str = "127.0.0.1",
+    port: int = 5420,
+    width: int = 1280,
+    height: int = 720,
+) -> None:
+    """Load `sim_path` in a headless browser once and save one PNG per
+    `(view, output_path)` in `shots`, in order.
+
+    Each `view` is a shareable view-link hash (with or without a leading '#' --
     see `static/js/utils/viewState.js` and the UI's "Copy view link" button),
     used to set the camera/playback/terrain-mode state before capturing.
     Without it, the screenshot is taken at the viewer's default startup
@@ -70,7 +82,8 @@ def render_screenshot(
             "browser binary."
         ) from e
 
-    output_path = Path(output_path)
+    if not shots:
+        return
     server = SimViewServer(sim_path=Path(sim_path))
     background = ViewerHandle(
         server.app,
@@ -79,30 +92,36 @@ def render_screenshot(
         thread_name="simview-render",
         log_level="warning",
     )
-    try:
-        fragment = f"#{view.lstrip('#')}" if view else ""
-        url = f"{background.url}/{fragment}"
 
+    def fragment(view: str | None) -> str:
+        return f"#{view.lstrip('#')}" if view else ""
+
+    try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch()
             try:
                 page = browser.new_page(viewport={"width": width, "height": height})
-                page.goto(url)
+                page.goto(f"{background.url}/{fragment(shots[0][0])}")
                 page.wait_for_selector(
                     "#loading-splash", state="detached", timeout=_LOAD_TIMEOUT_MS
                 )
-                page.wait_for_timeout(_SETTLE_DELAY_MS)
-                # A view in a terrain property color mode fetches that layer on
-                # demand (Terrain.loadProperty); let it land and repaint.
-                if page.evaluate(
-                    "async () => (await window.__debugSimView?.terrain?.propertyLoadsSettled())?.length"
-                ):
+                for i, (view, output_path) in enumerate(shots):
+                    if i:
+                        # Later shots reuse the loaded page: the viewer applies
+                        # a new hash on `hashchange` (SimView._onHashChange).
+                        page.evaluate("h => { location.hash = h; }", fragment(view))
                     page.wait_for_timeout(_SETTLE_DELAY_MS)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(output_path))
+                    # A view in a terrain property color mode fetches that layer
+                    # on demand (Terrain.loadProperty); let it land and repaint.
+                    if page.evaluate(
+                        "async () => (await window.__debugSimView?.terrain?.propertyLoadsSettled())?.length"
+                    ):
+                        page.wait_for_timeout(_SETTLE_DELAY_MS)
+                    output_path = Path(output_path)
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(output_path))
+                    logger.info("Screenshot saved to %s", output_path)
             finally:
                 browser.close()
     finally:
         background.stop()
-
-    logger.info("Screenshot saved to %s", output_path)
