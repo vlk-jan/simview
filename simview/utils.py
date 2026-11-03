@@ -162,9 +162,70 @@ def series_stats(values: list[float]) -> dict:
     }
 
 
-def cap(items: list, n: int) -> tuple[list, bool]:
+_STAT_KEYS = ("min", "max", "mean", "std", "p05", "p50", "p95")
+
+
+def value_stats(values) -> dict:
+    """`{"count", "nan_count", "min", "max", "mean", "std", "p05", "p50",
+    "p95"}` over the finite entries of `values` (None/NaN/inf are counted in
+    `nan_count` and skipped). Percentiles are nearest-rank; all stats are None
+    when nothing is finite."""
+    values = list(values)
+    finite = sorted(v for v in values if v is not None and math.isfinite(v))
+    n = len(finite)
+    out: dict = {"count": n, "nan_count": len(values) - n}
+    if not n:
+        return out | dict.fromkeys(_STAT_KEYS)
+    mean = math.fsum(finite) / n
+    std = math.sqrt(math.fsum((v - mean) ** 2 for v in finite) / n)
+
+    def pct(p: float) -> float:
+        return finite[min(n - 1, round(p * (n - 1)))]
+
+    return out | {
+        "min": finite[0],
+        "max": finite[-1],
+        "mean": mean,
+        "std": std,
+        "p05": pct(0.05),
+        "p50": pct(0.5),
+        "p95": pct(0.95),
+    }
+
+
+def resolve_batch(model_data: dict, spec: Any, label: str = "batch") -> int:
+    """One batch index from `spec`: an int, an index string (negative counts
+    from the end), or one of the model's `batchNames`. Raises ValueError."""
+    from simview.merge import parse_batch_selection  # merge imports utils
+
+    if isinstance(spec, int):
+        spec = str(spec)
+    picked = parse_batch_selection(
+        spec,
+        int(model_data.get("simBatches") or 1),
+        model_data.get("batchNames"),
+        label,
+    )
+    if len(picked) != 1:
+        raise ValueError(f"'{label}': '{spec}' selects {len(picked)} batches; need one")
+    return picked[0]
+
+
+def in_time_window(time: Any, t0: float | None, t1: float | None) -> bool:
+    """Whether a state's `time` lies in `[t0, t1]` (either end open if None).
+    A non-numeric time only passes an unbounded window."""
+    if t0 is None and t1 is None:
+        return True
+    if not isinstance(time, (int, float)):
+        return False
+    return (t0 is None or time >= t0) and (t1 is None or time <= t1)
+
+
+def cap(items: list, n: int | None) -> tuple[list, bool]:
     """`(first n items, whether anything was dropped)` -- for capped terminal
-    renderings of otherwise-untruncated result dicts."""
+    renderings of otherwise-untruncated result dicts. `n=None` keeps all."""
+    if n is None:
+        return items, False
     return items[:n], len(items) > n
 
 
