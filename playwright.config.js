@@ -7,7 +7,8 @@ import { defineConfig } from "@playwright/test";
 //
 // Two servers: the demo scene on 5599 (the default baseURL), and a generated
 // episodic scene on 5598 for the episode-navigation test, which needs a scene
-// that actually declares `episodes`.
+// that actually declares `episodes`. A generated single-frame scene on 5597
+// covers the static playback bar.
 export default defineConfig({
     testDir: "tests/e2e",
     timeout: 30_000,
@@ -26,6 +27,15 @@ export default defineConfig({
                 "uv run python tests/e2e/make_episodic_scene.py && " +
                 "uv run simview tests/e2e/.episodic_sim.json --no-browser --port 5598",
             url: "http://127.0.0.1:5598/",
+            reuseExistingServer: !process.env.CI,
+            timeout: 60_000,
+            cwd: ".",
+        },
+        {
+            command:
+                "uv run python tests/e2e/make_static_scene.py && " +
+                "uv run simview tests/e2e/.static_sim.json --no-browser --port 5597",
+            url: "http://127.0.0.1:5597/",
             reuseExistingServer: !process.env.CI,
             timeout: 60_000,
             cwd: ".",

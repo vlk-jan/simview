@@ -48,7 +48,7 @@ describe("panelHideCss", () => {
     it("hides only panels set to false", () => {
         const css = panelHideCss({ playback: false, legend: true, recording: false });
         expect(css).toContain(".sv-playback {");
-        expect(css).toContain(".sv-playback-recording {");
+        expect(css).toContain(".sv-playback-recording, .sv-playback--static {");
         expect(css).not.toContain(".sv-legend");
     });
 

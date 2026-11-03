@@ -10,6 +10,9 @@ import {
     previousEpisodeStart,
 } from "../utils/episodes.js";
 
+const IMAGE_FORMATS = ["png", "jpeg", "webp"];
+const FORMAT_LABELS = { webm: "WEBM", mp4: "MP4", png: "PNG", jpeg: "JPG", webp: "WEBP" };
+
 // Bottom-center playback bar: transport, speed, recording/screenshot,
 // episode navigation and the seekable progress bar, plus their shortcuts.
 export class PlaybackControls {
@@ -44,8 +47,11 @@ export class PlaybackControls {
             }
         };
 
+        // One select serves both: video type for REC, or, on a static scene
+        // (no REC), the screenshot's image type.
         const formatSelectChange = (e) => {
-            this.animationController.setRecordingFormat(e.target.value);
+            if (this.isStatic) this.animationController.screenshotFormat = e.target.value;
+            else this.animationController.setRecordingFormat(e.target.value);
         };
 
         const screenshotButtonClick = () => {
@@ -116,7 +122,7 @@ export class PlaybackControls {
             const key = event.key;
 
             // Handle arrow keys with Alt modifier for timeline stepping
-            if (event.altKey) {
+            if (event.altKey && !this.isStatic) {
                 if (key === "ArrowRight") {
                     event.stopPropagation();
                     event.preventDefault();
@@ -134,6 +140,8 @@ export class PlaybackControls {
             // Other keys (only if no modifiers are pressed)
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
                 return;
+            // A static scene has no timeline: only the screenshot shortcut applies.
+            if (this.isStatic && key !== "s") return;
 
             switch (key) {
                 case "[":
@@ -170,20 +178,16 @@ export class PlaybackControls {
             "40px"
         );
         this.screenshotButton.title = "Screenshot (S)";
+        this.screenshotButton.classList.add("sv-screenshot");
 
         this.formatSelect = document.createElement("select");
+        this.formatSelect.className = "sv-format";
         // "mp4" is only offered when this browser's MediaRecorder can
         // actually produce it (see isMp4RecordingSupported) -- webm is
         // always available wherever MediaRecorder is, so it's the
         // unconditional default/fallback.
-        const formats = isMp4RecordingSupported() ? ["webm", "mp4"] : ["webm"];
-        const formatLabels = { webm: "WEBM", mp4: "MP4" };
-        formats.forEach((format) => {
-            const option = document.createElement("option");
-            option.value = format;
-            option.text = formatLabels[format];
-            this.formatSelect.appendChild(option);
-        });
+        this.videoFormats = isMp4RecordingSupported() ? ["webm", "mp4"] : ["webm"];
+        this.#fillFormatSelect(this.videoFormats, this.animationController.recordingFormat);
         this.formatSelect.style.width = "80px";
         this.formatSelect.addEventListener("change", formatSelectChange, { signal });
 
@@ -277,8 +281,38 @@ export class PlaybackControls {
 
         document.addEventListener("keydown", keydownListener, { signal });
 
+        this.#refreshStatic();
         this.#refreshEpisodeUI();
         this.updateElements();
+    }
+
+    // A single-frame scene has nothing to play, step, scrub or time -- nor to
+    // record, since a recording lasts one loop of the timeline -- so the bar
+    // keeps only the screenshot button. Re-checked as live frames arrive.
+    #refreshStatic() {
+        const store = this.animationController.store;
+        const isStatic = !store || store.length <= 1;
+        if (isStatic !== this.isStatic) {
+            const ac = this.animationController;
+            this.#fillFormatSelect(
+                isStatic ? IMAGE_FORMATS : this.videoFormats,
+                isStatic ? ac.screenshotFormat : ac.recordingFormat
+            );
+        }
+        this.isStatic = isStatic;
+        this.container.classList.toggle("sv-playback--static", isStatic);
+    }
+
+    #fillFormatSelect(formats, selected) {
+        this.formatSelect.replaceChildren(
+            ...formats.map((format) => {
+                const option = document.createElement("option");
+                option.value = format;
+                option.text = FORMAT_LABELS[format];
+                option.selected = format === selected;
+                return option;
+            })
+        );
     }
 
     // Called by SimView.applyEpisodes once the model is known, and again
@@ -297,6 +331,7 @@ export class PlaybackControls {
             ? this.animationController.store.length
             : 0;
         this.episodes = normalizeEpisodes(this.rawEpisodes, frameCount);
+        this.#refreshStatic();
         this.#refreshEpisodeUI();
     }
 

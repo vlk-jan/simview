@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A single-frame scene's playback bar shows only the screenshot button and the
+  format select, which then picks the screenshot's image type (PNG, JPG or
+  WebP): play/step, speed, the time readout, episode controls, the progress
+  bar and REC (a recording lasts one timeline loop, so it would be empty) are
+  hidden, and their shortcuts do nothing. A live run
+  gains them once a second frame arrives. Hiding the `recording` panel hides
+  such a bar entirely.
 - `simview terrain --area` prints only the sampled extent and statistics by
   default; the per-cell grids (and `x_coords`/`y_coords`) need `--full`, whose
   `--json` is single-line. `--area --csv` without `--full` is one row per
