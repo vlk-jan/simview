@@ -47,7 +47,7 @@ authoring = ["torch", "numpy"]
 render = ["playwright>=1.40"]
 
 [project.scripts]
-simview = "simview.__main__:main"
+simview = "simview.__main__:cli"
 
 [tool.setuptools.package-dir]
 simview = "simview"

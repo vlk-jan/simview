@@ -4,13 +4,21 @@ import argparse
 import gzip
 import json
 import logging
+import math
+import os
 import shutil
 import sys
 from pathlib import Path
 
 from simview import CACHE_DIR, __version__, remote
 from simview.server import SimViewServer
-from simview.utils import dumps_json, human_bytes, load_scene, load_scene_model
+from simview.utils import (
+    dumps_json,
+    human_bytes,
+    load_scene,
+    load_scene_model,
+    resolve_batch,
+)
 
 logger = logging.getLogger("simview.cli")
 
@@ -18,7 +26,16 @@ _logging_configured = False
 
 # Subcommands with their own scoped flags. "view" also works bare
 # (`simview <file>...`) -- see main()'s routing.
-_SUBCOMMANDS = ("view", "info", "diff", "terrain", "render", "clear", "static-viewer")
+_SUBCOMMANDS = (
+    "view",
+    "info",
+    "diff",
+    "terrain",
+    "sample",
+    "render",
+    "clear",
+    "static-viewer",
+)
 
 
 def _configure_logging() -> None:
@@ -93,12 +110,25 @@ def export_static_viewer(directory: Path) -> None:
     logger.info("Static viewer written to %s", directory)
 
 
-def run_info(path: Path, as_json: bool) -> None:
+def _print_result(result: dict, args: argparse.Namespace, text_fn, csv_fn=None):
+    """Print `result` as CSV, JSON (`--json`; single-line with `--full`, whose
+    grids would otherwise print one number per line) or text."""
+    if csv_fn is not None and getattr(args, "csv", False):
+        print(csv_fn(result), end="")
+    elif args.json:
+        # sample is all short vectors: indented, each number gets its own line.
+        compact = getattr(args, "full", False) or args.command == "sample"
+        print(dumps_json(result, indent=None if compact else 2))
+    else:
+        print(text_fn(result))
+
+
+def run_info(path: Path, as_json: bool, full: bool = False) -> None:
     """Print a structural summary of the scene JSON at `path` to stdout."""
     from simview.info import format_text, summarize_scene
 
     try:
-        summary = summarize_scene(path)
+        summary = summarize_scene(path, full=full)
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: Could not parse '%s' as a scene file: %s", path, e)
         sys.exit(1)
@@ -128,10 +158,12 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
     diff_mode = args.batches is not None
 
     try:
+        mask = terrain_mod.parse_mask(args.mask) if args.mask else None
         if args.along_body is not None:
             model_data, states_data = load_scene(path)
+            batch = resolve_batch(model_data, args.batch, "--batch")
             if diff_mode:
-                batch_a, batch_b = args.batches
+                batch_a, batch_b = _resolve_batch_pair(model_data, args.batches)
                 result = terrain_mod.query_along_body_diff(
                     model_data,
                     states_data,
@@ -140,6 +172,8 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                     batch_b,
                     args.layer,
                     args.every,
+                    args.t0,
+                    args.t1,
                 )
                 text_fn = terrain_mod.format_along_diff_text
                 csv_fn = terrain_mod.format_along_diff_csv
@@ -149,15 +183,18 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                     states_data,
                     args.along_body,
                     args.layer,
-                    args.batch,
+                    batch,
                     args.every,
+                    args.t0,
+                    args.t1,
                 )
                 text_fn = terrain_mod.format_along_text
                 csv_fn = terrain_mod.format_along_csv
         else:
             model_data = load_scene_model(path)
+            batch = resolve_batch(model_data, args.batch, "--batch")
             if diff_mode:
-                batch_a, batch_b = args.batches
+                batch_a, batch_b = _resolve_batch_pair(model_data, args.batches)
                 if args.point is not None:
                     result = terrain_mod.query_point_diff(
                         model_data,
@@ -172,36 +209,86 @@ def run_terrain(path: Path, args: argparse.Namespace) -> None:
                 else:
                     bounds = tuple(args.area) if args.area else None
                     result = terrain_mod.query_area_diff(
-                        model_data, bounds, batch_a, batch_b, args.layer, args.stride
+                        model_data,
+                        bounds,
+                        batch_a,
+                        batch_b,
+                        args.layer,
+                        args.stride,
+                        mask,
                     )
+                    if not args.full:
+                        result = terrain_mod.area_summary(result)
                     text_fn = terrain_mod.format_area_diff_text
                     csv_fn = terrain_mod.format_area_diff_csv
             elif args.point is not None:
                 result = terrain_mod.query_point(
-                    model_data, args.point[0], args.point[1], args.layer, args.batch
+                    model_data, args.point[0], args.point[1], args.layer, batch
                 )
                 text_fn = terrain_mod.format_point_text
                 csv_fn = terrain_mod.format_point_csv
             else:
                 bounds = tuple(args.area) if args.area else None
                 result = terrain_mod.query_area(
-                    model_data, bounds, args.layer, args.batch, args.stride
+                    model_data, bounds, args.layer, batch, args.stride, mask
                 )
+                if not args.full:
+                    result = terrain_mod.area_summary(result)
                 text_fn = terrain_mod.format_area_text
                 csv_fn = terrain_mod.format_area_csv
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
 
-    if args.csv:
-        print(csv_fn(result), end="")
-    elif args.json:
-        print(dumps_json(result, indent=2))
-    else:
-        print(text_fn(result))
+    _print_result(result, args, text_fn, csv_fn)
 
 
-def run_diff(path: Path, args: argparse.Namespace) -> None:
+def _resolve_batch_pair(model_data: dict, specs) -> tuple[int, int]:
+    return (
+        resolve_batch(model_data, specs[0], "--batches A"),
+        resolve_batch(model_data, specs[1], "--batches B"),
+    )
+
+
+def _load_inputs(specs: list[str], args: argparse.Namespace) -> tuple[dict, list]:
+    """`(model, states)` for one scene file, or for several files (or one
+    with a '#<batches>' selection) merged into one scene, as `view` does."""
+    from simview.merge import merge_simulation_files, split_batch_spec
+
+    split = [split_batch_spec(spec) for spec in specs]
+    paths = [_resolve_input(spec, args) for spec, _ in split]
+    selections = [selector for _, selector in split]
+    if len(paths) == 1 and selections[0] is None:
+        return load_scene(paths[0])
+    merged = merge_simulation_files(paths, selections)
+    return merged["model"], merged["states"]
+
+
+def run_sample(args: argparse.Namespace) -> None:
+    """Print poses/velocities/contacts/scalars at chosen frames or times."""
+    from simview import sample as sample_mod
+
+    try:
+        model_data, states_data = _load_inputs(args.files, args)
+        batches = (
+            [resolve_batch(model_data, b, "--batch") for b in args.batch]
+            if args.batch
+            else None
+        )
+        frames = sample_mod.select_frames(states_data, args.frames, args.t, args.count)
+        result = sample_mod.sample_states(
+            model_data, states_data, frames, body=args.body, batches=batches
+        )
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+
+    _print_result(
+        result, args, sample_mod.format_sample_text, sample_mod.format_sample_csv
+    )
+
+
+def run_diff(args: argparse.Namespace) -> None:
     """Print a trajectory divergence report between two batches of the scene
     JSON at `path`, to stdout. With `--fail-on-exceed`, additionally exits
     with a non-zero code once printing is done: 0 = within thresholds, 1 =
@@ -209,12 +296,6 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
     help text)."""
     from simview import diff as diff_mod
 
-    if args.batches is None:
-        logger.error(
-            "Error: 'simview diff' requires --batches A B, e.g. 'simview diff "
-            "scene.json --batches 0 1'."
-        )
-        sys.exit(1)
     if (
         args.fail_on_exceed
         and args.pos_threshold is None
@@ -227,28 +308,36 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        model_data, states_data = load_scene(path)
+        model_data, states_data = _load_inputs(args.files, args)
+        if args.batches is not None:
+            batch_a, batch_b = _resolve_batch_pair(model_data, args.batches)
+        elif int(model_data.get("simBatches") or 1) == 2:
+            batch_a, batch_b = 0, 1
+        else:
+            raise ValueError(
+                "--batches A B is required unless the scene (or the merged "
+                "inputs) has exactly 2 batches, e.g. 'simview diff scene.json "
+                "--batches GT 1' or 'simview diff gt.json#0 pred.json#0'"
+            )
         result = diff_mod.compute_trajectory_diff(
             model_data,
             states_data,
-            args.batches[0],
-            args.batches[1],
+            batch_a,
+            batch_b,
             body=args.body,
             every=args.every,
             pos_threshold=args.pos_threshold,
             rot_threshold_deg=args.rot_threshold_deg,
             per_axis=args.per_axis,
+            t0=args.t0,
+            t1=args.t1,
+            align_first_frame=args.align_first_frame,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error("Error: %s", e)
         sys.exit(1)
 
-    if args.csv:
-        print(diff_mod.format_diff_csv(result), end="")
-    elif args.json:
-        print(dumps_json(result, indent=2))
-    else:
-        print(diff_mod.format_diff_text(result))
+    _print_result(result, args, diff_mod.format_diff_text, diff_mod.format_diff_csv)
 
     if args.fail_on_exceed:
         exceeded = any(
@@ -260,10 +349,71 @@ def run_diff(path: Path, args: argparse.Namespace) -> None:
             sys.exit(2)
 
 
+# Mirrors BatchManager.js: batches sit on a ceil(sqrt(B))-wide grid of
+# terrain-sized cells, 0.5 m apart, batch 0 at the origin cell.
+_BATCH_SPACING = 0.5
+
+
+def _top_camera(model: dict, batch: int | None):
+    """`(cam, tgt)` looking straight down on one batch's terrain cell, or on
+    the whole batch grid when `batch` is None."""
+    terrain = model.get("terrain") or {}
+    bounds, dims = terrain.get("bounds"), terrain.get("dimensions")
+    if not bounds or not dims:
+        raise ValueError("--camera top needs a scene with terrain")
+    batches = int(model.get("simBatches") or 1)
+    side = math.ceil(math.sqrt(batches))
+    step_x = dims["sizeX"] + _BATCH_SPACING
+    step_y = dims["sizeY"] + _BATCH_SPACING
+    if batch is None:
+        cols, rows = min(side, batches), math.ceil(batches / side)
+        off_x, off_y = (cols - 1) * step_x / 2, (rows - 1) * step_y / 2
+        size_x, size_y = cols * step_x, rows * step_y
+    else:
+        off_x, off_y = (batch % side) * step_x, (batch // side) * step_y
+        size_x, size_y = dims["sizeX"], dims["sizeY"]
+    cx = (bounds["minX"] + bounds["maxX"]) / 2 + off_x
+    cy = (bounds["minY"] + bounds["maxY"]) / 2 + off_y
+    extent = max(size_x, size_y)
+    # Nudged off-vertical: z is up, and an exactly vertical view leaves the
+    # orbit camera's up vector undefined.
+    cam = (cx, cy - 1e-3 * extent, (bounds.get("maxZ") or 0.0) + 1.5 * extent)
+    return cam, (cx, cy, bounds.get("minZ") or 0.0)
+
+
+def _render_view_hash(path: Path, args: argparse.Namespace, t: float | None) -> str:
+    """View hash for one `simview render` shot from its shortcut flags."""
+    from simview.view import view_hash
+
+    cam = tgt = None
+    batch = None
+    if args.camera == "top" or args.batch is not None:
+        model = load_scene_model(path)
+        if args.batch is not None:
+            batch = resolve_batch(model, args.batch, "--batch")
+        if args.camera == "top":
+            cam, tgt = _top_camera(model, batch)
+    return view_hash(
+        t=t,
+        cam=cam,
+        tgt=tgt,
+        batch=batch,
+        track=args.track,
+        terrain_color_mode=args.terrain_color,
+        ui=False if args.hide_ui else None,
+    )
+
+
+def _shot_path(output: Path, t: float, count: int) -> Path:
+    if count == 1:
+        return output
+    return output.with_name(f"{output.stem}_t{t}{output.suffix}")
+
+
 def run_render(path: Path, args: argparse.Namespace) -> None:
-    """Headlessly render one PNG screenshot of the scene JSON at `path`, for
+    """Headlessly render PNG screenshot(s) of the scene JSON at `path`, for
     generating figures from a display-less environment (e.g. a SLURM job)."""
-    from simview.render import render_screenshot
+    from simview.render import render_screenshots
 
     if args.output is None:
         logger.error(
@@ -271,18 +421,46 @@ def run_render(path: Path, args: argparse.Namespace) -> None:
             "scene.json --output frame.png'."
         )
         sys.exit(1)
+    shortcuts = (
+        args.t,
+        args.camera,
+        args.track,
+        args.batch,
+        args.terrain_color,
+        args.hide_ui or None,
+    )
+    if args.view is not None and any(v is not None for v in shortcuts):
+        logger.error(
+            "Error: --view can't be combined with --t/--camera/--track/--batch/"
+            "--terrain-color/--hide-ui; put everything in the hash, or use the "
+            "flags only."
+        )
+        sys.exit(1)
 
+    output = Path(args.output)
     try:
-        render_screenshot(
+        if args.view is not None:
+            shots = [(args.view, output)]
+        elif any(v is not None for v in shortcuts):
+            times = list(dict.fromkeys(args.t or [None]))
+            shots = [
+                (_render_view_hash(path, args, t), _shot_path(output, t, len(times)))
+                for t in times
+            ]
+        else:
+            shots = [(None, output)]
+        render_screenshots(
             path,
-            args.output,
+            shots,
             host=args.host,
             port=args.port,
-            view=args.view,
             width=args.width,
             height=args.height,
         )
     except ImportError as e:
+        logger.error("Error: %s", e)
+        sys.exit(1)
+    except ValueError as e:
         logger.error("Error: %s", e)
         sys.exit(1)
     except (RuntimeError, TimeoutError) as e:
@@ -405,6 +583,36 @@ def _add_host_port_flags(sp: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_files_arg(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument(
+        "files",
+        nargs="+",
+        metavar="file",
+        help=(
+            "Scene file(s) or 'host:path' specs. Several files -- or one with a "
+            "'#<batches>' selection, e.g. 'gt.json#0 pred.json#GT' -- are "
+            "merged into one scene first, as 'simview view' does."
+        ),
+    )
+
+
+def _add_time_window_flags(sp: argparse.ArgumentParser, prefix: str) -> None:
+    sp.add_argument(
+        "--t0",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=f"{prefix} use states at or after this time.",
+    )
+    sp.add_argument(
+        "--t1",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=f"{prefix} use states at or before this time.",
+    )
+
+
 def _add_file_arg(sp: argparse.ArgumentParser) -> None:
     sp.add_argument(
         "file",
@@ -471,6 +679,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print machine-readable JSON instead of text.",
     )
+    info.add_argument(
+        "--full",
+        action="store_true",
+        help="Don't cap lists (bodies, static objects, missing frames) at 20 entries.",
+    )
     _add_remote_flags(info)
 
     terrain = sub.add_parser(
@@ -521,7 +734,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     terrain.add_argument(
-        "--batch", type=int, default=0, help="Batch index to query (default: 0)."
+        "--batch",
+        default="0",
+        help="Batch to query: an index (negative counts from the end) or a batch "
+        "name (default: 0).",
     )
     terrain.add_argument(
         "--stride",
@@ -532,10 +748,9 @@ def build_parser() -> argparse.ArgumentParser:
     terrain.add_argument(
         "--batches",
         nargs=2,
-        type=int,
         metavar=("A", "B"),
         help=(
-            "Two batch indices to compare. Switches into cross-batch diff mode "
+            "Two batches (indices or names) to compare. Switches into cross-batch diff mode "
             "(value_a/value_b/delta per layer) instead of a single-batch query, "
             "and takes precedence over --batch if both are given. For "
             "--along-body, both batches' terrains are sampled along batch A's "
@@ -548,17 +763,38 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="With --along-body, sample every Nth frame (default: 1).",
     )
+    _add_time_window_flags(terrain, "With --along-body, only")
+    terrain.add_argument(
+        "--mask",
+        default=None,
+        metavar="EXPR",
+        help=(
+            "With --area, restrict the statistics to cells passing 'LAYER OP "
+            "VALUE' (OP: > >= < <= == !=), e.g. 'known>0.5'. Evaluated on "
+            "--batch, or on batch A with --batches."
+        ),
+    )
+    terrain.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "With --area, also print every grid cell (and x/y coordinates). "
+            "Default: only the sampled extent and per-layer statistics."
+        ),
+    )
     _add_json_csv_flags(terrain)
     _add_remote_flags(terrain)
 
     diff = sub.add_parser("diff", help="Compare two batches' trajectories.")
-    _add_file_arg(diff)
+    _add_files_arg(diff)
     diff.add_argument(
         "--batches",
         nargs=2,
-        type=int,
         metavar=("A", "B"),
-        help="Two batch indices to compare. Required.",
+        help=(
+            "Two batches (indices or names) to compare. Optional when the scene "
+            "-- or the merged inputs -- has exactly 2 batches."
+        ),
     )
     diff.add_argument(
         "--body",
@@ -617,8 +853,62 @@ def build_parser() -> argparse.ArgumentParser:
             "tell divergence apart from a broken invocation."
         ),
     )
+    _add_time_window_flags(diff, "Only")
+    diff.add_argument(
+        "--align-first-frame",
+        action="store_true",
+        help=(
+            "Express each batch's trajectory relative to its own pose at the "
+            "first compared frame (R0^-1 (p - p0), R0^-1 R), so a constant "
+            "start offset isn't counted as error."
+        ),
+    )
     _add_json_csv_flags(diff)
     _add_remote_flags(diff)
+
+    sample = sub.add_parser(
+        "sample",
+        help="Print body poses, velocities, contacts and scalars at chosen frames.",
+    )
+    _add_files_arg(sample)
+    sample.add_argument(
+        "--frames",
+        default=None,
+        metavar="SPEC",
+        help="A frame index ('-1') or Python slice ('0:2000:100', '::50').",
+    )
+    sample.add_argument(
+        "--t",
+        type=float,
+        action="append",
+        default=None,
+        metavar="SECONDS",
+        help="Sample the frame nearest this time; repeatable.",
+    )
+    sample.add_argument(
+        "--count",
+        type=int,
+        default=11,
+        help=(
+            "Without --frames/--t, sample this many evenly spaced frames, first "
+            "and last included (default: 11)."
+        ),
+    )
+    sample.add_argument(
+        "--body",
+        default=None,
+        metavar="NAME",
+        help="Only this body (matched like 'simview diff --body'). Default: all.",
+    )
+    sample.add_argument(
+        "--batch",
+        action="append",
+        default=None,
+        metavar="BATCH",
+        help="Only this batch (index or name); repeatable. Default: all.",
+    )
+    _add_json_csv_flags(sample)
+    _add_remote_flags(sample)
 
     render = sub.add_parser(
         "render", help="Headlessly save a PNG screenshot (needs the 'render' extra)."
@@ -643,6 +933,45 @@ def build_parser() -> argparse.ArgumentParser:
             "camera/playback/terrain state before capturing. Default: the "
             "viewer's startup state."
         ),
+    )
+    render.add_argument(
+        "--t",
+        type=float,
+        action="append",
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Playback time to capture; repeatable -- several times are captured "
+            "in one browser session, saved as <output stem>_t<T>.png."
+        ),
+    )
+    render.add_argument(
+        "--camera",
+        choices=["top"],
+        default=None,
+        help="Camera preset: 'top' looks straight down on the whole terrain.",
+    )
+    render.add_argument(
+        "--track",
+        default=None,
+        metavar="BODY",
+        help="Have the camera follow this body.",
+    )
+    render.add_argument(
+        "--batch",
+        default=None,
+        help="Focus this batch (index or name).",
+    )
+    render.add_argument(
+        "--terrain-color",
+        default=None,
+        metavar="MODE",
+        help="Color the terrain by 'height' or a property name (e.g. 'friction').",
+    )
+    render.add_argument(
+        "--hide-ui",
+        action="store_true",
+        help="Hide every panel, leaving only the 3D view.",
     )
     render.add_argument(
         "--width",
@@ -719,11 +1048,16 @@ def main():
         return
 
     single_file_commands = {
-        "info": lambda path, args: run_info(path, as_json=args.json),
+        "info": lambda path, args: run_info(path, as_json=args.json, full=args.full),
         "terrain": run_terrain,
-        "diff": run_diff,
         "render": run_render,
     }
+    if args.command == "diff":
+        run_diff(args)
+        return
+    if args.command == "sample":
+        run_sample(args)
+        return
     if args.command in single_file_commands:
         single_file_commands[args.command](_resolve_input(args.file, args), args)
         return
@@ -764,5 +1098,22 @@ def main():
         sys.exit(1)
 
 
+def cli() -> None:
+    """Console-script entry point: `main()`, quiet when stdout is closed early
+    (e.g. `simview terrain ... | head`)."""
+    try:
+        try:
+            main()
+        finally:
+            # Also on sys.exit (e.g. diff --fail-on-exceed), so a closed pipe
+            # surfaces here rather than in the interpreter's exit-time flush.
+            sys.stdout.flush()
+    except BrokenPipeError:
+        # Point stdout at devnull so the interpreter's own exit-time flush
+        # doesn't raise a second time.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    cli()
