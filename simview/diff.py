@@ -24,6 +24,7 @@ from simview.utils import (
     body_label,
     cap,
     collect_body_names,
+    in_time_window,
     iter_names,
     resolve_body,
     series_stats,
@@ -188,6 +189,15 @@ def pose_resolver(model_data: dict, states_data: list):
     return all_names, resolve
 
 
+def _align_to_first(row: list[float], first: list[float]) -> list[float]:
+    """`row` expressed in the frame of `first` (both `[x, y, z, w, qx, qy,
+    qz]`): `R0^-1 (p - p0)` and `R0^-1 R`, so a trajectory starts at the
+    origin with identity orientation."""
+    inv = [first[3], -first[4], -first[5], -first[6]]
+    pos = _rotate_vec(inv, [row[0] - first[0], row[1] - first[1], row[2] - first[2]])
+    return [*pos, *_quat_mul(inv, row[3:])]
+
+
 def _quat_angle_deg(qa: list[float], qb: list[float]) -> float:
     """Angular distance in degrees between two [w, x, y, z] quaternions,
     robust to the double-cover ambiguity (q and -q are the same rotation).
@@ -251,6 +261,9 @@ def compute_trajectory_diff(
     pos_threshold: float | None = None,
     rot_threshold_deg: float | None = None,
     per_axis: bool = False,
+    t0: float | None = None,
+    t1: float | None = None,
+    align_first_frame: bool = False,
 ) -> dict:
     """Per-frame positional/orientation divergence between batch `batch_a`
     and batch `batch_b`'s trajectories in `states_data`, for every body
@@ -275,7 +288,11 @@ def compute_trajectory_diff(
     per-axis toggle -- see `static/js/utils/errorMath.js`'s
     `positionAxisError`) and matching `"err_x"`/`"err_y"`/`"err_z"` entries
     in `summary` (mean/max/final of the *signed* value, so directional bias
-    is visible). A NaN pose yields a NaN error for that frame: summary
+    is visible). `t0`/`t1` keep only states whose time lies in that window.
+    `align_first_frame` re-expresses each batch's trajectory in its own pose
+    at the first compared frame (`R0^-1 (p - p0)`, `R0^-1 R`), so a
+    constant start offset doesn't count as error -- for comparing rollouts
+    that start from differently placed poses. A NaN pose yields a NaN error for that frame: summary
     mean/min/max skip NaN entries (`nan_count` says how many), and a NaN
     error counts as exceeding any threshold. Raises `ValueError` on invalid
     batch indices, `every < 1`, an unmatched/ambiguous `body`, or a scene
@@ -307,8 +324,9 @@ def compute_trajectory_diff(
         for name in target_names
     }
 
+    firsts: dict = {}
     for idx, state in enumerate(states_data):
-        if idx % every != 0:
+        if idx % every != 0 or not in_time_window(state.get("time"), t0, t1):
             continue
         # Resolved once per frame for the whole scene rather than per body:
         # a child's world pose needs its ancestors' poses anyway.
@@ -321,6 +339,10 @@ def compute_trajectory_diff(
             row_b = rows_b.get(lookup_names[key])
             if row_a is None or row_b is None:
                 continue
+            if align_first_frame:
+                first_a, first_b = firsts.setdefault(key, (row_a, row_b))
+                row_a = _align_to_first(row_a, first_a)
+                row_b = _align_to_first(row_b, first_b)
             out = series[key]
             out["frame_indices"].append(idx)
             out["times"].append(state.get("time"))
@@ -369,6 +391,9 @@ def compute_trajectory_diff(
         "pos_threshold": pos_threshold,
         "rot_threshold_deg": rot_threshold_deg,
         "per_axis": per_axis,
+        "t0": t0,
+        "t1": t1,
+        "align_first_frame": align_first_frame,
         "bodies": bodies_out,
     }
 
@@ -384,6 +409,10 @@ def format_diff_text(result: dict) -> str:
         lines.append(f"  pos_threshold: {result['pos_threshold']}")
     if result["rot_threshold_deg"] is not None:
         lines.append(f"  rot_threshold_deg: {result['rot_threshold_deg']}")
+    if result.get("t0") is not None or result.get("t1") is not None:
+        lines.append(f"  time window: [{result.get('t0')}, {result.get('t1')}]")
+    if result.get("align_first_frame"):
+        lines.append("  aligned to each batch's first compared pose")
 
     for label, body in result["bodies"].items():
         lines.append(f"\n{label}:")
