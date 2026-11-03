@@ -376,6 +376,13 @@ body {
 .sv-playback-recording {
     display: contents;
 }
+/* Single-frame scene: only the screenshot button and its format select
+   (image types then) are left (see PlaybackControls#refreshStatic). */
+.sv-playback--static .sv-playback-row > :not(.sv-playback-recording),
+.sv-playback--static .sv-playback-recording > :not(.sv-screenshot, .sv-format),
+.sv-playback--static .sv-progress {
+    display: none !important;
+}
 .sv-playback button,
 .sv-playback select {
     height: 26px;

@@ -52,6 +52,9 @@ export class AnimationController {
         this.isRecording = false;
         this.startTime = null;
         this.recordingFormat = "webm"; // Default recording format
+        // Screenshot image type ("png" | "jpeg" | "webp"); picked in the
+        // playback bar's format select on a static scene.
+        this.screenshotFormat = "png";
 
         // WEBM/MP4 recording state (native MediaRecorder path -- see
         // startRecording/stopRecording/captureFrame below). null when not
@@ -408,8 +411,8 @@ export class AnimationController {
         }
     }
 
-    // Single-frame PNG screenshot (PlaybackControls camera button / "S" key),
-    // downloaded as `simview_t<currentTime>s.png`. Re-renders synchronously
+    // Single-frame screenshot (PlaybackControls camera button / "S" key) in
+    // `screenshotFormat`, downloaded as `simview_t<currentTime>s.<ext>`. Re-renders synchronously
     // first so a capture between rAF ticks (e.g. right after a scrub) isn't
     // a stale frame.
     captureScreenshot() {
@@ -423,8 +426,11 @@ export class AnimationController {
                 return;
             }
             const time = this.currentTime.toFixed(3);
-            downloadBlob(blob, `simview_t${time}s.png`);
-        }, "image/png");
+            // From the blob, not the request: a browser that can't encode
+            // the type (e.g. WebP in older Safari) falls back to PNG.
+            const ext = blob.type === "image/jpeg" ? "jpg" : blob.type.split("/")[1] || "png";
+            downloadBlob(blob, `simview_t${time}s.${ext}`);
+        }, `image/${this.screenshotFormat}`);
     }
 
     updateScene() {
