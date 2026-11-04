@@ -97,7 +97,7 @@ def _summarize_terrain(terrain: dict) -> dict:
     }
 
 
-def _summarize_model(model: dict, warnings: list[str], limit: int) -> dict:
+def _summarize_model(model: dict, warnings: list[str], limit: int | None) -> dict:
     terrain = model.get("terrain")
     if terrain is None:
         warnings.append("model has no terrain")
@@ -154,7 +154,7 @@ def _summarize_model(model: dict, warnings: list[str], limit: int) -> dict:
 
 
 def _summarize_states(
-    states, model: dict | None, warnings: list[str], limit: int
+    states, model: dict | None, warnings: list[str], limit: int | None
 ) -> dict:
     # A columnar file is expanded to the per-frame layout so every check below
     # describes the same thing for both layouts; `layout` records which one the

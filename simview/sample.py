@@ -146,7 +146,7 @@ def sample_states(
                 row = poses[b].get(lookup)
                 if row is None:
                     continue
-                out = {"position": row[:3], "orientation_wxyz": row[3:]}
+                out: dict = {"position": row[:3], "orientation_wxyz": row[3:]}
                 for f, rows in fields.items():
                     if rows is not None:
                         out[f] = rows[b]

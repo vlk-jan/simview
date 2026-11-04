@@ -404,7 +404,7 @@ def _render_view_hash(path: Path, args: argparse.Namespace, t: float | None) -> 
     )
 
 
-def _shot_path(output: Path, t: float, count: int) -> Path:
+def _shot_path(output: Path, t: float | None, count: int) -> Path:
     if count == 1:
         return output
     return output.with_name(f"{output.stem}_t{t}{output.suffix}")
@@ -438,6 +438,7 @@ def run_render(path: Path, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     output = Path(args.output)
+    shots: list[tuple[str | None, str | Path]]
     try:
         if args.view is not None:
             shots = [(args.view, output)]
