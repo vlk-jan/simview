@@ -5,13 +5,12 @@ import json
 
 import pytest
 
-import simview.scene as scene_module
-
 torch = pytest.importorskip("torch")
 np = pytest.importorskip("numpy")
 
 from conftest import build_scene
 
+import simview.scene as scene_module
 from simview.columnar import blob_floats
 from simview.model import SimViewModel, SimViewStaticObject
 from simview.scene import BodyShapeType, SimulationScene
