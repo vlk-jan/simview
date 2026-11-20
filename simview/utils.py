@@ -32,6 +32,8 @@ def find_free_port(host: str, base_port: int) -> int:
     port is free up to the maximum valid port number (65535), rather than
     looping forever.
     """
+    if not 1 <= base_port <= _MAX_PORT:
+        raise ValueError(f"base_port must be in [1, {_MAX_PORT}], got {base_port}.")
     # Resolve the family once ("::1"/"::" need AF_INET6; AF_INET would fail on
     # every port and report "no free port").
     try:
@@ -59,7 +61,9 @@ def find_free_port(host: str, base_port: int) -> int:
 def dialable_host(host: str) -> str:
     """Host to put in URLs -- 0.0.0.0/:: aren't dialable, so localhost stands
     in for them."""
-    return "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    if host in ("0.0.0.0", "::"):
+        return "127.0.0.1"
+    return f"[{host}]" if ":" in host else host
 
 
 def read_maybe_gzipped_bytes(path: str | Path) -> bytes:

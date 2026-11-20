@@ -6,7 +6,7 @@ import socket
 
 import pytest
 
-from simview.utils import find_free_port, read_maybe_gzipped_bytes
+from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
 
 
 def test_read_maybe_gzipped_bytes_plain_json(tmp_path):
@@ -84,6 +84,18 @@ def test_find_free_port_raises_when_no_port_available_up_to_max(monkeypatch):
 
     with pytest.raises(OSError, match="No free port"):
         find_free_port("127.0.0.1", utils_module._MAX_PORT - 2)
+
+
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_find_free_port_rejects_an_invalid_base_port(port):
+    with pytest.raises(ValueError, match="base_port"):
+        find_free_port("127.0.0.1", port)
+
+
+def test_dialable_host_brackets_ipv6_literals():
+    assert dialable_host("::1") == "[::1]"
+    assert dialable_host("::") == "127.0.0.1"
+    assert dialable_host("0.0.0.0") == "127.0.0.1"
 
 
 def test_load_scene_rejects_a_states_dict_that_is_not_columnar(tmp_path):
