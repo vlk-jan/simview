@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.1.0] - 2026-11-20
+
+### Added
+
+- `merge_simulation_files(..., columnar_output=True)` merges columnar (and
+  columnarizable legacy) inputs as flat arrays without expanding them into
+  per-frame states. `simview --save-merged` and the server's merge use it;
+  the default still returns the per-frame list.
+
+### Changed
+
+- Static bundles give republished blobs fresh IDs past the existing ones, so
+  an update never overwrites a blob the live `model.json`/`states.json` still
+  reference. Blobs left over from earlier publishes are deleted afterwards.
+
+### Fixed
+
+- `SimulationScene.save`, `save_static` and `--save-merged` write through a
+  temporary file and replace the target only once it is complete, so a
+  failed save no longer leaves a truncated scene. Saved files keep the
+  umask-default mode.
+- The viewer rejects short Range responses for windowed fields instead of
+  decoding undefined values, and keeps at most three windows resident even
+  when responses land out of order while scrubbing.
+- Viewer URLs bracket IPv6 hosts, and an out-of-range preferred port raises
+  instead of silently becoming port 0.
+- Remote fetches use a unique partial file, so concurrent fetches of the same
+  scene no longer collide, and the ssh child is killed and reaped when
+  streaming fails.
+- Type hints in `render`, `info` and `sample` pass pyright.
+
 ## [7.0.0] - 2026-11-03
 
 ### Breaking
@@ -1054,7 +1085,8 @@ Baseline release. Highlights of the surface established by this version:
   merge pipeline, CORS-hardened server with cache headers, `py.typed`, and CI
   across Python 3.12/3.13 with a base-install-only check.
 
-[Unreleased]: https://github.com/vlk-jan/simview/compare/v7.0.0...HEAD
+[Unreleased]: https://github.com/vlk-jan/simview/compare/v7.1.0...HEAD
+[7.1.0]: https://github.com/vlk-jan/simview/compare/v7.0.0...v7.1.0
 [7.0.0]: https://github.com/vlk-jan/simview/compare/v6.4.1...v7.0.0
 [6.4.1]: https://github.com/vlk-jan/simview/compare/v6.4.0...v6.4.1
 [6.4.0]: https://github.com/vlk-jan/simview/compare/v6.3.1...v6.4.0
