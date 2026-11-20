@@ -10,6 +10,7 @@ import gzip
 import io
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -29,15 +30,39 @@ class _FakePopen:
         self._returncode = returncode
         self._err = err
         self._argv_log = argv_log if argv_log is not None else []
+        self.killed = False
+        self.waited = False
+        self.finished = False
 
     def __call__(self, argv, stdout=None, stderr=None):
         self._argv_log.append(argv)
         if stderr is not None:
             stderr.write(self._err)
-        self.stdout = io.BytesIO(self._payload)
+        if isinstance(self._payload, Exception):
+            error = self._payload
+
+            class _FailingStdout:
+                def read(self, size=-1):
+                    raise error
+
+                def close(self):
+                    pass
+
+            self.stdout = _FailingStdout()
+        else:
+            self.stdout = io.BytesIO(self._payload)
         return self
 
+    def kill(self):
+        self.killed = True
+        self._returncode = -9
+
+    def poll(self):
+        return self._returncode if self.finished else None
+
     def wait(self):
+        self.waited = True
+        self.finished = True
         return self._returncode
 
 
@@ -278,6 +303,40 @@ def test_failed_ssh_leaves_no_partial_file(monkeypatch, fake_ssh):
 
     entry = remote.cache_entry_path("rci", "~/sim.json")
     assert not entry.with_name(entry.name + ".partial").exists()
+
+
+def test_failed_read_kills_and_waits_for_ssh(monkeypatch, fake_ssh):
+    _probe(monkeypatch, mtime=1700000000, size=999)
+    fake = _popen(monkeypatch, RuntimeError("stream exploded"))
+
+    with pytest.raises(RuntimeError, match="stream exploded"):
+        remote.fetch_remote("rci", "~/sim.json")
+
+    assert fake.killed
+    assert fake.waited
+    entry = remote.cache_entry_path("rci", "~/sim.json")
+    assert not entry.exists()
+    assert not list(entry.parent.glob("*.partial"))
+
+
+def test_concurrent_fetches_use_distinct_partial_files(monkeypatch, fake_ssh):
+    payload = _scene_bytes()
+    _probe(monkeypatch, mtime=1700000000, size=len(payload))
+    argv_log = []
+
+    def popen(argv, **kwargs):
+        return _FakePopen(gzip.compress(payload), argv_log=argv_log)(argv, **kwargs)
+
+    monkeypatch.setattr(remote.subprocess, "Popen", popen)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        copies = list(
+            pool.map(lambda _: remote.fetch_remote("rci", "~/sim.json"), range(2))
+        )
+
+    assert [copy.read_bytes() for copy in copies] == [payload, payload]
+    entry = remote.cache_entry_path("rci", "~/sim.json")
+    assert list(entry.parent.glob("*.partial")) == []
 
 
 def test_corrupt_gzip_stream_is_reported(monkeypatch, fake_ssh):

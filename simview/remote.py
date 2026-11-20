@@ -221,14 +221,19 @@ def _fetch_argv(host: str, remote_path: str, has_gzip: bool) -> tuple[list[str],
 def _fetch(host: str, remote_path: str, dest: Path, has_gzip: bool, size: int) -> int:
     """Stream the remote file to `dest`, returning the bytes actually transferred.
 
-    Decompression is incremental and the write goes to a '.partial' file that is
+    Decompression is incremental and the write goes to a unique '.partial'
+    file that is
     only renamed into place once complete, so a 300MB scene is never held in
     memory whole and an interrupted fetch never leaves a usable-looking cache
     entry behind.
     """
     argv, gunzip = _fetch_argv(host, remote_path, has_gzip)
     decomp = zlib.decompressobj(16 + zlib.MAX_WBITS) if gunzip else None
-    partial = dest.with_name(dest.name + ".partial")
+    fd, partial_name = tempfile.mkstemp(
+        prefix=f".{dest.name}.", suffix=".partial", dir=dest.parent
+    )
+    partial = Path(partial_name)
+    os.close(fd)
     wire = written = next_report = 0
 
     try:
@@ -236,33 +241,42 @@ def _fetch(host: str, remote_path: str, dest: Path, has_gzip: bool, size: int) -
         # can't fill the buffer and deadlock against our stdout read loop. stdin
         # stays inherited so ssh can still prompt for a passphrase.
         with tempfile.TemporaryFile() as errf:
+            proc = None
             try:
-                proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=errf)
-            except OSError as e:  # pragma: no cover - broken ssh install
-                raise RemoteError(f"Could not run ssh: {e}") from e
-            assert proc.stdout is not None
-            with open(partial, "wb") as out:
-                while True:
-                    chunk = proc.stdout.read(_CHUNK)
-                    if not chunk:
-                        break
-                    wire += len(chunk)
+                try:
+                    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=errf)
+                except OSError as e:  # pragma: no cover - broken ssh install
+                    raise RemoteError(f"Could not run ssh: {e}") from e
+                assert proc.stdout is not None
+                with open(partial, "wb") as out:
+                    while True:
+                        chunk = proc.stdout.read(_CHUNK)
+                        if not chunk:
+                            break
+                        wire += len(chunk)
+                        if decomp is not None:
+                            chunk = decomp.decompress(chunk)
+                        out.write(chunk)
+                        written += len(chunk)
+                        if size and written >= next_report:
+                            logger.info(
+                                "  %s / %s (%.0f%%)",
+                                human_bytes(written),
+                                human_bytes(size),
+                                100.0 * written / size,
+                            )
+                            next_report = written + _PROGRESS_STEP
                     if decomp is not None:
-                        chunk = decomp.decompress(chunk)
-                    out.write(chunk)
-                    written += len(chunk)
-                    if size and written >= next_report:
-                        logger.info(
-                            "  %s / %s (%.0f%%)",
-                            human_bytes(written),
-                            human_bytes(size),
-                            100.0 * written / size,
-                        )
-                        next_report = written + _PROGRESS_STEP
-                if decomp is not None:
-                    out.write(decomp.flush())
-            proc.stdout.close()
-            returncode = proc.wait()
+                        out.write(decomp.flush())
+                proc.stdout.close()
+                returncode = proc.wait()
+            finally:
+                if proc is not None:
+                    if proc.stdout is not None:
+                        proc.stdout.close()
+                    if proc.poll() is None:
+                        proc.kill()
+                    proc.wait()
             errf.seek(0)
             stderr = errf.read().decode("utf-8", "replace").strip()
 
