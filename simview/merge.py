@@ -233,14 +233,11 @@ def _decode_per_batch(
     ]
 
 
-def _load_json(path: Path, *, expand_columnar: bool = True) -> dict:
+def _load_json(path: Path, *, expand_columnar: bool = False) -> dict:
     raw = read_maybe_gzipped_bytes(path)
     doc = loads_json(raw)
-    # Merging works frame by frame (resampling onto the first file's timeline),
-    # so a columnar file is expanded to the per-frame layout rather than teaching
-    # every step below a second shape. The all-columnar fast path below is the
-    # one exception. expand_columnar_states is stdlib-only, so merge stays
-    # usable on a base install.
+    # expand_columnar_states is stdlib-only, so merge stays usable on a base
+    # install. merge_simulation_files chooses the layout before expanding.
     if expand_columnar and isinstance(doc, dict) and is_columnar(doc.get("states")):
         model = doc.get("model")
         batch_size = int((model or {}).get("simBatches", 1))
@@ -1060,7 +1057,7 @@ def merge_simulation_files(
         )
 
     labels = [p.name for p in resolved_paths]
-    docs = [_load_json(p, expand_columnar=False) for p in resolved_paths]
+    docs = [_load_json(p) for p in resolved_paths]
     for doc, label in zip(docs, labels):
         _validate_doc(doc, label)
     models = [doc["model"] for doc in docs]
@@ -1094,8 +1091,9 @@ def merge_simulation_files(
                     f"'{label}' has polylines, which cannot be merged across "
                     "files or batch selections; drop them before merging."
                 )
-    all_columnar = all(is_columnar(states) for states in states_list)
-    if columnar_output and not all_columnar:
+    all_columnar = False
+    if columnar_output:
+        all_columnar = all(is_columnar(states) for states in states_list)
         for doc in docs:
             if not is_columnar(doc["states"]):
                 converted = columnarize_states(doc["states"], doc["model"], inline_blob)
