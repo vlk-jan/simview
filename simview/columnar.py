@@ -33,7 +33,9 @@ without numpy.
 
 import base64
 import logging
+import os
 import struct
+import tempfile
 from typing import Any
 
 try:
@@ -468,16 +470,17 @@ def write_static_bundle(data: dict, directory) -> None:
     ``<base>/blob/<id>``). Stdlib-only."""
     from pathlib import Path
 
-    from simview.utils import atomic_write_bytes, dumps_json
+    from simview.utils import dumps_json
 
     out = Path(directory)
-    (out / "blob").mkdir(parents=True, exist_ok=True)
+    blob_dir = out / "blob"
+    blob_dir.mkdir(parents=True, exist_ok=True)
     count = 0
-    files: list[tuple[Path, bytes]] = []
+    blobs: list[tuple[Path, bytes]] = []
 
     def write_blob(raw: bytes) -> str:
         nonlocal count
-        files.append((out / "blob" / str(count), raw))
+        blobs.append((blob_dir / str(count), raw))
         count += 1
         return f"/blob/{count - 1}"
 
@@ -487,7 +490,33 @@ def write_static_bundle(data: dict, directory) -> None:
     # in place, so they must stay inline.
     if is_columnar(data["states"]):
         rewrite_blobs(data["states"], write_blob)
-    for name in ("model", "states"):
-        files.append((out / f"{name}.json", dumps_json(data[name]).encode("utf-8")))
-    for path, raw in files:
-        atomic_write_bytes(path, raw)
+    files = blobs + [
+        (out / f"{name}.json", dumps_json(data[name]).encode("utf-8"))
+        for name in ("model", "states")
+    ]
+    staged: dict[Path, str] = {}
+    try:
+        for path, raw in files:
+            fd, temporary = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            staged[path] = temporary
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+
+        for path in [path for path, _ in blobs]:
+            os.replace(staged.pop(path), path)
+        # The model is the activation record: publish it first so an
+        # interrupted update never leaves states.json referencing missing blobs.
+        for name in ("model", "states"):
+            path = next(path for path in staged if path.name == f"{name}.json")
+            os.replace(staged.pop(path), path)
+        replaced = {path.name for path, _ in files}
+        for path in blob_dir.iterdir():
+            if path.name not in replaced and path.name.isdecimal():
+                path.unlink(missing_ok=True)
+    finally:
+        for temporary in staged.values():
+            path = Path(temporary)
+            if path.exists():
+                path.unlink()

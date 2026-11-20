@@ -7,6 +7,7 @@ expander tests at the bottom deliberately avoid torch.
 """
 
 import json
+import os
 
 import pytest
 
@@ -467,4 +468,56 @@ def test_static_bundle_failure_keeps_existing_files(monkeypatch, tmp_path):
         write_static_bundle(data, out)
 
     assert old_model.read_text() == '{"old": true}'
-    assert not list(out.rglob(".*.tmp"))
+
+
+def test_static_bundle_failure_after_model_keeps_matching_blobs(monkeypatch, tmp_path):
+    import simview.columnar as columnar_module
+    from simview.columnar import write_static_bundle
+
+    out = tmp_path / "bundle"
+    (out / "blob").mkdir(parents=True)
+    old_model = b'{"old": true}'
+    old_states = b'{"old": true}'
+    old_blob = b"old"
+    (out / "model.json").write_bytes(old_model)
+    (out / "states.json").write_bytes(old_states)
+    (out / "blob" / "0").write_bytes(old_blob)
+    data = {"model": {"heightData": inline_blob(b"new!")}, "states": {}}
+
+    replace = columnar_module.os.replace
+    calls = 0
+
+    def fail_states(source, target):
+        nonlocal calls
+        calls += 1
+        if str(target).endswith("states.json"):
+            raise OSError("states replace failed")
+        replace(source, target)
+
+    monkeypatch.setattr(columnar_module.os, "replace", fail_states)
+    with pytest.raises(OSError, match="states replace failed"):
+        write_static_bundle(data, out)
+
+    assert calls == 3  # blob, model, then the failed states replacement
+    assert (out / "model.json").read_bytes() != old_model
+    assert _read(out / "model.json") == {"heightData": "/blob/0"}
+    assert (out / "states.json").read_bytes() == old_states
+    assert (out / "blob" / "0").read_bytes() == b"new!"  # both models share id 0
+
+
+def test_static_bundle_replaces_old_blobs_without_deleting_other_files(tmp_path):
+    from simview.columnar import write_static_bundle
+
+    out = tmp_path / "bundle"
+    (out / "blob").mkdir(parents=True)
+    (out / "blob" / "0").write_bytes(b"old")
+    (out / "blob" / "notes").write_text("keep")
+    (out / "keep.txt").write_text("keep")
+    data = {"model": {"heightData": inline_blob(b"new")}, "states": []}
+
+    write_static_bundle(data, out)
+
+    assert (out / "blob" / "notes").read_text() == "keep"
+    assert (out / "keep.txt").read_text() == "keep"
+    assert _read(out / "model.json") == {"heightData": "/blob/0"}
+    assert os.path.getsize(out / "blob" / "0") == 3
