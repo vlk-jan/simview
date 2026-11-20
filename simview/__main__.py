@@ -13,6 +13,7 @@ from pathlib import Path
 from simview import CACHE_DIR, __version__, remote
 from simview.server import SimViewServer
 from simview.utils import (
+    atomic_write_bytes,
     dumps_json,
     human_bytes,
     load_scene,
@@ -482,16 +483,21 @@ def save_merged(
         logger.error("Error: --save-merged requires at least 2 input files to merge.")
         sys.exit(1)
 
-    from simview.columnar import columnarize_states, inline_blob
+    from simview.columnar import columnarize_states, inline_blob, is_columnar
     from simview.merge import merge_simulation_files
 
-    merged = merge_simulation_files(paths, selections)
+    merged = merge_simulation_files(paths, selections, columnar_output=True)
     # Pack the merged states the same way SimulationScene.save does: merge
     # decodes every blob to plain lists, so dumping it directly would write
     # the fat legacy per-frame layout. Falls back silently when numpy is
     # unavailable or the states are too irregular (columnarize_states
     # returns None).
-    columnar_states = columnarize_states(merged["states"], merged["model"], inline_blob)
+    if not is_columnar(merged["states"]):
+        columnar_states = columnarize_states(
+            merged["states"], merged["model"], inline_blob
+        )
+    else:
+        columnar_states = None
     if columnar_states is not None:
         merged["states"] = columnar_states
     payload = dumps_json(merged).encode("utf-8")
@@ -499,8 +505,7 @@ def save_merged(
         payload = gzip.compress(payload, compresslevel=1)
     try:
         # Like SimulationScene.save: create missing parent directories.
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(payload)
+        atomic_write_bytes(out_path, payload)
     except OSError as e:
         logger.error("Error: cannot write merged scene to '%s': %s", out_path, e)
         sys.exit(1)

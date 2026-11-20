@@ -8,6 +8,8 @@ torch = pytest.importorskip("torch")
 
 from conftest import build_scene
 
+import simview.merge as merge_module
+from simview.columnar import blob_floats, is_columnar
 from simview.merge import merge_simulation_files
 from simview.model import SimViewStaticObject
 from simview.scene import BodyShapeType, SimulationScene
@@ -124,6 +126,34 @@ def test_merge_resamples_onto_first_file_timeline(tmp_path):
     z_other = [s["bodies"][0]["bodyTransform"][1][2] for s in merged["states"]]
     assert z_ref == [0.0, 1.0, 2.0]
     assert z_other == [10.0, 12.0, 14.0]
+
+
+def test_merge_columnar_files_without_expanding_per_frame_states(monkeypatch, tmp_path):
+    ref = build_custom_scene(times=[0.0, 0.1, 0.2], zs=[0.0, 1.0, 2.0])
+    other = build_custom_scene(
+        times=[0.0, 0.05, 0.1, 0.15, 0.2], zs=[10.0, 11.0, 12.0, 13.0, 14.0], dt=0.05
+    )
+    path_ref, path_other = tmp_path / "ref.json", tmp_path / "other.json"
+    ref.save(path_ref)
+    other.save(path_other)
+
+    original_expand = merge_module.expand_columnar_states
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return original_expand(*args, **kwargs)
+
+    monkeypatch.setattr(merge_module, "expand_columnar_states", spy)
+    merged = merge_simulation_files([path_ref, path_other], columnar_output=True)
+    assert not calls
+    assert is_columnar(merged["states"])
+
+    states = original_expand(merged["states"], merged["model"]["simBatches"])
+    assert [s["time"] for s in states] == [0.0, 0.1, 0.2]
+    transforms = [blob_floats(s["bodies"][0]["bodyTransform"]) for s in states]
+    assert [row[2] for row in transforms] == [0.0, 1.0, 2.0]
+    assert [row[9] for row in transforms] == [10.0, 12.0, 14.0]
 
 
 def build_grouped_name_scene(

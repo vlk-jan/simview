@@ -872,7 +872,9 @@ class SimViewServer:
             from simview.merge import merge_simulation_files
 
             server = SimViewServer(
-                data=merge_simulation_files(paths, batch_selections),
+                data=merge_simulation_files(
+                    paths, batch_selections, columnar_output=True
+                ),
                 sim_path=paths,
                 batch_selections=batch_selections,
             )

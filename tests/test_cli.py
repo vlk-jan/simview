@@ -214,6 +214,26 @@ def test_save_merged_gzips_when_path_ends_in_gz(monkeypatch, tmp_path):
     assert merged["model"]["simBatches"] == 2
 
 
+def test_failed_save_merged_keeps_the_existing_file(monkeypatch, tmp_path):
+    scene_a = build_scene(batch_size=1)
+    scene_b = build_scene(batch_size=1)
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+    out_path = tmp_path / "merged.json"
+    out_path.write_bytes(b"old")
+
+    def fail(*args, **kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(cli.os, "replace", fail)
+    with pytest.raises(SystemExit):
+        cli.save_merged([path_a, path_b], out_path)
+
+    assert out_path.read_bytes() == b"old"
+    assert not list(tmp_path.glob(f".{out_path.name}.*"))
+
+
 def test_info_prints_text_summary_by_default(capsys, monkeypatch, tmp_path):
     scene = build_scene(batch_size=2)
     sim_file = tmp_path / "sim.json"

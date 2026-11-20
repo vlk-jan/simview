@@ -25,6 +25,7 @@ import torch
 from conftest import build_scene
 from fastapi.testclient import TestClient
 
+import simview.merge as merge_module
 from simview.info import summarize_scene
 from simview.merge import merge_simulation_files
 from simview.scene import BodyShapeType, SimulationScene
@@ -176,6 +177,28 @@ def test_merge_accepts_a_columnar_and_a_legacy_file(tmp_path):
 
     assert merged["model"]["simBatches"] == 2
     assert len(merged["states"]) == 3
+
+
+def test_merge_columnar_output_accepts_mixed_files_without_expansion(
+    monkeypatch, tmp_path
+):
+    path_a = tmp_path / "a.json"
+    path_b = tmp_path / "b.json"
+    build_scene(batch_size=1).save(path_a)
+    build_scene(batch_size=1).save(path_b, columnar=False)
+
+    original_expand = merge_module.expand_columnar_states
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return original_expand(*args, **kwargs)
+
+    monkeypatch.setattr(merge_module, "expand_columnar_states", spy)
+    merged = merge_simulation_files([path_a, path_b], columnar_output=True)
+    assert not calls
+    assert is_columnar(merged["states"])
+    assert len(original_expand(merged["states"], 2)) == 3
 
 
 def test_diff_accepts_columnar_files(tmp_path):

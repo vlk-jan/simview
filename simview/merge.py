@@ -20,15 +20,22 @@ per file.
 import bisect
 import logging
 import re
+import sys
+from array import array
 from pathlib import Path
 from typing import Sequence
 
 from .columnar import (
+    COLUMNAR_VERSION,
     STATE_FIELD_WIDTHS,
     batch_rows,
+    blob_bytes,
     blob_floats,
+    body_key,
+    columnarize_states,
     encode_floats,
     expand_columnar_states,
+    inline_blob,
     is_blob,
     is_columnar,
 )
@@ -226,14 +233,15 @@ def _decode_per_batch(
     ]
 
 
-def _load_json(path: Path) -> dict:
+def _load_json(path: Path, *, expand_columnar: bool = True) -> dict:
     raw = read_maybe_gzipped_bytes(path)
     doc = loads_json(raw)
     # Merging works frame by frame (resampling onto the first file's timeline),
-    # so a columnar file is expanded to the per-frame layout up front rather
-    # than teaching every step below a second shape. expand_columnar_states is
-    # stdlib-only, so this keeps merge usable on a base install.
-    if isinstance(doc, dict) and is_columnar(doc.get("states")):
+    # so a columnar file is expanded to the per-frame layout rather than teaching
+    # every step below a second shape. The all-columnar fast path below is the
+    # one exception. expand_columnar_states is stdlib-only, so merge stays
+    # usable on a base install.
+    if expand_columnar and isinstance(doc, dict) and is_columnar(doc.get("states")):
         model = doc.get("model")
         batch_size = int((model or {}).get("simBatches", 1))
         doc["states"] = expand_columnar_states(doc["states"], batch_size)
@@ -266,6 +274,76 @@ def _require(doc, key: str, expected_type: type | tuple[type, ...], label: str):
     return node
 
 
+def _validate_columnar_states(states: dict, batch_size: int, label: str) -> None:
+    times = states.get("times")
+    if not isinstance(times, list) or not times:
+        raise ValueError(f"'{label}' has no states")
+    previous = None
+    for idx, time in enumerate(times):
+        if previous is not None and time < previous:
+            raise ValueError(
+                f"'{label}': state times are not non-decreasing (times[{idx}] "
+                f"has time {time} after {previous})."
+            )
+        previous = time
+
+    bodies = states.get("bodies")
+    if not isinstance(bodies, list):
+        raise ValueError(f"File '{label}' has a non-list columnar 'states.bodies'.")
+    seen = set()
+    for idx, body in enumerate(bodies):
+        if not isinstance(body, dict) or "name" not in body:
+            raise ValueError(
+                f"File '{label}' has 'states.bodies[{idx}]' missing 'name'."
+            )
+        key = body_key(body["name"])
+        if key in seen:
+            raise ValueError(
+                f"File '{label}' lists body '{body['name']}' more than once."
+            )
+        seen.add(key)
+        fields = body.get("fields")
+        if not isinstance(fields, dict):
+            raise ValueError(
+                f"File '{label}' has 'states.bodies[{idx}].fields' of type "
+                f"{type(fields).__name__}; expected dict."
+            )
+        for field, value in fields.items():
+            width = STATE_FIELD_WIDTHS.get(field)
+            if width is None or not is_blob(value):
+                raise ValueError(
+                    f"File '{label}' has an invalid columnar field "
+                    f"'states.bodies[{idx}].fields.{field}'."
+                )
+            raw = blob_bytes(value)
+            expected = len(times) * batch_size * width
+            if len(raw) % 4 or len(raw) // 4 != expected:
+                raise ValueError(
+                    f"File '{label}': body '{body['name']}' field '{field}' "
+                    f"has {len(raw) // 4} floats; expected {expected}."
+                )
+        contacts = body.get("contacts")
+        if contacts is not None and not isinstance(contacts, list):
+            raise ValueError(
+                f"File '{label}' has a non-list contacts array for body "
+                f"'{body['name']}'."
+            )
+
+    scalars = states.get("scalars")
+    if scalars is not None and not isinstance(scalars, dict):
+        raise ValueError(f"File '{label}' has a non-dict columnar 'states.scalars'.")
+    for name, value in (scalars or {}).items():
+        if not is_blob(value):
+            raise ValueError(f"File '{label}' has an invalid columnar scalar '{name}'.")
+        raw = blob_bytes(value)
+        expected = len(times) * batch_size
+        if len(raw) % 4 or len(raw) // 4 != expected:
+            raise ValueError(
+                f"File '{label}': scalar '{name}' has {len(raw) // 4} floats; "
+                f"expected {expected}."
+            )
+
+
 def _validate_doc(doc: dict, label: str) -> None:
     """Lightweight upfront structural check for a loaded SimView JSON document,
     so malformed input fails fast with a clear message instead of a deep
@@ -289,23 +367,27 @@ def _validate_doc(doc: dict, label: str) -> None:
     _require(doc, "model.terrain.heightData", (list, str), label)
     if doc["model"]["terrain"].get("normals") is not None:
         _require(doc, "model.terrain.normals", (list, str), label)
-    _require(doc, "states", list, label)
-    if not doc["states"]:
-        raise ValueError(f"'{label}' has no states")
-    previous = None
-    for idx, state in enumerate(doc["states"]):
-        if not isinstance(state, dict) or "time" not in state:
-            raise ValueError(
-                f"File '{label}' has 'states[{idx}]' missing 'time' -- is it "
-                "a valid SimView scene?"
-            )
-        # Resampling bisects each file's times, so they must be sorted.
-        if previous is not None and state["time"] < previous:
-            raise ValueError(
-                f"'{label}': state times are not non-decreasing (states[{idx}] "
-                f"has time {state['time']} after {previous})."
-            )
-        previous = state["time"]
+    states = doc.get("states")
+    if isinstance(states, dict) and is_columnar(states):
+        _validate_columnar_states(states, int(doc["model"].get("simBatches", 1)), label)
+    else:
+        _require(doc, "states", list, label)
+        if not states:
+            raise ValueError(f"'{label}' has no states")
+        previous = None
+        for idx, state in enumerate(states):
+            if not isinstance(state, dict) or "time" not in state:
+                raise ValueError(
+                    f"File '{label}' has 'states[{idx}]' missing 'time' -- is it "
+                    "a valid SimView scene?"
+                )
+            # Resampling bisects each file's times, so they must be sorted.
+            if previous is not None and state["time"] < previous:
+                raise ValueError(
+                    f"'{label}': state times are not non-decreasing "
+                    f"(states[{idx}] has time {state['time']} after {previous})."
+                )
+            previous = state["time"]
 
 
 def _expand_batched(
@@ -796,9 +878,154 @@ def _merge_states(
     return merged_states
 
 
+def _columnar_array(value: str) -> array:
+    """Decode an inline float32 blob as an array without expanding per frame."""
+    values = array("f")
+    values.frombytes(blob_bytes(value))
+    if sys.byteorder == "big":
+        values.byteswap()
+    return values
+
+
+def _merge_columnar_states(
+    states_list: list[dict],
+    batch_sizes: list[int],
+    bodies: list[dict],
+    scalar_names: list[str],
+    labels: list[str],
+    selections: list[list[int] | None],
+) -> dict:
+    """Merge columnar trajectories as flat arrays, never per-frame objects."""
+    ref_times = states_list[0]["times"]
+    times_by_file = [states["times"] for states in states_list]
+    frame_indices = [
+        [
+            out_idx if file_idx == 0 else _nearest_index(times_by_file[file_idx], t)
+            for out_idx, t in enumerate(ref_times)
+        ]
+        for file_idx in range(len(states_list))
+    ]
+    decoded_bodies = []
+    decoded_scalars = []
+    for states, batch_size in zip(states_list, batch_sizes):
+        body_map = {}
+        for body in states.get("bodies") or []:
+            key = body_key(body["name"])
+            body_map[key] = (
+                body,
+                {
+                    field: _columnar_array(value)
+                    for field, value in (body.get("fields") or {}).items()
+                },
+            )
+        decoded_bodies.append(body_map)
+        decoded_scalars.append(
+            {
+                name: _columnar_array(value)
+                for name, value in (states.get("scalars") or {}).items()
+            }
+        )
+
+    # Columnar blobs are time-major: every file's selected batches for one
+    # output frame come before the next output frame.
+    merged_bodies = []
+    for body in bodies:
+        if body.get("localTransform") is not None:
+            continue
+        key = body_key(body["name"])
+        available = set(body.get("availableAttributes") or [])
+        field_names = [
+            field
+            for field in STATE_FIELD_WIDTHS
+            if field == "bodyTransform" or field in available
+        ]
+        merged_fields = {}
+        contacts = [] if "contacts" in available else None
+
+        for field in field_names:
+            merged = array("f")
+            width = STATE_FIELD_WIDTHS[field]
+            for out_idx, _ in enumerate(ref_times):
+                for file_idx, (body_map, batch_size, selection) in enumerate(
+                    zip(decoded_bodies, batch_sizes, selections)
+                ):
+                    if key not in body_map or field not in body_map[key][1]:
+                        raise ValueError(
+                            f"'{labels[file_idx]}' body '{body['name']}' is missing "
+                            f"'{field}'."
+                        )
+                    source = body_map[key][1][field]
+                    frame_idx = frame_indices[file_idx][out_idx]
+                    start = frame_idx * batch_size * width
+                    selected = range(batch_size) if selection is None else selection
+                    for batch_idx in selected:
+                        merged.extend(
+                            source[
+                                start + batch_idx * width : start
+                                + (batch_idx + 1) * width
+                            ]
+                        )
+            merged_fields[field] = encode_floats(merged)
+
+        if contacts is not None:
+            for out_idx, _ in enumerate(ref_times):
+                for file_idx, (body_map, batch_size, selection) in enumerate(
+                    zip(decoded_bodies, batch_sizes, selections)
+                ):
+                    if key not in body_map:
+                        raise ValueError(
+                            f"'{labels[file_idx]}' is missing body '{body['name']}'."
+                        )
+                    source_body = body_map[key][0]
+                    frame_idx = frame_indices[file_idx][out_idx]
+                    source_contacts = source_body.get("contacts")
+                    value = (
+                        source_contacts[frame_idx]
+                        if source_contacts is not None
+                        and frame_idx < len(source_contacts)
+                        else None
+                    )
+                    if value is None:
+                        value = [[] for _ in range(batch_size)]
+                    contacts.extend(_select(value, selection))
+
+        merged_body = {"name": body["name"], "fields": merged_fields}
+        if contacts is not None:
+            merged_body["contacts"] = contacts
+        merged_bodies.append(merged_body)
+
+    merged_scalars = {}
+    for scalar_name in scalar_names:
+        merged = array("f")
+        for out_idx, _ in enumerate(ref_times):
+            for file_idx, (scalars, batch_size, selection) in enumerate(
+                zip(decoded_scalars, batch_sizes, selections)
+            ):
+                if scalar_name not in scalars:
+                    raise ValueError(
+                        f"'{labels[file_idx]}' is missing scalar '{scalar_name}'."
+                    )
+                source = scalars[scalar_name]
+                frame_idx = frame_indices[file_idx][out_idx]
+                start = frame_idx * batch_size
+                selected = range(batch_size) if selection is None else selection
+                for batch_idx in selected:
+                    merged.append(source[start + batch_idx])
+        merged_scalars[scalar_name] = encode_floats(merged)
+
+    return {
+        "version": COLUMNAR_VERSION,
+        "times": ref_times,
+        "bodies": merged_bodies,
+        "scalars": merged_scalars,
+    }
+
+
 def merge_simulation_files(
     paths: Sequence[str | Path],
     selections: Sequence[str | Sequence[int] | None] | None = None,
+    *,
+    columnar_output: bool = False,
 ) -> dict:
     """Load and merge `paths` into a single `{"model": ..., "states": ...}` dict
     where each file's batches are concatenated into the output's batch dimension.
@@ -810,6 +1037,11 @@ def merge_simulation_files(
     what lets several files that each carry the same ground-truth batch be
     merged without duplicating it, and it is the one case where a single file
     is a valid merge input.
+
+    `columnar_output=True` returns a columnar states document when every input
+    is columnar or columnarizable. That is the fast path used by the CLI and
+    server; the default keeps the historical per-frame list for direct Python
+    callers.
     """
     resolved_paths = [Path(p) for p in paths]
     if selections is None:
@@ -828,7 +1060,7 @@ def merge_simulation_files(
         )
 
     labels = [p.name for p in resolved_paths]
-    docs = [_load_json(p) for p in resolved_paths]
+    docs = [_load_json(p, expand_columnar=False) for p in resolved_paths]
     for doc, label in zip(docs, labels):
         _validate_doc(doc, label)
     models = [doc["model"] for doc in docs]
@@ -862,9 +1094,29 @@ def merge_simulation_files(
                     f"'{label}' has polylines, which cannot be merged across "
                     "files or batch selections; drop them before merging."
                 )
-    merged_states = _merge_states(
-        states_list, batch_sizes, bodies, scalar_names, labels, batch_selections
-    )
+    all_columnar = all(is_columnar(states) for states in states_list)
+    if columnar_output and not all_columnar:
+        for doc in docs:
+            if not is_columnar(doc["states"]):
+                converted = columnarize_states(doc["states"], doc["model"], inline_blob)
+                if converted is not None:
+                    doc["states"] = converted
+        states_list = [doc["states"] for doc in docs]
+        all_columnar = all(is_columnar(states) for states in states_list)
+    if columnar_output and all_columnar:
+        merged_states = _merge_columnar_states(
+            states_list, batch_sizes, bodies, scalar_names, labels, batch_selections
+        )
+    else:
+        for doc in docs:
+            if is_columnar(doc["states"]):
+                doc["states"] = expand_columnar_states(
+                    doc["states"], int(doc["model"].get("simBatches", 1))
+                )
+        states_list = [doc["states"] for doc in docs]
+        merged_states = _merge_states(
+            states_list, batch_sizes, bodies, scalar_names, labels, batch_selections
+        )
 
     out_sizes = _output_sizes(batch_sizes, batch_selections)
     total_batches = sum(out_sizes)
