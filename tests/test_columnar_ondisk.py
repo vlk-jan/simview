@@ -202,6 +202,35 @@ def test_merge_columnar_output_accepts_mixed_files_without_expansion(
     assert len(original_expand(merged["states"], 2)) == 3
 
 
+def test_merge_default_chooses_legacy_before_expanding(tmp_path):
+    path_a = tmp_path / "a.json"
+    path_b = tmp_path / "b.json"
+    build_scene(batch_size=1).save(path_a)
+    build_scene(batch_size=1).save(path_b, columnar=False)
+
+    merged = merge_simulation_files([path_a, path_b])
+
+    assert not is_columnar(merged["states"])
+    assert len(merged["states"]) == 3
+
+
+def test_merge_columnar_output_falls_back_for_unpackable_mixed_files(tmp_path):
+    path_a = tmp_path / "a.json"
+    path_b = tmp_path / "b.json"
+    build_scene(batch_size=1).save(path_a)
+    data = _read(path_a)
+    states = expand_columnar_states(data["states"], 1)
+    late = dict(states[0]["bodies"][0], name="Late")
+    states[1]["bodies"].append(late)
+    data["states"] = states
+    path_b.write_text(json.dumps(data))
+
+    merged = merge_simulation_files([path_a, path_b], columnar_output=True)
+
+    assert not is_columnar(merged["states"])
+    assert len(merged["states"]) == 3
+
+
 def test_diff_accepts_columnar_files(tmp_path):
     from simview.diff import compute_trajectory_diff
 
