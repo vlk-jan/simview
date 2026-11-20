@@ -424,3 +424,24 @@ def test_static_bundle_keeps_legacy_states_inline(tmp_path):
     states = _read(tmp_path / "bundle" / "states.json")
     transforms = [b["bodyTransform"] for s in states for b in s["bodies"]]
     assert transforms and all(t.startswith("__b64__") for t in transforms)
+
+
+def test_static_bundle_failure_keeps_existing_files(monkeypatch, tmp_path):
+    import simview.utils as utils_module
+    from simview.columnar import write_static_bundle
+
+    out = tmp_path / "bundle"
+    (out / "blob").mkdir(parents=True)
+    old_model = out / "model.json"
+    old_model.write_text('{"old": true}')
+    data = {"model": {"heightData": inline_blob(b"\x00\x00\x80?")}, "states": []}
+
+    def fail(*args, **kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(utils_module.os, "replace", fail)
+    with pytest.raises(OSError, match="replace failed"):
+        write_static_bundle(data, out)
+
+    assert old_model.read_text() == '{"old": true}'
+    assert not list(out.rglob(".*.tmp"))

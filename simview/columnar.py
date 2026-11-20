@@ -468,15 +468,16 @@ def write_static_bundle(data: dict, directory) -> None:
     ``<base>/blob/<id>``). Stdlib-only."""
     from pathlib import Path
 
-    from simview.utils import dumps_json
+    from simview.utils import atomic_write_bytes, dumps_json
 
     out = Path(directory)
     (out / "blob").mkdir(parents=True, exist_ok=True)
     count = 0
+    files: list[tuple[Path, bytes]] = []
 
     def write_blob(raw: bytes) -> str:
         nonlocal count
-        (out / "blob" / str(count)).write_bytes(raw)
+        files.append((out / "blob" / str(count), raw))
         count += 1
         return f"/blob/{count - 1}"
 
@@ -487,4 +488,6 @@ def write_static_bundle(data: dict, directory) -> None:
     if is_columnar(data["states"]):
         rewrite_blobs(data["states"], write_blob)
     for name in ("model", "states"):
-        (out / f"{name}.json").write_text(dumps_json(data[name]))
+        files.append((out / f"{name}.json", dumps_json(data[name]).encode("utf-8")))
+    for path, raw in files:
+        atomic_write_bytes(path, raw)

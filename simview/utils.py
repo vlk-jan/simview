@@ -4,7 +4,9 @@ import io
 import json
 import logging
 import math
+import os
 import socket
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +66,23 @@ def dialable_host(host: str) -> str:
     if host in ("0.0.0.0", "::"):
         return "127.0.0.1"
     return f"[{host}]" if ":" in host else host
+
+
+def atomic_write_bytes(path: str | Path, data: bytes) -> None:
+    """Write `data` to `path` without exposing a partially written file."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
+    os.close(fd)
+    try:
+        with open(temporary, "wb") as out:
+            out.write(data)
+        os.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def read_maybe_gzipped_bytes(path: str | Path) -> bytes:

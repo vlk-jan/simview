@@ -6,7 +6,13 @@ import socket
 
 import pytest
 
-from simview.utils import dialable_host, find_free_port, read_maybe_gzipped_bytes
+import simview.utils as utils_module
+from simview.utils import (
+    atomic_write_bytes,
+    dialable_host,
+    find_free_port,
+    read_maybe_gzipped_bytes,
+)
 
 
 def test_read_maybe_gzipped_bytes_plain_json(tmp_path):
@@ -96,6 +102,23 @@ def test_dialable_host_brackets_ipv6_literals():
     assert dialable_host("::1") == "[::1]"
     assert dialable_host("::") == "127.0.0.1"
     assert dialable_host("0.0.0.0") == "127.0.0.1"
+
+
+def test_atomic_write_bytes_keeps_the_old_file_when_replace_fails(
+    monkeypatch, tmp_path
+):
+    target = tmp_path / "scene.json"
+    target.write_bytes(b"old")
+
+    def fail(*args, **kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(utils_module.os, "replace", fail)
+    with pytest.raises(OSError, match="replace failed"):
+        atomic_write_bytes(target, b"new")
+
+    assert target.read_bytes() == b"old"
+    assert not list(tmp_path.glob(f".{target.name}.*"))
 
 
 def test_load_scene_rejects_a_states_dict_that_is_not_columnar(tmp_path):

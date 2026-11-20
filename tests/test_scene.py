@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+import simview.scene as scene_module
+
 torch = pytest.importorskip("torch")
 np = pytest.importorskip("numpy")
 
@@ -668,6 +670,42 @@ def test_create_polyline_static_and_per_frame(tmp_path):
     scene.add_state(0.2, [SimViewBodyState("Box", pos, quat)])
     with pytest.raises(ValueError, match="2 frames but the scene has 3"):
         scene.save(tmp_path / "scene.json")
+
+
+def test_failed_save_keeps_the_existing_scene_file(monkeypatch, tmp_path):
+    scene = build_scene()
+    path = tmp_path / "scene.json"
+    scene.save(path)
+    original = path.read_bytes()
+
+    def fail(*args, **kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(scene_module.os, "replace", fail)
+    with pytest.raises(OSError, match="replace failed"):
+        scene.save(path)
+
+    assert path.read_bytes() == original
+    assert not list(tmp_path.glob(f".{path.name}.*"))
+
+
+def test_save_static_does_not_reparse_the_scene(monkeypatch, tmp_path):
+    scene = build_scene()
+
+    def fail(*args, **kwargs):
+        raise AssertionError("save_static must not reparse a temporary scene")
+
+    monkeypatch.setattr(scene_module.json, "loads", fail)
+    scene.save_static(tmp_path / "bundle")
+
+    assert (tmp_path / "bundle" / "model.json").is_file()
+    assert (tmp_path / "bundle" / "states.json").is_file()
+
+
+def test_save_static_requires_a_complete_model(tmp_path):
+    scene = SimulationScene(batch_size=1, scalar_names=[], dt=0.1)
+    with pytest.raises(ValueError, match="model is not complete"):
+        scene.save_static(tmp_path / "bundle")
 
 
 def test_create_polyline_validation():

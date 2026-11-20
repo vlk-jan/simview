@@ -1,6 +1,7 @@
 import gzip
 import json
 import logging
+import os
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -521,6 +522,28 @@ class SimulationScene:
                 ]
                 body.available_attributes = attrs or None
 
+    def _prepare_for_save(self) -> None:
+        if not self.model.is_complete:
+            raise ValueError(
+                "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
+            )
+        self._prepare_for_output()
+
+    def _columnar_states_for_save(
+        self, model_json: dict, columnar: bool | None
+    ) -> dict | None:
+        if columnar is False or not self.states:
+            return None
+        columnar_states = columnarize_states(self.states, model_json, inline_blob)
+        if columnar_states is None and columnar is True:
+            raise ValueError(
+                "columnar=True but these states cannot be packed columnar "
+                "(they are not uniform across frames -- see the warning "
+                "logged above for the specific reason). Pass columnar=None "
+                "to fall back to the legacy per-frame layout automatically."
+            )
+        return columnar_states
+
     def save(
         self,
         filepath: str | Path,
@@ -548,11 +571,7 @@ class SimulationScene:
         layouts are read transparently by `load`, `merge_simulation_files`,
         the viewer and the CLI tools.
         """
-        if not self.model.is_complete:
-            raise ValueError(
-                "Cannot save data: The simulation model is not complete (e.g., terrain might be missing)."
-            )
-        self._prepare_for_output()
+        self._prepare_for_save()
 
         output_path = Path(filepath)
         if compress and output_path.suffix != ".gz":
@@ -561,38 +580,38 @@ class SimulationScene:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         model_json = self.model.to_json()
-        columnar_states = None
-        if columnar is not False and self.states:
-            columnar_states = columnarize_states(self.states, model_json, inline_blob)
-            if columnar_states is None and columnar is True:
-                raise ValueError(
-                    "columnar=True but these states cannot be packed columnar "
-                    "(they are not uniform across frames -- see the warning "
-                    "logged above for the specific reason). Pass columnar=None "
-                    "to fall back to the legacy per-frame layout automatically."
-                )
+        columnar_states = self._columnar_states_for_save(model_json, columnar)
 
         logger.info("Saving simulation data to %s...", output_path)
-        with (gzip.open if compress else open)(output_path, "wt") as f:
-            f.write("{\n")
-            f.write('  "model": ')
-            f.write(dumps_json(model_json, indent=2))
-            f.write(",\n")
-            if columnar_states is not None:
-                f.write('  "states": ')
-                f.write(dumps_json(columnar_states))
-                f.write("\n}")
-            else:
-                # Streamed frame by frame: the per-frame layout is only
-                # reached for scenes too irregular to columnarize, which are
-                # exactly the large ones worth not materializing at once.
-                f.write('  "states": [\n')
-                for i, state in enumerate(self.states):
-                    if i > 0:
-                        f.write(",\n")
-                    f.write("    ")
-                    f.write(dumps_json(state))
-                f.write("\n  ]\n}")
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{output_path.name}.", suffix=".tmp", dir=output_path.parent
+        )
+        os.close(fd)
+        try:
+            with (gzip.open if compress else open)(temporary, "wt") as f:
+                f.write("{\n")
+                f.write('  "model": ')
+                f.write(dumps_json(model_json, indent=2))
+                f.write(",\n")
+                if columnar_states is not None:
+                    f.write('  "states": ')
+                    f.write(dumps_json(columnar_states))
+                    f.write("\n}")
+                else:
+                    # Streamed frame by frame: the per-frame layout is only
+                    # reached for scenes too irregular to columnarize, which are
+                    # exactly the large ones worth not materializing at once.
+                    f.write('  "states": [\n')
+                    for i, state in enumerate(self.states):
+                        if i > 0:
+                            f.write(",\n")
+                        f.write("    ")
+                        f.write(dumps_json(state))
+                    f.write("\n  ]\n}")
+            os.replace(temporary, output_path)
+        except BaseException:
+            Path(temporary).unlink(missing_ok=True)
+            raise
         logger.info("Simulation data successfully saved to %s", output_path)
 
     def save_static(self, directory: str | Path) -> None:
@@ -602,12 +621,16 @@ class SimulationScene:
 
         Uses the same columnar layout and fallback as `save`.
         """
-        # Reuse save() (attribute reconciliation, columnar fallback) via a
-        # temp file rather than duplicating it; ponytail: extra JSON roundtrip.
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "scene.json"
-            self.save(path)
-            write_static_bundle(json.loads(path.read_text()), directory)
+        self._prepare_for_save()
+        model_json = self.model.to_json()
+        columnar_states = self._columnar_states_for_save(model_json, None)
+        write_static_bundle(
+            {
+                "model": model_json,
+                "states": self.states if columnar_states is None else columnar_states,
+            },
+            directory,
+        )
 
     def show(
         self,
