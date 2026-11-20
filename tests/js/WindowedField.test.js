@@ -193,6 +193,33 @@ describe("WindowedField", () => {
 });
 
 describe("WindowedField Range handling", () => {
+    it("rejects a short 206 response instead of padding it with undefined values", async () => {
+        const fetchImpl = () =>
+            Promise.resolve({
+                ok: true,
+                status: 206,
+                statusText: "Partial Content",
+                arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)),
+            });
+        const errors = [];
+        const originalError = console.error;
+        console.error = (e) => errors.push(e);
+        try {
+            const field = new WindowedField("/blob/tok/0", {
+                totalFrames: TOTAL_FRAMES,
+                batchCount: BATCHES,
+                width: WIDTH,
+                fetchImpl,
+            });
+            field.rowsAt(0);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(field.rowsAt(0)).toBe(null);
+            expect(String(errors[0])).toMatch(/Short Range response/);
+        } finally {
+            console.error = originalError;
+        }
+    });
+
     it("rejects a 200 response (server ignored Range) instead of using it as the window", async () => {
         const server = fakeBlobServer(TOTAL_FRAMES, BATCHES, WIDTH);
         const fetchImpl = (url, options) =>

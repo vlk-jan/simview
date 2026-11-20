@@ -132,6 +132,13 @@ export class WindowedField {
                 return response.arrayBuffer();
             })
             .then((buffer) => {
+                const expectedBytes = range.end - range.start + 1;
+                if (buffer.byteLength !== expectedBytes) {
+                    throw new Error(
+                        `Short Range response for window ${windowIndex} of ${this.url} ` +
+                            `(received ${buffer.byteLength} bytes, expected ${expectedBytes})`
+                    );
+                }
                 this._windows.set(windowIndex, new Float32Array(buffer)); // little-endian "<f4"
                 this._failedAt.delete(windowIndex);
                 this._touch(windowIndex);
