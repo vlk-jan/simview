@@ -125,6 +125,33 @@ describe("WindowedField", () => {
         expect(field.residentWindows).toBeLessThanOrEqual(3);
     });
 
+    it("bounds the cache when an old window lands after a scrub", async () => {
+        const server = fakeBlobServer(TOTAL_FRAMES, BATCHES, WIDTH);
+        const release = [];
+        const fetchImpl = (url, options) =>
+            new Promise((resolve) => {
+                release.push(() =>
+                    resolve(server.fetchImpl(url, options))
+                );
+            });
+        const field = new WindowedField("/blob/tok/0", {
+            totalFrames: TOTAL_FRAMES,
+            batchCount: BATCHES,
+            width: WIDTH,
+            fetchImpl,
+        });
+
+        field.rowsAt(0);
+        field.rowsAt(20 * field.windowFrames);
+        const old = release.splice(0, 2);
+        for (const resolve of release.splice(0, 2)) resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        for (const resolve of old) resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(field.residentWindows).toBeLessThanOrEqual(3);
+    });
+
     it("returns null outside the trajectory rather than reading past the end", () => {
         const { field } = makeField();
         expect(field.rowsAt(-1)).toBe(null);

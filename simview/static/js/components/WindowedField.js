@@ -48,6 +48,7 @@ export class WindowedField {
         this._failedAt = new Map();
         // windowIndex list, least recently used first.
         this._accessOrder = [];
+        this._targetWindow = 0;
         this.fetchCount = 0;
     }
 
@@ -78,11 +79,13 @@ export class WindowedField {
     // after it, so ordinary forward playback crosses a boundary into something
     // already loaded.
     ensureWindowsFor(frameIndex) {
-        for (const windowIndex of windowsToPrefetch(
+        const wanted = windowsToPrefetch(
             frameIndex,
             this.windowFrames,
             this.totalFrames
-        )) {
+        );
+        this._targetWindow = wanted[0];
+        for (const windowIndex of wanted) {
             this._fetchWindow(windowIndex);
         }
     }
@@ -160,12 +163,11 @@ export class WindowedField {
         return promise;
     }
 
-    // Drops least-recently-used windows beyond MAX_RESIDENT_WINDOWS, never
-    // the most recently accessed window or the one prefetched after it.
+    // Drops least-recently-used windows beyond MAX_RESIDENT_WINDOWS, never the
+    // playhead's window or the one prefetched after it.
     _evict() {
         const keep = windowsToPrefetch(
-            (this._accessOrder[this._accessOrder.length - 1] ?? 0) *
-                this.windowFrames,
+            this._targetWindow * this.windowFrames,
             this.windowFrames,
             this.totalFrames
         );
