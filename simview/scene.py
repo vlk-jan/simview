@@ -2,7 +2,6 @@ import gzip
 import json
 import logging
 import os
-import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -37,7 +36,12 @@ from .state import (
     LocalTransformLike,
     SimViewBodyState,
 )
-from .utils import dumps_json, iter_names, read_maybe_gzipped_bytes
+from .utils import (
+    dumps_json,
+    iter_names,
+    read_maybe_gzipped_bytes,
+    sibling_tempfile,
+)
 
 logger = logging.getLogger("simview.scene")
 
@@ -583,9 +587,7 @@ class SimulationScene:
         columnar_states = self._columnar_states_for_save(model_json, columnar)
 
         logger.info("Saving simulation data to %s...", output_path)
-        fd, temporary = tempfile.mkstemp(
-            prefix=f".{output_path.name}.", suffix=".tmp", dir=output_path.parent
-        )
+        fd, temporary = sibling_tempfile(output_path)
         os.close(fd)
         try:
             with (gzip.open if compress else open)(temporary, "wt") as f:

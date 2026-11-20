@@ -9,7 +9,7 @@ torch = pytest.importorskip("torch")
 from conftest import build_scene
 
 import simview.merge as merge_module
-from simview.columnar import blob_floats, is_columnar
+from simview.columnar import blob_floats, expand_columnar_states, is_columnar
 from simview.merge import merge_simulation_files
 from simview.model import SimViewStaticObject
 from simview.scene import BodyShapeType, SimulationScene
@@ -1166,6 +1166,32 @@ def test_merge_treats_a_frame_without_contacts_as_empty(tmp_path):
 
     assert merged["states"][0]["bodies"][0]["contacts"] == [[0], [0]]
     assert merged["states"][1]["bodies"][0]["contacts"] == [[], []]
+
+
+def test_merge_columnar_output_keeps_one_contacts_entry_per_frame(tmp_path):
+    scene_a = build_scene(batch_size=2)
+    scene_b = build_scene(batch_size=3)
+    for tag, scene in ((10, scene_a), (20, scene_b)):
+        for i, state in enumerate(scene.states):
+            state["bodies"][0]["contacts"] = [
+                [tag + i * 3 + b] for b in range(scene.model.batch_size)
+            ]
+    path_a, path_b = tmp_path / "a.json", tmp_path / "b.json"
+    scene_a.save(path_a)
+    scene_b.save(path_b)
+
+    legacy = merge_simulation_files([path_a, path_b], [None, "0,2"])
+    merged = merge_simulation_files(
+        [path_a, path_b], [None, "0,2"], columnar_output=True
+    )
+
+    assert is_columnar(merged["states"])
+    assert len(merged["states"]["bodies"][0]["contacts"]) == 3
+    states = expand_columnar_states(merged["states"], merged["model"]["simBatches"])
+    assert [s["bodies"][0]["contacts"] for s in states] == [
+        s["bodies"][0]["contacts"] for s in legacy["states"]
+    ]
+    assert states[1]["bodies"][0]["contacts"] == [[13], [14], [23], [25]]
 
 
 def test_merge_metadata_keys_stay_unique_for_same_basenames(tmp_path):

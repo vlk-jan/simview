@@ -222,10 +222,9 @@ def _fetch(host: str, remote_path: str, dest: Path, has_gzip: bool, size: int) -
     """Stream the remote file to `dest`, returning the bytes actually transferred.
 
     Decompression is incremental and the write goes to a unique '.partial'
-    file that is
-    only renamed into place once complete, so a 300MB scene is never held in
-    memory whole and an interrupted fetch never leaves a usable-looking cache
-    entry behind.
+    file that is only renamed into place once complete, so a 300MB scene is
+    never held in memory whole and an interrupted fetch never leaves a
+    usable-looking cache entry behind.
     """
     argv, gunzip = _fetch_argv(host, remote_path, has_gzip)
     decomp = zlib.decompressobj(16 + zlib.MAX_WBITS) if gunzip else None

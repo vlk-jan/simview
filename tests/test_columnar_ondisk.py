@@ -528,10 +528,11 @@ def test_static_bundle_failure_after_model_keeps_matching_blobs(monkeypatch, tmp
         write_static_bundle(data, out)
 
     assert calls == 3  # blob, model, then the failed states replacement
-    assert (out / "model.json").read_bytes() != old_model
-    assert _read(out / "model.json") == {"heightData": "/blob/0"}
+    assert _read(out / "model.json") == {"heightData": "/blob/1"}
     assert (out / "states.json").read_bytes() == old_states
-    assert (out / "blob" / "0").read_bytes() == b"new!"  # both models share id 0
+    # The new blob gets a fresh id, so the old one is never overwritten.
+    assert (out / "blob" / "0").read_bytes() == old_blob
+    assert (out / "blob" / "1").read_bytes() == b"new!"
 
 
 def test_static_bundle_replaces_old_blobs_without_deleting_other_files(tmp_path):
@@ -548,5 +549,19 @@ def test_static_bundle_replaces_old_blobs_without_deleting_other_files(tmp_path)
 
     assert (out / "blob" / "notes").read_text() == "keep"
     assert (out / "keep.txt").read_text() == "keep"
-    assert _read(out / "model.json") == {"heightData": "/blob/0"}
-    assert os.path.getsize(out / "blob" / "0") == 3
+    assert _read(out / "model.json") == {"heightData": "/blob/1"}
+    assert (out / "blob" / "1").read_bytes() == b"new"
+    assert not (out / "blob" / "0").exists()
+
+
+def test_saved_files_get_the_umask_default_mode(tmp_path):
+    scene = build_scene()
+    scene.save(tmp_path / "scene.json")
+    scene.save_static(tmp_path / "bundle")
+    umask = os.umask(0)
+    os.umask(umask)
+    expected = 0o666 & ~umask
+    paths = [tmp_path / "scene.json", *(tmp_path / "bundle").rglob("*")]
+    for path in paths:
+        if path.is_file():
+            assert path.stat().st_mode & 0o777 == expected, path

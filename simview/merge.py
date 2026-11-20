@@ -233,16 +233,11 @@ def _decode_per_batch(
     ]
 
 
-def _load_json(path: Path, *, expand_columnar: bool = False) -> dict:
-    raw = read_maybe_gzipped_bytes(path)
-    doc = loads_json(raw)
-    # expand_columnar_states is stdlib-only, so merge stays usable on a base
-    # install. merge_simulation_files chooses the layout before expanding.
-    if expand_columnar and isinstance(doc, dict) and is_columnar(doc.get("states")):
-        model = doc.get("model")
-        batch_size = int((model or {}).get("simBatches", 1))
-        doc["states"] = expand_columnar_states(doc["states"], batch_size)
-    return doc
+def _load_json(path: Path) -> dict:
+    # Columnar states stay packed: merge_simulation_files chooses the output
+    # layout before expanding (expand_columnar_states is stdlib-only, so merge
+    # stays usable on a base install).
+    return loads_json(read_maybe_gzipped_bytes(path))
 
 
 def _require(doc, key: str, expected_type: type | tuple[type, ...], label: str):
@@ -966,6 +961,7 @@ def _merge_columnar_states(
 
         if contacts is not None:
             for out_idx, _ in enumerate(ref_times):
+                frame_contacts = []
                 for file_idx, (body_map, batch_size, selection) in enumerate(
                     zip(decoded_bodies, batch_sizes, selections)
                 ):
@@ -984,7 +980,8 @@ def _merge_columnar_states(
                     )
                     if value is None:
                         value = [[] for _ in range(batch_size)]
-                    contacts.extend(_select(value, selection))
+                    frame_contacts.extend(_select(value, selection))
+                contacts.append(frame_contacts)
 
         merged_body = {"name": body["name"], "fields": merged_fields}
         if contacts is not None:

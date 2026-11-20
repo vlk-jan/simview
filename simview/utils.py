@@ -24,6 +24,11 @@ _GZIP_MAGIC = b"\x1f\x8b"
 
 _MAX_PORT = 65535
 
+# mkstemp creates files 0600; atomic writes chmod to what open() would have
+# given. Read once at import because os.umask can only be read by setting it.
+_UMASK = os.umask(0)
+os.umask(_UMASK)
+
 logger = logging.getLogger("simview.utils")
 
 
@@ -68,13 +73,21 @@ def dialable_host(host: str) -> str:
     return f"[{host}]" if ":" in host else host
 
 
+def sibling_tempfile(target: Path) -> tuple[int, str]:
+    """`mkstemp` next to `target` (so `os.replace` stays on one filesystem),
+    with the umask-default mode a plain `open(target, "w")` would create."""
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
+    os.fchmod(fd, 0o666 & ~_UMASK)
+    return fd, temporary
+
+
 def atomic_write_bytes(path: str | Path, data: bytes) -> None:
     """Write `data` to `path` without exposing a partially written file."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(
-        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
-    )
+    fd, temporary = sibling_tempfile(target)
     os.close(fd)
     try:
         with open(temporary, "wb") as out:

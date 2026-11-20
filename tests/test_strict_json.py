@@ -62,7 +62,7 @@ def test_legacy_nan_files_still_load(tmp_path):
     path.write_text(json.dumps(data))
 
     assert "NaN" in path.read_text()
-    assert math.isnan(_load_json(path, expand_columnar=True)["states"][0]["time"])
+    assert math.isnan(_load_json(path)["states"][0]["time"])
     with TestClient(SimViewServer(sim_path=path).app) as client:
         assert client.get("/states").status_code == 200
 

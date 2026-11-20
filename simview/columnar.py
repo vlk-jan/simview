@@ -35,7 +35,6 @@ import base64
 import logging
 import os
 import struct
-import tempfile
 from typing import Any
 
 try:
@@ -470,12 +469,16 @@ def write_static_bundle(data: dict, directory) -> None:
     ``<base>/blob/<id>``). Stdlib-only."""
     from pathlib import Path
 
-    from simview.utils import dumps_json
+    from simview.utils import dumps_json, sibling_tempfile
 
     out = Path(directory)
     blob_dir = out / "blob"
     blob_dir.mkdir(parents=True, exist_ok=True)
-    count = 0
+    # Number new blobs past every existing one, so republishing never
+    # overwrites a blob the live model.json/states.json still reference.
+    count = 1 + max(
+        (int(p.name) for p in blob_dir.iterdir() if p.name.isdecimal()), default=-1
+    )
     blobs: list[tuple[Path, bytes]] = []
 
     def write_blob(raw: bytes) -> str:
@@ -497,17 +500,16 @@ def write_static_bundle(data: dict, directory) -> None:
     staged: dict[Path, str] = {}
     try:
         for path, raw in files:
-            fd, temporary = tempfile.mkstemp(
-                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-            )
+            fd, temporary = sibling_tempfile(path)
             staged[path] = temporary
             with os.fdopen(fd, "wb") as f:
                 f.write(raw)
 
         for path in [path for path, _ in blobs]:
             os.replace(staged.pop(path), path)
-        # The model is the activation record: publish it first so an
-        # interrupted update never leaves states.json referencing missing blobs.
+        # Each JSON file only references blobs that exist and belong to it.
+        # shortcut: an interruption between these two replaces still pairs the
+        # new model with the old states; true atomicity needs one manifest file.
         for name in ("model", "states"):
             path = next(path for path in staged if path.name == f"{name}.json")
             os.replace(staged.pop(path), path)
